@@ -361,6 +361,71 @@ export function StatusPanel({ title, since }: StatusPanelProps) {
   );
 }
 
+interface ResumePanelProps {
+  readonly mac: string;
+  readonly network: NetworkState;
+}
+
+export function ResumePanel({ mac, network }: ResumePanelProps) {
+  const { colors } = useTheme();
+  return (
+    <View
+      style={[styles.status, { backgroundColor: colors.surface, borderLeftColor: network === "unreachable" ? colors.warn : colors.text3 }]}
+      accessible
+      accessibilityLabel={`Reconnexion à ${mac}`}
+      accessibilityLiveRegion="polite"
+    >
+      <View style={styles.statusHeader}>
+        <Dot network={network} />
+        <Text style={styles.statusEyebrow}>Reconnexion…</Text>
+      </View>
+      <Text style={styles.statusTitle}>{mac}</Text>
+      <Text variant="small" tone="secondary">
+        Mac déjà appairé, pas de code à saisir
+      </Text>
+    </View>
+  );
+}
+
+interface ForgetMacProps {
+  readonly mac: string;
+  readonly onPress: () => void;
+}
+
+export function ForgetMac({ mac, onPress }: ForgetMacProps) {
+  const { colors } = useTheme();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Oublier ce Mac, ${mac}`}
+      onPress={onPress}
+      style={({ pressed }) => [styles.forget, { borderTopColor: colors.line }, pressed && { backgroundColor: colors.surface }]}
+    >
+      <View style={styles.rowMain}>
+        <Text variant="bodyStrong">Oublier ce Mac</Text>
+        <Text variant="small" tone="secondary">
+          {mac} demandera un nouveau code
+        </Text>
+      </View>
+    </Pressable>
+  );
+}
+
+interface ForgetMacSheetProps {
+  readonly open: boolean;
+  readonly mac: string;
+  readonly onClose: () => void;
+  readonly onConfirm: () => void;
+}
+
+export function ForgetMacSheet({ open, mac, onClose, onConfirm }: ForgetMacSheetProps) {
+  return (
+    <Sheet open={open} title={`Oublier ${mac} ?`} context="Le téléphone ne s'y reconnectera plus tout seul. Pour relier un agent, il faudra saisir un nouveau code." onClose={onClose}>
+      <SheetButton label="Oublier ce Mac" onPress={onConfirm} style={styles.sheetButton} />
+    </Sheet>
+  );
+}
+
 interface HostSheetProps {
   readonly open: boolean;
   readonly host: string | null;
@@ -402,6 +467,7 @@ const styles = StyleSheet.create({
   head: { marginTop: 14, gap: 6 },
   headTitle: { fontFamily: fonts.text700, fontSize: 30, lineHeight: 33, letterSpacing: -0.6 },
   historyLink: { marginTop: 20, borderTopWidth: 1, minHeight: 56, paddingVertical: 10, flexDirection: "row", alignItems: "center", gap: 12 },
+  forget: { borderTopWidth: 1, minHeight: 56, paddingVertical: 10, flexDirection: "row", alignItems: "center" },
   rowMain: { flex: 1, minWidth: 0, gap: 3 },
   bottomPanel: { position: "absolute", left: 0, right: 0, bottom: 0, borderTopWidth: 1, paddingTop: 10, paddingHorizontal: layout.gutter },
   code: { marginTop: 18, paddingTop: 20, paddingHorizontal: 16, paddingBottom: 16, borderRadius: radii.panel, alignItems: "center", gap: 10 },
