@@ -1,9 +1,8 @@
 import { useMemo, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
-import { findExerciseByName, searchExercises } from "@obnixe/core";
+import { findExerciseByName, searchExercises, worstPain } from "@obnixe/core";
 import type { LatestZonePain } from "@obnixe/core";
 import type { Exercise, Id, ZoneKey } from "@obnixe/schema";
-import { worstPain } from "@/features/programs/data";
 import { equipmentLabels, measureLabels } from "@/features/programs/format";
 import { zoneLabel } from "@/format/labels";
 import { ControlButton, LinkButton } from "@/ui/Button";

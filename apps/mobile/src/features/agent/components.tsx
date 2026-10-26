@@ -261,7 +261,7 @@ export function AgentPermissions({ settings, connected, photoCount, onChange }: 
           </Text>
         </View>
       )}
-      <PermissionRow label="Lire le corps" detail="poids et mensurations" value={settings.canReadBody} onChange={(value) => onChange("agentCanReadBody", value)} />
+      <PermissionRow label="Lire le corps" detail="poids et mensurations, lecture et saisie" value={settings.canReadBody} onChange={(value) => onChange("agentCanReadBody", value)} />
       <PermissionRow
         label="Modifier directement"
         {...(connected ? {} : { detail: "toujours réversible" })}

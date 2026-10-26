@@ -14,6 +14,7 @@ import {
 } from "@obnixe/schema";
 import type { Author, EpochMs, Exercise, Id, PainLevel, Program, ProgramVersion, ZoneKey } from "@obnixe/schema";
 import type { ObnixeDatabase } from "../database.ts";
+import { dayMs } from "../dates.ts";
 import type { SlotTree, VersionTree } from "./draft.ts";
 import type { ExerciseRef } from "./validate.ts";
 
@@ -45,6 +46,8 @@ export interface ExerciseUsage {
   readonly inUse: boolean;
   readonly programNames: readonly string[];
 }
+
+export const zonePainWindowMs = 14 * dayMs;
 
 export interface LatestZonePain {
   readonly zone: ZoneKey;
@@ -190,4 +193,9 @@ export function latestZonePain(db: ObnixeDatabase, since: EpochMs): ReadonlyMap<
     else latest.set(row.zone, { zone: row.zone, level: row.level, occurredAt: row.occurredAt });
   }
   return latest;
+}
+
+export function worstPain(exerciseZones: readonly ZoneKey[], pain: ReadonlyMap<ZoneKey, LatestZonePain>): LatestZonePain | null {
+  const reports = exerciseZones.map((zone) => pain.get(zone)).filter((value): value is LatestZonePain => value !== undefined);
+  return reports.find((report) => report.level === "stop") ?? reports[0] ?? null;
 }

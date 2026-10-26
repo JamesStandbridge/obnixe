@@ -1,12 +1,11 @@
 import { useMemo } from "react";
 import { StyleSheet, View } from "react-native";
-import { diffDrafts, draftFromTree, loadVersionTree } from "@obnixe/core";
+import { diffDrafts, draftFromTree, loadVersionTree, worstPain } from "@obnixe/core";
 import type { ProgramChange, VersionEntry, LatestZonePain } from "@obnixe/core";
 import type { Id, ZoneKey } from "@obnixe/schema";
 import { db, environment } from "@/data/database";
 import { byAuthor, describeChange, formatDateTime, formatRelative, slotDetail, slotTitle } from "@/features/programs/format";
 import { lowerFirst, plural, zoneLabel } from "@/format/labels";
-import { worstPain } from "@/features/programs/data";
 import type { DiffBlock, ExerciseName } from "@/features/programs/format";
 import { PainMark } from "@/ui/Controls";
 import { Text } from "@/ui/Text";

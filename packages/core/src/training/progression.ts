@@ -26,7 +26,7 @@ export interface PreviousPerformanceQuery {
   readonly exerciseId: Id;
   readonly itemLineageId: Id | null;
   readonly before: EpochMs;
-  readonly excludeSessionId: Id;
+  readonly excludeSessionId: Id | null;
 }
 
 const historyDepth = 20;
@@ -42,7 +42,7 @@ export function previousPerformance(db: ObnixeDatabase, query: PreviousPerforman
         eq(strengthEntry.exerciseId, query.exerciseId),
         isNull(session.deletedAt),
         ne(session.status, "in_progress"),
-        ne(session.id, query.excludeSessionId),
+        query.excludeSessionId === null ? undefined : ne(session.id, query.excludeSessionId),
         lt(session.startedAt, query.before),
       ),
     )

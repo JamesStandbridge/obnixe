@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { efforts, equipments, exerciseMeasures, sensations, sportKeys, zoneKeys } from "@obnixe/schema";
+import { efforts, equipments, exerciseMeasures, painLevels, painPhases, sensations, sleepBuckets, sportKeys, zoneKeys } from "@obnixe/schema";
 import type { AgentCallKind, LocalDate, SportKey } from "@obnixe/schema";
 import { daysBetween } from "../dates.ts";
 
@@ -10,7 +10,7 @@ export interface ToolContract {
   readonly title: string;
   readonly description: string;
   readonly kind: AgentCallKind;
-  readonly permission: AgentPermission | null;
+  readonly permissions: readonly AgentPermission[];
   readonly input: z.ZodObject;
 }
 
@@ -106,7 +106,7 @@ export const toolContracts = {
     description:
       "List the sports Obnixe tracks with their session and item fields (key, type, unit dimension, allowed options and grades), pain zones and the catalog version. Call this before logging activities or setting slot targets.",
     kind: "read",
-    permission: null,
+    permissions: [],
     input: z.object({}),
   },
   get_history: {
@@ -115,7 +115,7 @@ export const toolContracts = {
     description:
       "Return the sessions of a date range (max 366 days), newest first: sport, status, start time, duration in seconds, catalog values, effort, sensation, enjoyment, notes, program slot, strength exercises with every set (loadGrams in grams, reps, durationSeconds, rir), itemized entries (e.g. climbing problems) and pain reports.",
     kind: "read",
-    permission: null,
+    permissions: [],
     input: z.object({ ...range, sport: z.enum(sportKeys).optional().describe("Only this sport.") }).refine(rangeRule.check, rangeRule.params),
   },
   get_exercise_progress: {
@@ -124,7 +124,7 @@ export const toolContracts = {
     description:
       "Return the history of one strength exercise: per session the sets (loadGrams in grams, reps, durationSeconds, rir), best set, estimated one-rep max in grams (Epley) and volume in gram-reps. Defaults to the whole history.",
     kind: "read",
-    permission: null,
+    permissions: [],
     input: z.object({ exercise: exerciseReference, from: localDate.optional(), to: localDate.optional() }),
   },
   get_body_signals: {
@@ -133,7 +133,7 @@ export const toolContracts = {
     description:
       "Return recovery signals for a date range (max 366 days): daily check-ins (energy 1-5, sleep bucket), pain reports (zone, level none/discomfort/stop, phase, session), zone tracking periods. Weigh-ins (grams) and body measurements (millimeters) are included only when the user allowed body access; 'bodyIncluded' tells which.",
     kind: "read",
-    permission: null,
+    permissions: [],
     input: z.object(range).refine(rangeRule.check, rangeRule.params),
   },
   list_photos: {
@@ -141,7 +141,7 @@ export const toolContracts = {
     title: "Progress photos",
     description: "List progress photo metadata (pose, day, pixel size). Requires the user's photo permission. Image files stay on the phone.",
     kind: "read",
-    permission: "photos",
+    permissions: ["photos"],
     input: z.object({ from: localDate.optional(), to: localDate.optional() }),
   },
   list_programs: {
@@ -149,7 +149,7 @@ export const toolContracts = {
     title: "Programs",
     description: "List training programs with status (draft, active, archived), latest version number, name and sessions per week.",
     kind: "read",
-    permission: null,
+    permissions: [],
     input: z.object({}),
   },
   get_program: {
@@ -158,7 +158,7 @@ export const toolContracts = {
     description:
       "Return a program with its latest version tree: slots (sessions of the rotation) with sport, targets and variants, each variant with its exercise prescriptions. Every slot, variant and item carries a lineageId to reuse in upsert_program. Set includeHistory to get every version with its summary, reason and author.",
     kind: "read",
-    permission: null,
+    permissions: [],
     input: z.object({ programId: z.string().min(1), includeHistory: z.boolean().optional() }),
   },
   list_exercises: {
@@ -166,7 +166,7 @@ export const toolContracts = {
     title: "Exercises",
     description: "List strength exercises with id, name, measure, equipment, load step in grams and the body zones they load.",
     kind: "read",
-    permission: null,
+    permissions: [],
     input: z.object({
       query: z.string().trim().min(1).optional().describe("Filter by name, case and accent insensitive."),
       includeArchived: z.boolean().optional(),
@@ -177,7 +177,7 @@ export const toolContracts = {
     title: "Create exercise",
     description: "Create a strength exercise. Fails if an exercise with the same name already exists. The user can undo it from the phone.",
     kind: "write",
-    permission: "write",
+    permissions: ["write"],
     input: z.object({
       name: shortText.max(80).describe("Exercise name in French, e.g. 'Rowing haltère'."),
       measure: newExercise.shape.measure,
@@ -192,7 +192,7 @@ export const toolContracts = {
     description:
       "Create a program (omit programId; it starts as a draft) or publish a new immutable version of an existing one. Send the complete program: every slot, variant and item of the new version. Reuse lineageIds from get_program for what stays the same, omit them for new elements; anything left out is removed from the new version. Unknown exercises named in items are created. The user sees 'summary' in the app and can undo the change.",
     kind: "write",
-    permission: "write",
+    permissions: ["write"],
     input: z.object({
       programId: z.string().min(1).optional(),
       name: shortText.max(60).describe("Program name in French."),
@@ -208,7 +208,7 @@ export const toolContracts = {
     description:
       "Record a completed past session of any sport except strength (use log_strength_session). Values and items are validated against the sport catalog from list_sports. The user can undo it from the phone.",
     kind: "write",
-    permission: "write",
+    permissions: ["write"],
     input: z.object({
       sport: z.enum(nonStrengthSports),
       startedAt: dateTime,
@@ -228,7 +228,7 @@ export const toolContracts = {
     description:
       "Record a completed past strength session with its exercises and sets, in order. Unknown exercises are created. The user can undo it from the phone.",
     kind: "write",
-    permission: "write",
+    permissions: ["write"],
     input: z.object({
       startedAt: dateTime,
       durationSeconds: z.int().min(60).max(21_600).describe("Session duration in seconds."),
@@ -241,6 +241,94 @@ export const toolContracts = {
       enjoyment: z.int().min(1).max(5).optional(),
       title: shortText.max(80).optional(),
       note: shortText.optional(),
+    }),
+  },
+  get_next_session: {
+    name: "get_next_session",
+    title: "Next session",
+    description:
+      "Answer 'what do I do today?' exactly as the phone's Today screen: the active program, the next slot of its rotation (skips and completed sessions included), the slot after it, days since this slot was last completed, and this week's count against sessionsPerWeek with whether today is a planned day. For strength slots every variant is listed (the first one is the app's default) with its exercise prescriptions; each exercise carries its last performance (all sets of the latest session with that exercise, loadGrams in grams), the app's progression suggestion for the next session (kind first, increase_load, add_reps, repeat or suspended when a loaded zone hurts) and the worst recent pain on the zones it loads. Also returns an unfinished session if one is open, today's check-in and recent pain on the loaded zones. 'program' is null when no program is active.",
+    kind: "read",
+    permissions: [],
+    input: z.object({}),
+  },
+  list_agent_changes: {
+    name: "list_agent_changes",
+    title: "Agent changes",
+    description:
+      "List the changes agents made to the user's data, newest first: changeset id, time, French summary, the connection and client that made it (and whether it is this connection), the tool when known, whether the user undid it on the phone, and every row it touched (table, row id, operation). Use it to avoid logging the same thing twice. Give 'from' and 'to' for a date range (max 366 days, by the time of the change), or neither for the latest changes; 'limit' caps the list (default 20, or 100 with a range). Undoing is only possible from the phone.",
+    kind: "read",
+    permissions: [],
+    input: z
+      .object({
+        from: localDate.optional().describe("First day included, YYYY-MM-DD. Requires 'to'."),
+        to: localDate.optional().describe("Last day included, YYYY-MM-DD. Requires 'from'."),
+        limit: z.int().min(1).max(100).optional().describe("Maximum number of changes, newest first."),
+      })
+      .refine((value) => (value.from === undefined) === (value.to === undefined), { message: "Give both 'from' and 'to', or neither", path: ["to"] })
+      .refine((value) => value.from === undefined || value.to === undefined || rangeRule.check({ from: value.from, to: value.to }), rangeRule.params),
+  },
+  log_check_in: {
+    name: "log_check_in",
+    title: "Daily check-in",
+    description:
+      "Record the daily check-in: energy from 1 (drained) to 5 (in great shape) and/or last night's sleep bucket (lt6: under 6 h, h6, h7, h8: about 6, 7, 8 h, gte9: 9 h or more). There is one check-in per day: answering again updates that day's check-in, and fields left out keep their value. Defaults to today. Pain belongs in report_pain. The user can undo it from the phone.",
+    kind: "write",
+    permissions: ["write"],
+    input: z
+      .object({
+        localDate: localDate.optional().describe("Day of the check-in, YYYY-MM-DD, today by default. Not in the future."),
+        energy: z.int().min(1).max(5).optional(),
+        sleep: z.enum(sleepBuckets).optional(),
+      })
+      .refine((value) => value.energy !== undefined || value.sleep !== undefined, { message: "Give 'energy', 'sleep' or both", path: ["energy"] }),
+  },
+  report_pain: {
+    name: "report_pain",
+    title: "Report pain",
+    description:
+      "Record pain on a body zone (zones from list_sports). Levels: none (the zone is fine), discomfort (manageable), stop (had to stop or should not load it). With 'sessionId' (from get_history) the report is attached to that session and 'phase' is required (before, during, between sets or items, end); a painful report opens follow-up of the zone if it is not followed yet, as the app does. Without 'sessionId' the report goes into that day's check-in (one level per zone and day, reporting again replaces it) and 'phase' must be omitted. Painful zones suspend load progression on exercises loading them. The user can undo it from the phone.",
+    kind: "write",
+    permissions: ["write"],
+    input: z.object({
+      zone: z.enum(zoneKeys),
+      level: z.enum(painLevels),
+      sessionId: z.string().min(1).optional().describe("Session the pain happened in."),
+      phase: z.enum(painPhases).optional().describe("Required with sessionId, not allowed without."),
+      localDate: localDate.optional().describe("Only without sessionId: day of the check-in, today by default. Not in the future."),
+    }),
+  },
+  log_weigh_in: {
+    name: "log_weigh_in",
+    title: "Log a weigh-in",
+    description:
+      "Record body weight in grams (e.g. 78400 for 78.4 kg). There is one weigh-in per day: a second one the same day replaces it. Defaults to today. Requires both the write and the body permission. The user can undo it from the phone.",
+    kind: "write",
+    permissions: ["write", "body"],
+    input: z.object({
+      grams: z.int().min(20_000).max(400_000),
+      localDate: localDate.optional().describe("Day of the weigh-in, YYYY-MM-DD, today by default. Not in the future."),
+    }),
+  },
+  log_measurements: {
+    name: "log_measurements",
+    title: "Log body measurements",
+    description:
+      "Record body measurements (circumferences) in millimeters for one day, e.g. 'Tour de taille' 82 cm = 820. Each kind is matched by id or label, case insensitively, among the user's measurement kinds (labels appear in get_body_signals). Unknown labels are rejected unless createMissingKinds is true, which creates them (French label, e.g. 'Tour de mollet') or restores an archived kind with that label. One value per kind and day: measuring again the same day replaces it. Requires both the write and the body permission. The user can undo it from the phone.",
+    kind: "write",
+    permissions: ["write", "body"],
+    input: z.object({
+      localDate: localDate.optional().describe("Day of the measurements, YYYY-MM-DD, today by default. Not in the future."),
+      measurements: z
+        .array(
+          z.object({
+            kind: z.string().trim().min(1).max(60).describe("Measurement kind id or label."),
+            millimeters: z.int().min(10).max(4000),
+          }),
+        )
+        .min(1)
+        .max(20),
+      createMissingKinds: z.boolean().optional(),
     }),
   },
 } as const satisfies Record<string, ToolContract>;

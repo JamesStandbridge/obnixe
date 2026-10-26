@@ -1,6 +1,6 @@
-import type { MassUnit } from "@obnixe/schema";
+import type { Exercise, MassUnit } from "@obnixe/schema";
 import { gramsPerPound } from "../activity/catalog.ts";
-import { gramsToMass } from "../body/weight.ts";
+import { gramsToMass, massToGrams } from "../body/weight.ts";
 
 const poundSteps = [0.5, 1, 1.25, 2.5, 5, 10, 25] as const;
 
@@ -17,4 +17,9 @@ export function massStep(stepGrams: number, unit: MassUnit): number {
       throw new Error(`Unhandled mass unit ${String(unreachable)}`);
     }
   }
+}
+
+export function stepGramsFor(exercise: Pick<Exercise, "loadStepGrams" | "equipment">, unit: MassUnit): number {
+  const grams = exercise.loadStepGrams ?? (exercise.equipment === "barbell" ? 2500 : 1000);
+  return massToGrams(massStep(grams, unit), unit);
 }

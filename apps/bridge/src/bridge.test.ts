@@ -160,6 +160,12 @@ describe("MCP surface", () => {
       "upsert_program",
       "log_activity",
       "log_strength_session",
+      "get_next_session",
+      "list_agent_changes",
+      "log_check_in",
+      "report_pain",
+      "log_weigh_in",
+      "log_measurements",
     ]);
     const history = tools.find((tool) => tool.name === "get_history");
     expect(history?.inputSchema.required).toEqual(["from", "to"]);

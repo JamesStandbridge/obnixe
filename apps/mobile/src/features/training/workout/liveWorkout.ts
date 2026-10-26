@@ -1,6 +1,6 @@
-import { gramsToMass, latestPainByZone, loadWorkout, massStep, massToGrams, painfulZones, previousFor, suggestProgression, trackedZones } from "@obnixe/core";
+import { gramsToMass, latestPainByZone, loadWorkout, painfulZones, previousFor, stepGramsFor, suggestProgression, trackedZones } from "@obnixe/core";
 import type { PerformedSet, PreviousPerformance, Progression, SetDraft, WorkoutData, WorkoutExercise } from "@obnixe/core";
-import type { EpochMs, Exercise, Id, MassUnit, PainReport, ZoneKey } from "@obnixe/schema";
+import type { EpochMs, Id, MassUnit, PainReport, ZoneKey } from "@obnixe/schema";
 import { db } from "@/data/database";
 import { formatMass } from "@/features/training/format";
 import { formatClock } from "@/format/durations";
@@ -30,11 +30,6 @@ export function loadLiveWorkout(sessionId: Id): LiveWorkout | null {
 export const loadLimits = { kg: 400, lb: 880 } as const;
 export const repsLimit = 60;
 export const durationLimit = 3600;
-
-export function stepGramsFor(exercise: Exercise, unit: MassUnit): number {
-  const grams = exercise.loadStepGrams ?? (exercise.equipment === "barbell" ? 2500 : 1000);
-  return massToGrams(massStep(grams, unit), unit);
-}
 
 export function liveProgression(live: LiveWorkout, target: WorkoutExercise, unit: MassUnit): Progression {
   return suggestProgression({
