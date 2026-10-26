@@ -5,10 +5,10 @@ import { painReportMutations } from "../activity/pain.ts";
 import { createTestContext } from "../testing.ts";
 import type { TestContext } from "../testing.ts";
 import { revert } from "../undo.ts";
-import { bringForwardMutations, postponeEntryMutations, replaceExerciseMutations } from "./entries.ts";
+import { addExerciseMutations, bringForwardMutations, ExerciseNotFoundError, postponeEntryMutations, replaceExerciseMutations } from "./entries.ts";
 import { addExercise, apply, reload, seedProgram, startWorkout, timeZone } from "./fixtures.ts";
 import type { SeededProgram } from "./fixtures.ts";
-import { finishMutations, interruptMutations, openSessionRow, resumeMutations, SessionStateError, startWorkoutMutations, VariantNotInSlotError } from "./lifecycle.ts";
+import { finishMutations, interruptMutations, openSessionRow, resumeMutations, SessionStateError, startFreeWorkoutMutations, startWorkoutMutations, VariantNotInSlotError } from "./lifecycle.ts";
 import { correctSetMutations, deleteSetMutations, hasPendingDuringPain, InvalidSetError, logSetMutations, skipEntryMutations, stopEntryMutations } from "./sets.ts";
 import type { SetValues } from "./sets.ts";
 import { workoutProgress } from "./workout.ts";
@@ -196,6 +196,79 @@ describe("stopping, skipping and reordering exercises", () => {
       ["Rowing haltère", "pending", 3],
     ]);
     expect(data.exercises[2]?.target.sets).toBe(2);
+  });
+});
+
+describe("free workout", () => {
+  function startFree(): WorkoutData {
+    const started = startFreeWorkoutMutations(context.env.newId, { now: context.env.now(), timeZone });
+    apply(context, started.mutations);
+    return reload(context, started.sessionId);
+  }
+
+  function add(data: WorkoutData, exerciseId: Id): WorkoutData {
+    apply(context, addExerciseMutations(context.db, data, exerciseId, context.env.newId()));
+    return reload(context, data.session.id);
+  }
+
+  it("starts an empty in-progress session outside the rotation", () => {
+    const data = startFree();
+    expect(data.session).toMatchObject({ status: "in_progress", sport: "strength", slotId: null, variantId: null, countsInRotation: false, review: "pending", endedAt: null });
+    expect(data.slot).toBeNull();
+    expect(data.exercises).toEqual([]);
+    expect(workoutProgress(data)).toMatchObject({ currentIndex: null, setsDone: 0, setsPlanned: 0 });
+    expect(openSessionRow(context.db)?.id).toBe(data.session.id);
+  });
+
+  it("appends pending exercises without program item and resolves merged exercises", () => {
+    let data = add(startFree(), squat);
+    const alias = addExercise(context, { name: "Squat ancien", measure: "load_reps", stepGrams: 2500, zones: [] });
+    apply(context, [{ kind: "update", table: "exercise", key: alias, patch: { mergedIntoId: curl, archivedAt: context.env.now() } }]);
+    data = add(data, alias);
+    expect(data.exercises.map((candidate) => [candidate.exercise.name, candidate.entry.status, candidate.entry.position, candidate.entry.programItemId])).toEqual([
+      ["Squat barre", "pending", 0, null],
+      ["Curl haltères", "pending", 1, null],
+    ]);
+    expect(data.exercises[0]?.item).toBeNull();
+    expect(data.exercises[0]?.target).toMatchObject({ sets: 3, repsMin: null, repsMax: null, rir: null, restSeconds: 120 });
+    expect(workoutProgress(data)).toMatchObject({ currentIndex: 0, setIndex: 0 });
+    expect(() => addExerciseMutations(context.db, data, context.env.newId(), context.env.newId())).toThrow(ExerciseNotFoundError);
+  });
+
+  it("logs sets, keeps appending after the last exercise and finishes like a program session", () => {
+    let data = add(startFree(), bench);
+    data = logSet(data, 0, kgReps(60, 10));
+    data = logSet(data, 0, kgReps(60, 9), 120);
+    data = logSet(data, 0, kgReps(60, 8), 120);
+    expect(data.exercises[0]?.entry.status).toBe("done");
+    expect(workoutProgress(data).currentIndex).toBeNull();
+    data = add(data, curl);
+    expect(workoutProgress(data)).toMatchObject({ currentIndex: 1, setIndex: 0, restSeconds: 120, setsDone: 3 });
+    data = logSet(data, 1, kgReps(12, 12), 90);
+    context.advance(60_000);
+    apply(context, finishMutations(data, context.env.now()));
+    data = reload(context, data.session.id);
+    expect(data.session).toMatchObject({ status: "completed", countsInRotation: false, slotId: null });
+    expect(data.exercises.map((candidate) => candidate.entry.status)).toEqual(["done", "done"]);
+    expect(() => addExerciseMutations(context.db, data, squat, context.env.newId())).toThrow(SessionStateError);
+  });
+
+  it("finishes a session without any exercise", () => {
+    const data = startFree();
+    context.advance(60_000);
+    apply(context, finishMutations(data, context.env.now()));
+    expect(reload(context, data.session.id).session).toMatchObject({ status: "completed", endedAt: context.env.now() });
+    expect(openSessionRow(context.db)).toBeNull();
+  });
+
+  it("sizes a free exercise from the previous performance of the same exercise", () => {
+    let planned = startWorkout(context, program);
+    planned = logSet(planned, 0, kgReps(80, 8));
+    planned = logSet(planned, 0, kgReps(80, 8), 150);
+    apply(context, finishMutations(planned, context.env.now()));
+    context.advance(86_400_000);
+    const data = add(startFree(), squat);
+    expect(data.exercises[0]?.target.sets).toBe(2);
   });
 });
 

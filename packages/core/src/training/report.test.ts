@@ -5,7 +5,9 @@ import { painReportMutations, trackedZones } from "../activity/pain.ts";
 import type { TestContext } from "../testing.ts";
 import { addExercise, apply, reload, seedProgram, startWorkout, timeZone } from "./fixtures.ts";
 import type { SeededProgram } from "./fixtures.ts";
-import { finishMutations } from "./lifecycle.ts";
+import { nextSlot } from "../rotation.ts";
+import { addExerciseMutations } from "./entries.ts";
+import { finishMutations, startFreeWorkoutMutations } from "./lifecycle.ts";
 import { loadSessionReport, sessionHistory } from "./report.ts";
 import { reviewMutations, rotationChoice } from "./review.ts";
 import { correctSetMutations, logSetMutations, stopEntryMutations } from "./sets.ts";
@@ -241,6 +243,74 @@ describe("review", () => {
     const climb = reload(context, climbId);
     const choice = rotationChoice(context.db, climb.session);
     expect(choice).toMatchObject({ assigned: false, slot: { name: "Bloc libre" }, next: { name: "Séance A" } });
+  });
+});
+
+describe("free workout report and review", () => {
+  function completeFreeSession(): WorkoutData {
+    const started = startFreeWorkoutMutations(context.env.newId, { now: context.env.now(), timeZone });
+    apply(context, started.mutations);
+    let data = reload(context, started.sessionId);
+    for (const exerciseId of [squat, bench]) {
+      apply(context, addExerciseMutations(context.db, data, exerciseId, context.env.newId()));
+      data = reload(context, data.session.id);
+    }
+    data = logSet(data, 0, kgReps(80, 8), null);
+    data = logSet(data, 0, kgReps(80, 9), 150);
+    data = logSet(data, 1, kgReps(50, 10), 120);
+    context.advance(10_000);
+    apply(context, stopEntryMutations(data, data.exercises[1]?.entry.id as Id, null));
+    return finish(reload(context, data.session.id));
+  }
+
+  it("derives progression from the previous performance of the exercise only and reports no plan", () => {
+    completeTopSession();
+    context.advance(86_400_000);
+    const data = completeFreeSession();
+    const report = loadSessionReport(context.db, data.session.id, context.env.now());
+    expect(report).not.toBeNull();
+    if (report === null) return;
+    expect(report.data.slot).toBeNull();
+    expect(report.summary).toMatchObject({ setsDone: 3, setsPlanned: null, volumeGrams: 80_000 * 17 + 50_000 * 10 });
+    expect(report.exercises.map((exercise) => exercise.progression.kind)).toEqual(["repeat", "repeat"]);
+    expect(report.exercises[0]?.progression.sets.map((suggestion) => suggestion.loadGrams)).toEqual([80_000, 80_000]);
+    expect(report.exercises.map((exercise) => exercise.outcome)).toEqual([
+      { kind: "reps", delta: 1, previousDate: expect.any(String) },
+      { kind: "stopped", setsDone: 1, setsPlanned: null },
+    ]);
+  });
+
+  it("suggests a first attempt for an exercise never performed and counts planned sets only for program items", () => {
+    const data = completeFreeSession();
+    const report = loadSessionReport(context.db, data.session.id, context.env.now());
+    if (report === null) throw new Error("Report missing");
+    expect(report.exercises[0]?.previous).toBeNull();
+    expect(report.exercises[0]?.progression).toMatchObject({ kind: "first", sets: [{ loadGrams: 0, reps: 8, durationSeconds: null }, expect.anything(), expect.anything()] });
+    expect(report.exercises[0]?.outcome).toEqual({ kind: "first" });
+  });
+
+  it("offers no rotation slot and stays out of the rotation after review", () => {
+    const before = nextSlot(context.db)?.slot.name;
+    const data = completeFreeSession();
+    expect(rotationChoice(context.db, data.session)).toBeNull();
+    apply(
+      context,
+      reviewMutations({
+        session: data.session,
+        effort: "moderate",
+        sensation: null,
+        enjoyment: 3,
+        note: null,
+        rotation: { slotId: data.session.slotId, countsInRotation: data.session.countsInRotation },
+        pains: [],
+        existingEndPains: [],
+        tracked: [],
+        now: context.env.now(),
+        newId: context.env.newId,
+      }),
+    );
+    expect(reload(context, data.session.id).session).toMatchObject({ slotId: null, countsInRotation: false, review: "done" });
+    expect(nextSlot(context.db)?.slot.name).toBe(before);
   });
 });
 

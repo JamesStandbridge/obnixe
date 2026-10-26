@@ -46,6 +46,52 @@ export interface StartedWorkout {
   readonly mutations: readonly Mutation[];
 }
 
+export interface StartFreeWorkoutRequest {
+  readonly now: EpochMs;
+  readonly timeZone: string;
+}
+
+interface SessionPlacement {
+  readonly slotId: Id | null;
+  readonly variantId: Id | null;
+  readonly now: EpochMs;
+  readonly timeZone: string;
+}
+
+function sessionInsert(sessionId: Id, placement: SessionPlacement): Mutation {
+  return {
+    kind: "insert",
+    table: "session",
+    row: {
+      id: sessionId,
+      sport: "strength",
+      slotId: placement.slotId,
+      variantId: placement.variantId,
+      countsInRotation: placement.slotId !== null,
+      gearId: null,
+      title: null,
+      status: "in_progress",
+      startedAt: placement.now,
+      endedAt: null,
+      pausedSeconds: 0,
+      localDate: localDateOf(placement.now, placement.timeZone),
+      timeZone: placement.timeZone,
+      values: {},
+      effort: null,
+      sensation: null,
+      enjoyment: null,
+      note: null,
+      review: "pending",
+      deletedAt: null,
+    },
+  };
+}
+
+export function startFreeWorkoutMutations(newId: () => Id, request: StartFreeWorkoutRequest): StartedWorkout {
+  const sessionId = newId();
+  return { sessionId, mutations: [sessionInsert(sessionId, { slotId: null, variantId: null, now: request.now, timeZone: request.timeZone })] };
+}
+
 export function startWorkoutMutations(db: ObnixeDatabase, newId: () => Id, request: StartWorkoutRequest): StartedWorkout {
   const slot = db.select().from(programSlot).where(eq(programSlot.id, request.slotId)).get();
   if (slot === undefined) throw new SlotNotFoundError(request.slotId);
@@ -59,32 +105,7 @@ export function startWorkoutMutations(db: ObnixeDatabase, newId: () => Id, reque
   );
   const sessionId = newId();
   const mutations: Mutation[] = [
-    {
-      kind: "insert",
-      table: "session",
-      row: {
-        id: sessionId,
-        sport: "strength",
-        slotId: slot.id,
-        variantId: variant.id,
-        countsInRotation: true,
-        gearId: null,
-        title: null,
-        status: "in_progress",
-        startedAt: request.now,
-        endedAt: null,
-        pausedSeconds: 0,
-        localDate: localDateOf(request.now, request.timeZone),
-        timeZone: request.timeZone,
-        values: {},
-        effort: null,
-        sensation: null,
-        enjoyment: null,
-        note: null,
-        review: "pending",
-        deletedAt: null,
-      },
-    },
+    sessionInsert(sessionId, { slotId: slot.id, variantId: variant.id, now: request.now, timeZone: request.timeZone }),
     ...items.map(
       (item, position): Mutation => ({
         kind: "insert",

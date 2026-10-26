@@ -6,11 +6,11 @@ import { finishMutations } from "./lifecycle.ts";
 import { draftFor, previousPerformance, previousSetAt, suggestProgression } from "./progression.ts";
 import type { PerformedSet, ProgressionRequest } from "./progression.ts";
 import { logSetMutations } from "./sets.ts";
-import { targetFor } from "./workout.ts";
+import { freeTarget } from "./workout.ts";
 
 const set = (kg: number | null, reps: number | null, rir: number | null, interrupted = false): PerformedSet => ({ loadGrams: kg === null ? null : kg * 1000, reps, durationSeconds: null, rir, interrupted });
 
-const target = { ...targetFor(null, "load_reps"), sets: 3, repsMin: 6, repsMax: 10, rir: 2 };
+const target = { ...freeTarget(null), sets: 3, repsMin: 6, repsMax: 10, rir: 2 };
 
 function request(previous: readonly PerformedSet[], overrides: Partial<ProgressionRequest> = {}): ProgressionRequest {
   return { measure: "load_reps", target, stepGrams: 2500, previous, painful: false, ...overrides };
@@ -62,7 +62,7 @@ describe("suggestProgression", () => {
   });
 
   it("progresses timed holds by five seconds", () => {
-    const timed = { ...targetFor(null, "duration"), sets: 2, durationMinSeconds: 30, durationMaxSeconds: 60, rir: 1 };
+    const timed = { ...freeTarget(null), sets: 2, durationMinSeconds: 30, durationMaxSeconds: 60, rir: 1 };
     const progression = suggestProgression({ measure: "duration", target: timed, stepGrams: null, previous: [{ loadGrams: null, reps: null, durationSeconds: 40, rir: 3, interrupted: false }], painful: false });
     expect(progression.kind).toBe("add_reps");
     expect(progression.sets[0]?.durationSeconds).toBe(45);
