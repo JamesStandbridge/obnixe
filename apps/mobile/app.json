@@ -21,11 +21,20 @@
       "package": "com.jamesstandbridge.obnixe"
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/favicon.png",
+      "output": "single"
     },
     "scheme": "obnixe",
     "plugins": [
-      "expo-router",
+      [
+        "expo-router",
+        {
+          "headers": {
+            "Cross-Origin-Embedder-Policy": "credentialless",
+            "Cross-Origin-Opener-Policy": "same-origin"
+          }
+        }
+      ],
       "expo-sqlite",
       "expo-font",
       [
@@ -35,7 +44,9 @@
           "image": "./assets/splash-icon.png",
           "imageWidth": 120
         }
-      ]
+      ],
+      "expo-sharing",
+      "expo-image"
     ],
     "experiments": {
       "typedRoutes": true

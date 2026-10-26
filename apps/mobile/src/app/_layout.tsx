@@ -12,6 +12,7 @@ import { Stack } from "expo-router";
 import { hideAsync, preventAutoHideAsync } from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { DatabaseGate } from "@/data/DatabaseGate";
+import { SnackbarHost } from "@/ui/SnackbarHost";
 import { StartupError } from "@/ui/StartupError";
 import { ThemeProvider, useTheme } from "@/ui/theme";
 
@@ -25,7 +26,11 @@ function Navigator() {
   return (
     <>
       <StatusBar style={name === "dark" ? "light" : "dark"} />
-      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }} />
+      <SnackbarHost>
+        <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
+          <Stack.Screen name="(tabs)" />
+        </Stack>
+      </SnackbarHost>
     </>
   );
 }

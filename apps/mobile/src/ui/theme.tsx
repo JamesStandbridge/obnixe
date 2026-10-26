@@ -46,8 +46,8 @@ interface ThemeProviderProps {
 }
 
 export function ThemeProvider({ children }: ThemeProviderProps) {
-  const initial = useMemo(() => db.select({ theme: settings.theme }).from(settings).get(), []);
-  const { data } = useLiveQuery(db.select({ theme: settings.theme }).from(settings));
+  const initial = useMemo(() => db().select({ theme: settings.theme }).from(settings).get(), []);
+  const { data } = useLiveQuery(db().select({ theme: settings.theme }).from(settings));
   const scheme = useColorScheme();
   const reduceMotion = useReduceMotion();
   const name = resolvePalette(data[0]?.theme ?? initial?.theme ?? "dark", scheme);

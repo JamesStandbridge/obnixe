@@ -1,0 +1,236 @@
+import type { ReactElement } from "react";
+import { Circle, Ellipse, Path, Rect } from "react-native-svg";
+
+interface SportGlyph {
+  readonly viewBox: string;
+  readonly render: (color: string, mark: string) => ReactElement;
+}
+
+export const sportGlyphs = {
+  lift: {
+    viewBox: "0 0 24 24",
+    render: (color: string, mark: string) => (
+      <>
+      <Path d="M3.5 9v6M7 6v12M17 6v12M20.5 9v6M7 12h10" fill="none" stroke={color} strokeWidth={2} strokeLinecap="square" strokeLinejoin="round" />
+      <Rect x="10" y="10" width="4" height="4" fill={mark} />
+      </>
+    ),
+  },
+  kettlebell: {
+    viewBox: "0 0 24 24",
+    render: (color: string, mark: string) => (
+      <>
+      <Circle cx="12" cy="15.5" r="5.5" fill="none" stroke={color} strokeWidth={2} strokeLinecap="square" strokeLinejoin="round" />
+      <Path d="M8.5 11.5V7a2.5 2.5 0 0 1 2.5-2.5h2A2.5 2.5 0 0 1 15.5 7v4.5" fill="none" stroke={color} strokeWidth={2} strokeLinecap="square" strokeLinejoin="round" />
+      <Rect x="10" y="2.5" width="4" height="4" fill={mark} />
+      </>
+    ),
+  },
+  run: {
+    viewBox: "0 0 24 24",
+    render: (color: string, mark: string) => (
+      <>
+      <Circle cx="15" cy="4" r="2.5" fill={color} />
+      <Path d="M14 7.5 11.5 12.5M8 11.5l2-2.5 3.3-0.5 3.2 1.5 2-2.5M5 14l3.5 1 3-2.5 3 2-1.5 2.5" fill="none" stroke={color} strokeWidth={2} strokeLinecap="square" strokeLinejoin="round" />
+      <Rect x="11" y="17" width="4" height="4" fill={mark} />
+      </>
+    ),
+  },
+  trail: {
+    viewBox: "0 0 24 24",
+    render: (color: string, mark: string) => (
+      <>
+      <Circle cx="15" cy="4" r="2.5" fill={color} />
+      <Path d="M14 7.5 11.5 12.5M8 11.5l2-2.5 3.3-0.5 3.2 1.5 2-2.5M5 14l3.5 1 3-2.5 3 2-1.5 2.5M2 21l3.5-3.5L8 20M16.5 21l3-5 2.5 5" fill="none" stroke={color} strokeWidth={2} strokeLinecap="square" strokeLinejoin="round" />
+      <Rect x="11" y="17" width="4" height="4" fill={mark} />
+      </>
+    ),
+  },
+  walk: {
+    viewBox: "0 0 24 24",
+    render: (color: string, mark: string) => (
+      <>
+      <Circle cx="12" cy="4" r="2.5" fill={color} />
+      <Path d="M12 7.5v5M9.5 12l2.5-3.5 2.5 3M9 21l1.5-5 1.5-3.5 2 2.5 1 2" fill="none" stroke={color} strokeWidth={2} strokeLinecap="square" strokeLinejoin="round" />
+      <Rect x="13" y="17" width="4" height="4" fill={mark} />
+      </>
+    ),
+  },
+  hike: {
+    viewBox: "0 0 24 24",
+    render: (color: string, mark: string) => (
+      <>
+      <Circle cx="12" cy="4" r="2.5" fill={color} />
+      <Path d="M12 7.5 11.5 12.5M11.8 9l2.7 2 2-0.5M8.5 21l1.5-5 1.5-3.5 2 2.5 0.5 2M7.5 8h2.5v5H7.5zM16.5 9l1.5 12" fill="none" stroke={color} strokeWidth={2} strokeLinecap="square" strokeLinejoin="round" />
+      <Rect x="12" y="17" width="4" height="4" fill={mark} />
+      </>
+    ),
+  },
+  climb: {
+    viewBox: "0 0 24 24",
+    render: (color: string, mark: string) => (
+      <>
+      <Circle cx="9.5" cy="7" r="2.5" fill={color} />
+      <Path d="M11 10.5V16M6 9.5l1.5 2.5 3.5-1.5 3-3 1-2.5M7.5 21l0.5-3 3-2 3.5 1.5V21" fill="none" stroke={color} strokeWidth={2} strokeLinecap="square" strokeLinejoin="round" />
+      <Rect x="13" y="1" width="4" height="4" fill={mark} />
+      </>
+    ),
+  },
+  rope: {
+    viewBox: "0 0 24 24",
+    render: (color: string, mark: string) => (
+      <>
+      <Path d="M16.5 6A3 3 0 0 0 13.5 3H11a3 3 0 0 0-3 3v12a3 3 0 0 0 3 3h3a3 3 0 0 0 3-3v-5.5M14 9.5l3 3" fill="none" stroke={color} strokeWidth={2} strokeLinecap="square" strokeLinejoin="round" />
+      <Rect x="14.5" y="5" width="4" height="4" fill={mark} />
+      </>
+    ),
+  },
+  alpine: {
+    viewBox: "0 0 24 24",
+    render: (color: string, mark: string) => (
+      <>
+      <Path d="M2 21 9 10l3.5 5.5 2.5-3.5L22 21zM17.5 15.5l2-1" fill="none" stroke={color} strokeWidth={2} strokeLinecap="square" strokeLinejoin="round" />
+      <Rect x="7" y="7" width="4" height="4" fill={mark} />
+      </>
+    ),
+  },
+  ski: {
+    viewBox: "0 0 24 24",
+    render: (color: string, mark: string) => (
+      <>
+      <Circle cx="11" cy="3.5" r="2.5" fill={color} />
+      <Path d="M11 7l-0.5 5.5M8 11l3-2.5 3 1.5 2.5-1M7 19l2-3.5 1.5-3 2.5 2 1 1.5M17 9l1.5 10M3 20h15.5l2-2.5" fill="none" stroke={color} strokeWidth={2} strokeLinecap="square" strokeLinejoin="round" />
+      <Rect x="12" y="16" width="4" height="4" fill={mark} />
+      </>
+    ),
+  },
+  glide: {
+    viewBox: "0 0 24 24",
+    render: (color: string, mark: string) => (
+      <>
+      <Circle cx="9" cy="4" r="2.5" fill={color} />
+      <Path d="M9.5 7.5 11 12.5M5.5 9.5 10 8.5l5 1.5M7 17.5l1.5-2.5 2.5-2.5 3 1.5 1 1.5M3 16.5 21 21" fill="none" stroke={color} strokeWidth={2} strokeLinecap="square" strokeLinejoin="round" />
+      <Rect x="13" y="15.5" width="4" height="4" fill={mark} />
+      </>
+    ),
+  },
+  swim: {
+    viewBox: "0 0 24 24",
+    render: (color: string, mark: string) => (
+      <>
+      <Circle cx="6.5" cy="11" r="2.5" fill={color} />
+      <Path d="M18 12.5h-8l3-5.5 4 1.5M3 19l3-2 3 2 3-2 3 2 3-2 3 2" fill="none" stroke={color} strokeWidth={2} strokeLinecap="square" strokeLinejoin="round" />
+      <Rect x="17" y="6.5" width="4" height="4" fill={mark} />
+      </>
+    ),
+  },
+  row: {
+    viewBox: "0 0 24 24",
+    render: (color: string, mark: string) => (
+      <>
+      <Circle cx="7.5" cy="5.5" r="2.5" fill={color} />
+      <Path d="M8 9l3 6.5M9 11l4 0.5M11 15.5l3-2.5 3.5 3M3.5 16.5 5 18h12.5M17 13.5l4 4.5" fill="none" stroke={color} strokeWidth={2} strokeLinecap="square" strokeLinejoin="round" />
+      <Rect x="13" y="9.5" width="4" height="4" fill={mark} />
+      </>
+    ),
+  },
+  paddle: {
+    viewBox: "0 0 24 24",
+    render: (color: string, mark: string) => (
+      <>
+      <Circle cx="10" cy="5" r="2.5" fill={color} />
+      <Path d="M10 8.5V14M4.5 8 15 17M3 7.5l2.5-2.5M3 15l2 2.5h14l2-2.5" fill="none" stroke={color} strokeWidth={2} strokeLinecap="square" strokeLinejoin="round" />
+      <Rect x="15" y="17" width="4" height="4" fill={mark} />
+      </>
+    ),
+  },
+  bike: {
+    viewBox: "0 0 24 24",
+    render: (color: string, mark: string) => (
+      <>
+      <Circle cx="5.5" cy="16" r="4" fill="none" stroke={color} strokeWidth={2} strokeLinecap="square" strokeLinejoin="round" />
+      <Circle cx="18.5" cy="16" r="4" fill="none" stroke={color} strokeWidth={2} strokeLinecap="square" strokeLinejoin="round" />
+      <Path d="M5.5 16 9 9.5h6.5L18.5 16M9 9.5l3 6.5 3.5-6.5M15.5 9.5l-1-3h2.5M7.5 7h3" fill="none" stroke={color} strokeWidth={2} strokeLinecap="square" strokeLinejoin="round" />
+      <Rect x="10" y="14" width="4" height="4" fill={mark} />
+      </>
+    ),
+  },
+  yoga: {
+    viewBox: "0 0 24 24",
+    render: (color: string, mark: string) => (
+      <>
+      <Circle cx="12" cy="4" r="2.5" fill={color} />
+      <Path d="M12 7.5v6M6 15l2-3 4-2.5 4 2.5 2 3M4 18l8-3 8 3" fill="none" stroke={color} strokeWidth={2} strokeLinecap="square" strokeLinejoin="round" />
+      <Rect x="10" y="17" width="4" height="4" fill={mark} />
+      </>
+    ),
+  },
+  dance: {
+    viewBox: "0 0 24 24",
+    render: (color: string, mark: string) => (
+      <>
+      <Circle cx="11" cy="4" r="2.5" fill={color} />
+      <Path d="M11 7.5l1 5.5M7 5l4.3 4 4.2-2.5L18 3M12 13v4M12 13l4 1.5 3.5-1.5" fill="none" stroke={color} strokeWidth={2} strokeLinecap="square" strokeLinejoin="round" />
+      <Rect x="10" y="17" width="4" height="4" fill={mark} />
+      </>
+    ),
+  },
+  racket: {
+    viewBox: "0 0 24 24",
+    render: (color: string, mark: string) => (
+      <>
+      <Ellipse cx="12" cy="8" rx="5" ry="6" fill="none" stroke={color} strokeWidth={2} strokeLinecap="square" strokeLinejoin="round" />
+      <Path d="M7 8h10M12 2v12M9.5 13 12 16.5 14.5 13M12 16.5V21" fill="none" stroke={color} strokeWidth={2} strokeLinecap="square" strokeLinejoin="round" />
+      <Rect x="10" y="6" width="4" height="4" fill={mark} />
+      </>
+    ),
+  },
+  ball: {
+    viewBox: "0 0 24 24",
+    render: (color: string, mark: string) => (
+      <>
+      <Circle cx="13" cy="11" r="7" fill="none" stroke={color} strokeWidth={2} strokeLinecap="square" strokeLinejoin="round" />
+      <Path d="M13 7.5l3 2.2-1.2 3.5h-3.6L10 9.7zM13 7.5V4M16 9.7l3-1M14.8 13.2l2 2.8M11.2 13.2l-2 2.8M10 9.7l-3-1" fill="none" stroke={color} strokeWidth={2} strokeLinecap="square" strokeLinejoin="round" />
+      <Rect x="3" y="16" width="4" height="4" fill={mark} />
+      </>
+    ),
+  },
+  combat: {
+    viewBox: "0 0 24 24",
+    render: (color: string, mark: string) => (
+      <>
+      <Path d="M9 14V8a5 5 0 0 1 5-5h0.5A4.5 4.5 0 0 1 19 7.5V11a3 3 0 0 1-3 3zM9 9H7a3 3 0 0 0 0 6h2M9.5 15.5V20h8v-4.5" fill="none" stroke={color} strokeWidth={2} strokeLinecap="square" strokeLinejoin="round" />
+      <Rect x="13" y="1" width="4" height="4" fill={mark} />
+      </>
+    ),
+  },
+  golf: {
+    viewBox: "0 0 24 24",
+    render: (color: string, mark: string) => (
+      <>
+      <Path d="M7 2.5 13 19h3M3 21h18" fill="none" stroke={color} strokeWidth={2} strokeLinecap="square" strokeLinejoin="round" />
+      <Rect x="17" y="16" width="4" height="4" fill={mark} />
+      </>
+    ),
+  },
+  other: {
+    viewBox: "0 0 24 24",
+    render: (color: string, mark: string) => (
+      <>
+      <Circle cx="12" cy="14" r="7" fill="none" stroke={color} strokeWidth={2} strokeLinecap="square" strokeLinejoin="round" />
+      <Path d="M12 6v1M12 14l3-3" fill="none" stroke={color} strokeWidth={2} strokeLinecap="square" strokeLinejoin="round" />
+      <Rect x="10" y="2" width="4" height="4" fill={mark} />
+      </>
+    ),
+  },
+  new: {
+    viewBox: "0 0 22 22",
+    render: (color: string, mark: string) => (
+      <>
+      <Path d="M11 5v12M5 11h12" fill="none" stroke={color} strokeWidth={1.8} strokeLinecap="round" />
+      </>
+    ),
+  },
+} as const satisfies Record<string, SportGlyph>;
+
+export type SportGlyphKey = keyof typeof sportGlyphs;
