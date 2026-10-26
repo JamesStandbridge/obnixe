@@ -14,8 +14,11 @@ export interface MonthRef {
 }
 
 export class InvalidLocalDateError extends Error {
-  constructor(readonly value: string) {
+  readonly value: string;
+
+  constructor(value: string) {
     super(`${value} is not a YYYY-MM-DD date`);
+    this.value = value;
   }
 }
 

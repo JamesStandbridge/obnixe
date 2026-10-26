@@ -16,6 +16,7 @@ export const settings = sqliteTable(
     reminderMinutes: integer("reminder_minutes").notNull(),
     remindersExportedAt: timestamp("reminders_exported_at"),
     agentChangesSeenAt: timestamp("agent_changes_seen_at"),
+    bridgeHost: text("bridge_host"),
     updatedAt: timestamp("updated_at").notNull(),
   },
   (t) => [

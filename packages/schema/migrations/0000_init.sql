@@ -381,6 +381,7 @@ CREATE TABLE `settings` (
 	`reminder_minutes` integer NOT NULL,
 	`reminders_exported_at` integer,
 	`agent_changes_seen_at` integer,
+	`bridge_host` text,
 	`updated_at` integer NOT NULL,
 	CONSTRAINT "settings_singleton" CHECK("settings"."singleton" = 1),
 	CONSTRAINT "settings_reminder_weekdays" CHECK("settings"."reminder_weekdays" BETWEEN 0 AND 127),

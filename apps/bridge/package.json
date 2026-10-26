@@ -8,15 +8,18 @@
   },
   "scripts": {
     "start": "node --experimental-strip-types src/main.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
     "@types/ws": "^8.18.2",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",
+    "@obnixe/core": "workspace:*",
     "@obnixe/schema": "workspace:*",
     "ws": "^8.22.0"
   }

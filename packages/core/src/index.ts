@@ -6,3 +6,4 @@ export * from "./rotation.ts";
 export * from "./activity/index.ts";
 export * from "./body/index.ts";
 export * from "./stats/index.ts";
+export * from "./agent/index.ts";
