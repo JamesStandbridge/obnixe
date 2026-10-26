@@ -5,11 +5,14 @@ import type { Id } from "@obnixe/schema";
 import type { Environment, ObnixeDatabase } from "../database.ts";
 import { DependentRowsError, DuplicateRowError, RowNotFoundError } from "../writer.ts";
 import type { Actor } from "../writer.ts";
+import { logCheckIn, logMeasurements, logWeighIn, reportPain } from "./body.ts";
+import { listAgentChanges } from "./changes.ts";
 import { isConnectionOpen, readPermissions } from "./connection.ts";
 import { isToolName, toolContracts } from "./contract.ts";
 import type { AgentPermission, ToolInput, ToolName } from "./contract.ts";
 import { PermissionDeniedError, ToolInputError, hasPermission } from "./environment.ts";
 import type { AgentEnvironment, ToolResult } from "./environment.ts";
+import { getNextSession } from "./planning.ts";
 import type { ToolOutcome } from "./protocol.ts";
 import { getBodySignals, getExerciseProgress, getHistory, getProgram, listExercises, listPhotos, listPrograms, listSports } from "./reads.ts";
 import { createExercise, logActivity, logStrengthSession, upsertProgram } from "./writes.ts";
@@ -29,6 +32,12 @@ const handlers: { readonly [N in ToolName]: Handler<N> } = {
   upsert_program: upsertProgram,
   log_activity: logActivity,
   log_strength_session: logStrengthSession,
+  get_next_session: (db, env) => getNextSession(db, env),
+  list_agent_changes: listAgentChanges,
+  log_check_in: logCheckIn,
+  report_pain: reportPain,
+  log_weigh_in: logWeighIn,
+  log_measurements: logMeasurements,
 };
 
 export interface AgentCallRequest {
