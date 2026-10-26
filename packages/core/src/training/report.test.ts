@@ -137,7 +137,7 @@ describe("review", () => {
   it("records feelings and end-of-session pains, opening zone tracking for painful zones", () => {
     const data = completeTopSession();
     const choice = rotationChoice(context.db, data.session);
-    expect(choice).toMatchObject({ assigned: true, slot: { name: "Séance A" }, next: { name: "Bloc libre" } });
+    expect(choice).toMatchObject({ slot: { name: "Séance A" }, next: { name: "Bloc libre" } });
     apply(
       context,
       reviewMutations({
@@ -146,7 +146,7 @@ describe("review", () => {
         sensation: "normal",
         enjoyment: 4,
         note: "  Bonne séance ",
-        rotation: { slotId: data.session.slotId, countsInRotation: true },
+        countsInRotation: true,
         pains: [
           { zone: "shoulder_right", level: "discomfort" },
           { zone: "knee_left", level: "none" },
@@ -175,7 +175,7 @@ describe("review", () => {
         sensation: null,
         enjoyment: null,
         note: null,
-        rotation: { slotId: reviewed.session.slotId, countsInRotation: false },
+        countsInRotation: false,
         pains: [
           { zone: "shoulder_right", level: "stop" },
           { zone: "knee_left", level: null },
@@ -191,7 +191,7 @@ describe("review", () => {
     expect(reviewed.pains.map((pain) => [pain.zone, pain.level])).toEqual([["shoulder_right", "stop"]]);
   });
 
-  it("marks an empty review as skipped and can assign a free session to the next matching slot", () => {
+  it("marks an empty review as skipped and keeps an out-of-program session out of the rotation even when it matches the next slot", () => {
     const data = completeTopSession();
     apply(
       context,
@@ -201,7 +201,7 @@ describe("review", () => {
         sensation: null,
         enjoyment: null,
         note: " ",
-        rotation: { slotId: data.session.slotId, countsInRotation: true },
+        countsInRotation: true,
         pains: [],
         existingEndPains: [],
         tracked: [],
@@ -241,8 +241,26 @@ describe("review", () => {
       },
     ]);
     const climb = reload(context, climbId);
-    const choice = rotationChoice(context.db, climb.session);
-    expect(choice).toMatchObject({ assigned: false, slot: { name: "Bloc libre" }, next: { name: "Séance A" } });
+    expect(nextSlot(context.db)?.slot.name).toBe("Bloc libre");
+    expect(rotationChoice(context.db, climb.session)).toBeNull();
+    apply(
+      context,
+      reviewMutations({
+        session: climb.session,
+        effort: "easy",
+        sensation: null,
+        enjoyment: null,
+        note: null,
+        countsInRotation: true,
+        pains: [],
+        existingEndPains: [],
+        tracked: [],
+        now: context.env.now(),
+        newId: context.env.newId,
+      }),
+    );
+    expect(reload(context, climbId).session).toMatchObject({ slotId: null, countsInRotation: false, review: "done" });
+    expect(nextSlot(context.db)?.slot.name).toBe("Bloc libre");
   });
 });
 
@@ -301,7 +319,7 @@ describe("free workout report and review", () => {
         sensation: null,
         enjoyment: 3,
         note: null,
-        rotation: { slotId: data.session.slotId, countsInRotation: data.session.countsInRotation },
+        countsInRotation: data.session.countsInRotation,
         pains: [],
         existingEndPains: [],
         tracked: [],

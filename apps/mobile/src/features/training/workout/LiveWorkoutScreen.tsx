@@ -313,6 +313,15 @@ export function LiveWorkoutScreen({ live }: LiveWorkoutScreenProps) {
     });
   };
 
+  /** Without an explicit set start, the set is assumed to begin when the planned rest ran out, as long as the rest is not overdue. */
+  const measuredRest = (at: EpochMs): number | null => {
+    if (lastSet === null) return null;
+    if (active !== null) return Math.round((active.startedAt - lastSet.set.completedAt) / 1000);
+    if (restTotal === null) return null;
+    const elapsed = Math.max(0, Math.round((at - lastSet.set.completedAt) / 1000));
+    return elapsed > restTotal + overdueAfterSeconds ? null : Math.min(elapsed, restTotal);
+  };
+
   const commitUndoable = (summary: string, mutations: readonly Mutation[], message: string): boolean => {
     try {
       undoableWrite({ summary, mutations, message, ...placement });
@@ -352,7 +361,7 @@ export function LiveWorkoutScreen({ live }: LiveWorkoutScreenProps) {
       return;
     }
     const completedAt = environment.now();
-    const restBeforeSeconds = active !== null && lastSet !== null ? Math.round((active.startedAt - lastSet.set.completedAt) / 1000) : null;
+    const restBeforeSeconds = measuredRest(completedAt);
     const summary = setText(draft, unit);
     const lastOfExercise = display.sets.length + 1 >= display.target.sets;
     const message = !lastOfExercise ? `Série ${setIndex + 1} enregistrée · ${summary}` : pendingOthers(display.entry.id) === 0 ? "Séance terminée" : `${display.exercise.name} terminé · ${summary}`;
@@ -422,7 +431,7 @@ export function LiveWorkoutScreen({ live }: LiveWorkoutScreenProps) {
     setPain((current) => ({ ...current, open: false }));
     if (display === undefined || display.entry.status !== "pending") return;
     const interrupt = editing === null && (active !== null || hasPendingDuringPain(data));
-    const restBeforeSeconds = active !== null && lastSet !== null ? Math.round((active.startedAt - lastSet.set.completedAt) / 1000) : null;
+    const restBeforeSeconds = measuredRest(environment.now());
     const mutations = stopEntryMutations(
       data,
       display.entry.id,
@@ -506,9 +515,15 @@ export function LiveWorkoutScreen({ live }: LiveWorkoutScreenProps) {
           stepGrams,
           latestPains: live.latestPains,
         });
-  const sessionLevels = new Map<ZoneKey, PainLevel>();
-  for (const report of data.pains) sessionLevels.set(report.zone, report.level);
-  const painLevel = worstLevel([...sessionLevels.values()]);
+  const displaySetIds = new Set(display?.sets.map((set) => set.id) ?? []);
+  const painSince = lastSet?.set.completedAt ?? data.session.startedAt;
+  const currentLevels = new Map<ZoneKey, PainLevel>();
+  for (const report of data.pains) {
+    const onDisplay = report.strengthSetId !== null && displaySetIds.has(report.strengthSetId);
+    const sinceLastSet = report.strengthSetId === null && report.sessionItemId === null && report.occurredAt >= painSince;
+    if (onDisplay || sinceLastSet) currentLevels.set(report.zone, report.level);
+  }
+  const painLevel = worstLevel([...currentLevels.values()]);
   const canValidate = finished || (display !== undefined && isDraftValid(display, activeDraft));
   const primaryMode = finished ? "finish" : editing !== null ? "edit" : "validate";
   const primaryLabel = finished ? "Faire le bilan de la séance" : editing !== null ? `Corriger la série ${editing.index + 1}` : `Valider la série ${setIndex + 1}`;

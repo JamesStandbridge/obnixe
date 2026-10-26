@@ -131,7 +131,7 @@ export default function ImportBackup() {
     setStage({ kind: "unlocking", chosen, progress: 0 });
     try {
       const snapshot = await unlockBackup(chosen, passphrase, (progress) => setStage({ kind: "unlocking", chosen, progress }));
-      setStage({ kind: "ready", chosen, snapshot, summary: summarizeSnapshot(snapshot.tables), error: null });
+      setStage({ kind: "ready", chosen, snapshot, summary: summarizeSnapshot(snapshot), error: null });
     } catch (error) {
       const message = readError(error);
       setStage({ kind: "locked", chosen, error: message ?? unreadable });

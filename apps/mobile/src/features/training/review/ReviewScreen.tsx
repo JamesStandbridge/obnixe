@@ -183,7 +183,7 @@ function ReviewForm({ data }: ReviewFormProps) {
   const [sensation, setSensation] = useState<Sensation | null>(session.sensation);
   const [enjoyment, setEnjoyment] = useState<number | null>(session.enjoyment);
   const [note, setNote] = useState(session.note ?? "");
-  const [counts, setCounts] = useState(session.countsInRotation || (choice !== null && !choice.assigned));
+  const [counts, setCounts] = useState(session.countsInRotation);
   const endPains = report.data.pains.filter((pain) => pain.phase === "end");
   const [pains, setPains] = useState<ReadonlyMap<ZoneKey, PainLevel | null>>(() => new Map(endPains.map((pain) => [pain.zone, pain.level])));
   const [extraZones, setExtraZones] = useState<readonly ZoneKey[]>([]);
@@ -199,8 +199,7 @@ function ReviewForm({ data }: ReviewFormProps) {
   const ended = session.endedAt ?? session.startedAt;
 
   const save = (): void => {
-    const rotation = choice === null ? { slotId: session.slotId, countsInRotation: session.countsInRotation } : { slotId: counts ? choice.slot.id : choice.assigned ? session.slotId : null, countsInRotation: counts };
-    undoableWrite({
+        undoableWrite({
       summary: `Bilan : ${title}`,
       mutations: reviewMutations({
         session,
@@ -208,7 +207,7 @@ function ReviewForm({ data }: ReviewFormProps) {
         sensation,
         enjoyment,
         note,
-        rotation,
+        countsInRotation: choice === null ? session.countsInRotation : counts,
         pains: [...pains.entries()].map(([zone, level]) => ({ zone, level })),
         existingEndPains: endPains,
         tracked: data.tracked,

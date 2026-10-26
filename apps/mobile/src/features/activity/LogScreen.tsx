@@ -129,6 +129,12 @@ function sourceLabel(localDate: LocalDate, today: LocalDate): string {
   return `comme le ${formatDayMonth(localDate)}`;
 }
 
+function endingNow(elapsedSeconds: number, timeZone: string, today: LocalDate): WhenValue {
+  const local = localTimeOf((Date.now() - elapsedSeconds * 1000) as EpochMs, timeZone);
+  const minutes = Math.floor(local.minutes / 15) * 15;
+  return { day: local.date === today ? "today" : "yesterday", date: local.date, minutes };
+}
+
 export function LogScreen() {
   const params = useLocalSearchParams<{ sport?: string; slotId?: string; variantId?: string }>();
   const router = useRouter();
@@ -176,12 +182,7 @@ export function LogScreen() {
   const [extraZones, setExtraZones] = useState<readonly ZoneKey[]>([]);
   const [countsInRotation, setCountsInRotation] = useState(true);
   const [sheet, setSheet] = useState<LogSheet>({ kind: slot === null && (requested === undefined || requested === "catalogue") ? "catalogue" : "none" });
-  const [when, setWhen] = useState<WhenValue>(() => {
-    const suggested = lastSessionSuggestion(db(), initialSport);
-    const local = localTimeOf((Date.now() - (suggested?.durationSeconds ?? 0) * 1000) as EpochMs, timeZone);
-    const minutes = Math.floor(local.minutes / 15) * 15;
-    return { day: local.date === today ? "today" : "yesterday", date: local.date, minutes };
-  });
+  const [pickedWhen, setWhen] = useState<WhenValue | null>(null);
 
   useEffect(() => {
     if (requested === "climb") router.replace({ pathname: "/climb/[id]", params: { id: "new", ...(slotId === undefined ? {} : { slotId }) } });
@@ -203,8 +204,9 @@ export function LogScreen() {
   const confirmed = (emphasis === null || typeof emphasisValue === "number") && duration !== null;
   const shownEmphasis = typeof emphasisValue === "number" ? emphasisValue : (suggestion?.emphasis ?? 0);
   const shownDuration = duration ?? suggestion?.durationSeconds ?? 0;
+  const when = pickedWhen ?? endingNow(shownDuration + paused, timeZone, today);
   const startedAt = epochAt({ date: when.date, minutes: when.minutes }, timeZone);
-  const future = startedAt > Date.now();
+  const future = startedAt + (shownDuration + paused) * 1000 > Date.now();
   const slotApplies = slot !== null && slot.sport === sport;
 
   const stripKeys = useMemo(() => {

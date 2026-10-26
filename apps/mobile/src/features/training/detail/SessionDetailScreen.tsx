@@ -535,7 +535,14 @@ function ExerciseBlock({ report, exercise, today, unit, onSet }: ExerciseBlockPr
       {target.sets.map((set, index) => {
         const level = worstLevel(report.data.pains.filter((pain) => pain.strengthSetId === set.id).map((pain) => pain.level));
         const rest = set.restBeforeSeconds === null ? "–" : formatClock(set.restBeforeSeconds);
-        const value = set.interrupted ? (set.loadGrams === null ? "–" : `${formatMass(set.loadGrams, unit)} ${unit}`) : setText(set, unit);
+        const loaded = set.loadGrams !== null && set.loadGrams > 0;
+        const value = set.interrupted
+          ? set.loadGrams === null
+            ? "–"
+            : `${formatMass(set.loadGrams, unit)} ${unit}`
+          : loaded && set.durationSeconds === null
+            ? `${formatMass(set.loadGrams ?? 0, unit)} ${unit} × ${set.reps ?? 0}`
+            : setText(set, unit);
         return (
           <Pressable
             key={set.id}

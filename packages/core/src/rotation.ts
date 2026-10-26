@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import { program, programSlot, programVariant, programVersion, rotationSkip, session } from "@obnixe/schema";
 import type { EpochMs, Id, Program, ProgramSlot, ProgramVariant, ProgramVersion } from "@obnixe/schema";
 import type { ObnixeDatabase } from "./database.ts";
@@ -31,14 +31,15 @@ export function currentProgram(db: ObnixeDatabase): CurrentProgram | null {
   return { program: active, version, slots };
 }
 
+/** Sessions enter the rotation when they end, so a session logged afterwards with a past start still follows an earlier skip. */
 export function lastRotationEvent(db: ObnixeDatabase, programId: Id): RotationEvent | null {
   const done = db
-    .select({ slotLineageId: programSlot.lineageId, versionId: programSlot.versionId, at: session.startedAt })
+    .select({ slotLineageId: programSlot.lineageId, versionId: programSlot.versionId, at: sql<EpochMs>`coalesce(${session.endedAt}, ${session.startedAt})` })
     .from(session)
     .innerJoin(programSlot, eq(session.slotId, programSlot.id))
     .innerJoin(programVersion, eq(programSlot.versionId, programVersion.id))
     .where(and(eq(programVersion.programId, programId), eq(session.countsInRotation, true), eq(session.status, "completed"), isNull(session.deletedAt)))
-    .orderBy(desc(session.startedAt))
+    .orderBy(desc(sql`coalesce(${session.endedAt}, ${session.startedAt})`), desc(session.startedAt))
     .get();
   const skipped = db
     .select({ slotLineageId: rotationSkip.slotLineageId, at: rotationSkip.skippedAt })

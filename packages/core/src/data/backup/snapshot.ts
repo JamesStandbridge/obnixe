@@ -152,7 +152,10 @@ export interface SnapshotSummary {
   readonly coveredTo: EpochMs | null;
 }
 
-export function summarizeSnapshot(tables: SnapshotTables): SnapshotSummary {
+/** Photos count only when their file travels with the backup: a backup exported without photos still lists their rows. */
+export function summarizeSnapshot(snapshot: Pick<Snapshot, "tables" | "photos">): SnapshotSummary {
+  const { tables } = snapshot;
+  const files = new Set(snapshot.photos.map((file) => file.photoId));
   const sessions = tables.session.filter((row) => row.deletedAt === null);
   const weighIns = tables.weigh_in.filter((row) => row.deletedAt === null);
   const measurements = tables.measurement.filter((row) => row.deletedAt === null);
@@ -168,7 +171,7 @@ export function summarizeSnapshot(tables: SnapshotTables): SnapshotSummary {
     sports: new Set(sessions.map((row) => row.sport)).size,
     programs: tables.program.length,
     bodyEntries: weighIns.length + measurements.length,
-    photos: tables.photo.filter((row) => row.deletedAt === null).length,
+    photos: tables.photo.filter((row) => row.deletedAt === null && files.has(row.id)).length,
     coveredFrom: instants.length === 0 ? null : (Math.min(...instants) as EpochMs),
     coveredTo: instants.length === 0 ? null : (Math.max(...instants) as EpochMs),
   };

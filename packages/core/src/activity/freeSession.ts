@@ -54,8 +54,8 @@ export class InvalidDurationError extends Error {
 }
 
 export class FutureSessionError extends Error {
-  constructor(readonly startedAt: EpochMs) {
-    super(`Session starts in the future at ${startedAt}`);
+  constructor(readonly endedAt: EpochMs) {
+    super(`Session ends in the future at ${endedAt}`);
   }
 }
 
@@ -82,9 +82,9 @@ export function planFreeSession(db: ObnixeDatabase, env: Environment, draft: Fre
   if (!Number.isInteger(draft.durationSeconds) || draft.durationSeconds <= 0 || !Number.isInteger(draft.pausedSeconds) || draft.pausedSeconds < 0) {
     throw new InvalidDurationError(draft.durationSeconds, draft.pausedSeconds);
   }
-  if (draft.startedAt > env.now()) throw new FutureSessionError(draft.startedAt);
-  const sessionId = env.newId();
   const endedAt = (draft.startedAt + (draft.durationSeconds + draft.pausedSeconds) * 1000) as EpochMs;
+  if (endedAt > env.now()) throw new FutureSessionError(endedAt);
+  const sessionId = env.newId();
   const note = draft.note?.trim() ?? "";
   const mutations: Mutation[] = [
     {

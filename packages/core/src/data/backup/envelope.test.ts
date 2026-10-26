@@ -1,7 +1,7 @@
 import { randomFillSync } from "node:crypto";
 import { beforeEach, describe, expect, it } from "vitest";
 import { catalogVersion } from "@obnixe/schema";
-import type { EpochMs, Id } from "@obnixe/schema";
+import type { EpochMs, Id, LocalDate } from "@obnixe/schema";
 import { createTestContext } from "../../testing.ts";
 import type { TestContext } from "../../testing.ts";
 import { fixtures } from "../testFixtures.ts";
@@ -9,7 +9,7 @@ import { decodeUtf8, encodeUtf8 } from "../utf8.ts";
 import { packSnapshot, unpackSnapshot } from "./container.ts";
 import { NewerBackupError, NotABackupError, WrongPassphraseError, defaultKdf, openSnapshot, readBackupHeader, sealSnapshot } from "./envelope.ts";
 import type { ScryptParams } from "./envelope.ts";
-import { CorruptedBackupError, InvalidSnapshotError, backupSchemaVersion, buildSnapshot } from "./snapshot.ts";
+import { CorruptedBackupError, InvalidSnapshotError, backupSchemaVersion, buildSnapshot, summarizeSnapshot } from "./snapshot.ts";
 import type { Snapshot } from "./snapshot.ts";
 
 const fastKdf: ScryptParams = { name: "scrypt", logN: 10, r: 8, p: 1 };
@@ -39,6 +39,19 @@ beforeEach(() => {
 async function seal(source: Snapshot = snapshot, passphrase = "corde rouge 42"): Promise<Uint8Array> {
   return (await sealSnapshot(source, { passphrase, fillRandom, kdf: fastKdf })).bytes;
 }
+
+describe("summary", () => {
+  it("counts only the photos whose file is in the backup", () => {
+    const row = { pose: "front", occurredAt: context.env.now(), localDate: "2026-10-01" as LocalDate, timeZone: "Europe/Paris", sha256: "ab", width: 10, height: 10, deletedAt: null } as const;
+    const kept = context.env.newId();
+    fixtures(context).write([
+      { kind: "insert", table: "photo", row: { ...row, id: kept, file: "photos/a.jpg" } },
+      { kind: "insert", table: "photo", row: { ...row, id: context.env.newId(), file: "photos/b.jpg" } },
+    ]);
+    expect(summarizeSnapshot(buildSnapshot(context.db, context.env.now())).photos).toBe(0);
+    expect(summarizeSnapshot(buildSnapshot(context.db, context.env.now(), [{ photoId: kept, bytes: Uint8Array.from([1]) }])).photos).toBe(1);
+  });
+});
 
 describe("utf8", () => {
   it("round trips accents and astral characters", () => {

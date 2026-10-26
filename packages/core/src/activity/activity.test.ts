@@ -16,6 +16,7 @@ import type { FreeSessionDraft } from "./freeSession.ts";
 import { EmptyGearNameError, gearUsage, newGear } from "./gear.ts";
 import { evaluateIndicators } from "./indicators.ts";
 import { lastPain, sessionPainMutations, trackedZones, zoneStatuses } from "./pain.ts";
+import { nextSlot } from "../rotation.ts";
 
 const zone = "Europe/Paris";
 let context: TestContext;
@@ -103,11 +104,13 @@ describe("free sessions", () => {
     expect(stored === undefined ? 0 : activeSeconds(stored, context.env.now())).toBe(1800);
   });
 
-  it("rejects strength and climbing, bad durations and future starts", () => {
+  it("rejects strength and climbing, bad durations and sessions ending in the future", () => {
     expect(() => planFreeSession(context.db, context.env, draft({ sport: "climb" }))).toThrow(NotFreeSportError);
     expect(() => planFreeSession(context.db, context.env, draft({ durationSeconds: 0 }))).toThrow(InvalidDurationError);
     expect(() => planFreeSession(context.db, context.env, draft({ pausedSeconds: -1 }))).toThrow(InvalidDurationError);
     expect(() => planFreeSession(context.db, context.env, draft({ startedAt: (context.env.now() + 60_000) as EpochMs }))).toThrow(FutureSessionError);
+    expect(() => planFreeSession(context.db, context.env, draft({ startedAt: (context.env.now() - 600_000) as EpochMs, durationSeconds: 1800 }))).toThrow(FutureSessionError);
+    expect(planFreeSession(context.db, context.env, draft({ startedAt: (context.env.now() - 1_800_000) as EpochMs, durationSeconds: 1800 })).mutations).not.toHaveLength(0);
   });
 
   it("lets the catalog reject values the sport does not define", () => {
@@ -128,6 +131,31 @@ describe("free sessions", () => {
     const plan = planFreeSession(context.db, context.env, draft({ slot: { slotId, variantId: null, countsInRotation: true } }));
     write(plan.mutations);
     expect(context.db.select().from(session).get()).toMatchObject({ slotId, countsInRotation: true });
+  });
+
+  it("advances the rotation for a slot-linked log entered after a skip, and never for an out-of-program one", () => {
+    const programId = context.env.newId();
+    const versionId = context.env.newId();
+    const [strengthA, runB, strengthC] = [context.env.newId(), context.env.newId(), context.env.newId()];
+    write([
+      { kind: "insert", table: "program", row: { id: programId, status: "active" } },
+      { kind: "insert", table: "program_version", row: { id: versionId, programId, number: 1, name: "Base", sessionsPerWeek: 3, copiedFromId: null, summary: null, reason: null } },
+      ...[strengthA, runB, strengthC].map(
+        (slotId, position): Mutation => ({
+          kind: "insert",
+          table: "program_slot",
+          row: { id: slotId, versionId, lineageId: slotId, position, sport: position === 1 ? "run" : "strength", name: `Séance ${position}`, targetDurationSeconds: null, targetEffort: null, targetValues: {} },
+        }),
+      ),
+      { kind: "insert", table: "rotation_skip", row: { id: context.env.newId(), programId, slotLineageId: strengthA, skippedAt: context.env.now(), localDate: "2026-10-24" as LocalDate } },
+    ]);
+    expect(nextSlot(context.db)?.slot.id).toBe(runB);
+    context.advance(60_000);
+    write(planFreeSession(context.db, context.env, draft({ startedAt: (context.env.now() - 2_400_000) as EpochMs, durationSeconds: 2400 })).mutations);
+    expect(nextSlot(context.db)?.slot.id).toBe(runB);
+    context.advance(60_000);
+    write(planFreeSession(context.db, context.env, draft({ startedAt: (context.env.now() - 2_400_000) as EpochMs, durationSeconds: 2400, slot: { slotId: runB, variantId: null, countsInRotation: true } })).mutations);
+    expect(nextSlot(context.db)?.slot.id).toBe(strengthC);
   });
 
   it("drops gear for sports that do not use it", () => {

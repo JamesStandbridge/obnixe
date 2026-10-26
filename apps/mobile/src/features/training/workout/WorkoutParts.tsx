@@ -1,7 +1,7 @@
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { stoppedZones, worstLevel } from "@obnixe/core";
 import type { PreviousPerformance, WorkoutExercise } from "@obnixe/core";
-import type { Id, MassUnit, PainReport, StrengthSet, ZoneKey } from "@obnixe/schema";
+import type { Id, MassUnit, PainReport, StrengthEntryStatus, StrengthSet, ZoneKey } from "@obnixe/schema";
 import { formatMass } from "@/features/training/format";
 import { zoneLabel } from "@/format/labels";
 import { rangeText, setText, targetText } from "@/features/training/workout/liveWorkout";
@@ -57,6 +57,23 @@ interface TrackProps {
 
 const scrollAfter = 4;
 
+function remainingSetWord(status: StrengthEntryStatus, current: boolean): string {
+  switch (status) {
+    case "pending":
+      return current ? "en cours" : "à faire";
+    case "skipped":
+      return "passée";
+    case "stopped":
+      return "arrêtée";
+    case "done":
+      return "non faite";
+    default: {
+      const unreachable: never = status;
+      return unreachable;
+    }
+  }
+}
+
 export function Track({ exercise, previous, currentSetIndex, editingSetId, pains, unit, onEdit }: TrackProps) {
   const { colors } = useTheme();
   const count = Math.max(exercise.target.sets, exercise.sets.length + (exercise.entry.status === "pending" ? 1 : 0));
@@ -108,7 +125,7 @@ export function Track({ exercise, previous, currentSetIndex, editingSetId, pains
         </Pressable>
       );
     }
-    const current = index === currentSetIndex;
+    const current = index === currentSetIndex && exercise.entry.status === "pending";
     const last = previousSets[Math.min(index, previousSets.length - 1)];
     const range = rangeText(exercise);
     return (
@@ -118,7 +135,7 @@ export function Track({ exercise, previous, currentSetIndex, editingSetId, pains
       >
         {current ? <View style={[styles.currentBar, { backgroundColor: colors.mark }]} /> : null}
         {label}
-        <Text style={[styles.setWord, current ? null : { color: colors.text3, fontFamily: fonts.text600 }]}>{current ? "en cours" : "à faire"}</Text>
+        <Text style={[styles.setWord, current ? null : { color: colors.text3, fontFamily: fonts.text600 }]}>{remainingSetWord(exercise.entry.status, current)}</Text>
         {last === undefined && range === "" ? null : (
           <Text style={styles.setSmall} tone="secondary" numberOfLines={1}>
             {last === undefined ? `obj. ${range}` : `préc. ${setText(last, unit)}`}

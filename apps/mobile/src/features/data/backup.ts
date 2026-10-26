@@ -47,7 +47,7 @@ async function readPhotos(rows: readonly TableRow<"photo">[]): Promise<PhotoFile
 }
 
 function record(kind: BackupKind, snapshot: Snapshot, includesPhotos: boolean, sizeBytes: number, snapshotFile: string | null, createdAt: EpochMs): void {
-  const summary = summarizeSnapshot(snapshot.tables);
+  const summary = summarizeSnapshot(snapshot);
   db()
     .insert(backup)
     .values({

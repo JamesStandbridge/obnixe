@@ -3,29 +3,23 @@ import { programSlot } from "@obnixe/schema";
 import type { Effort, EpochMs, Id, PainLevel, PainReport, ProgramSlot, Sensation, Session, ZoneKey } from "@obnixe/schema";
 import { painReportMutations } from "../activity/pain.ts";
 import type { ObnixeDatabase } from "../database.ts";
-import { currentProgram, nextSlot } from "../rotation.ts";
+import { currentProgram } from "../rotation.ts";
 import type { Mutation } from "../writer.ts";
 
 export interface RotationChoice {
   readonly slot: ProgramSlot;
   readonly next: ProgramSlot | null;
-  readonly assigned: boolean;
 }
 
+/** Only sessions started from a program slot take part in the rotation; out-of-program sessions are never attached afterwards. */
 export function rotationChoice(db: ObnixeDatabase, current: Session): RotationChoice | null {
-  const program = currentProgram(db);
-  if (current.slotId !== null) {
-    const own = db.select().from(programSlot).where(eq(programSlot.id, current.slotId)).get();
-    if (own === undefined) return null;
-    const slots = program?.slots ?? [];
-    const index = slots.findIndex((slot) => slot.lineageId === own.lineageId);
-    const next = index === -1 || slots.length < 2 ? null : (slots[(index + 1) % slots.length] ?? null);
-    return { slot: own, next, assigned: true };
-  }
-  if (current.sport === "strength") return null;
-  const upcoming = nextSlot(db);
-  if (upcoming === null || upcoming.slot.sport !== current.sport) return null;
-  return { slot: upcoming.slot, next: upcoming.after, assigned: false };
+  if (current.slotId === null) return null;
+  const own = db.select().from(programSlot).where(eq(programSlot.id, current.slotId)).get();
+  if (own === undefined) return null;
+  const slots = currentProgram(db)?.slots ?? [];
+  const index = slots.findIndex((slot) => slot.lineageId === own.lineageId);
+  const next = index === -1 || slots.length < 2 ? null : (slots[(index + 1) % slots.length] ?? null);
+  return { slot: own, next };
 }
 
 export interface ReviewPain {
@@ -39,7 +33,7 @@ export interface ReviewRequest {
   readonly sensation: Sensation | null;
   readonly enjoyment: number | null;
   readonly note: string | null;
-  readonly rotation: { readonly slotId: Id | null; readonly countsInRotation: boolean };
+  readonly countsInRotation: boolean;
   readonly pains: readonly ReviewPain[];
   readonly existingEndPains: readonly PainReport[];
   readonly tracked: readonly ZoneKey[];
@@ -62,8 +56,7 @@ export function reviewMutations(request: ReviewRequest): Mutation[] {
         sensation: request.sensation,
         enjoyment: request.enjoyment,
         note,
-        slotId: request.rotation.slotId,
-        countsInRotation: request.rotation.slotId !== null && request.rotation.countsInRotation,
+        countsInRotation: current.slotId !== null && request.countsInRotation,
         review: answered ? "done" : "skipped",
       },
     },
