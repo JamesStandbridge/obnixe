@@ -254,7 +254,7 @@ const styles = StyleSheet.create({
   comparison: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 4 },
   comparisonMark: { paddingTop: 1 },
   comparisonText: { flex: 1, fontFamily: fonts.text400, fontSize: 14, lineHeight: 19 },
-  comparisonLead: { fontFamily: fonts.text700, fontSize: 15 },
+  comparisonLead: { fontFamily: fonts.text700, fontSize: 15, lineHeight: 19 },
   adjust: { flexDirection: "row", gap: 10 },
   adjustGroup: { flex: 1, flexDirection: "row", gap: 6 },
   adjustCell: { flex: 1 },

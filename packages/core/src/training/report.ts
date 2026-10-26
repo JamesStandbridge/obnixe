@@ -94,7 +94,7 @@ export interface HistoryEntry {
 
 const childTables = ["strength_entry", "session_item", "pain_report"] as const;
 
-export function sessionHistory(db: ObnixeDatabase, sessionId: Id, endedAt: EpochMs | null): readonly HistoryEntry[] {
+export function sessionHistory(db: ObnixeDatabase, sessionId: Id): readonly HistoryEntry[] {
   const ownedBySession = (column: typeof change.after | typeof change.before) => sql`json_extract(${column}, '$.sessionId') = ${sessionId}`;
   const direct = db
     .select({ changesetId: change.changesetId, tableName: change.tableName, rowId: change.rowId })
@@ -132,7 +132,15 @@ export function sessionHistory(db: ObnixeDatabase, sessionId: Id, endedAt: Epoch
   const revertedIds = new Set(db.select({ revertsId: changeset.revertsId }).from(changeset).where(inArray(changeset.revertsId, ids)).all().map((row) => row.revertsId));
   const first = rows[0];
   if (first === undefined) return [];
-  const creationGroup = rows.filter((row) => row === first || (endedAt !== null && row.createdAt <= endedAt && row.author === first.author));
+  const completion = db
+    .select({ changesetId: change.changesetId })
+    .from(change)
+    .innerJoin(changeset, eq(change.changesetId, changeset.id))
+    .where(and(eq(change.tableName, "session"), eq(change.rowId, sessionId), sql`json_extract(${change.after}, '$.status') = 'completed'`))
+    .orderBy(asc(changeset.createdAt), asc(changeset.id))
+    .get();
+  const boundary = completion === undefined ? rows.length - 1 : rows.findIndex((row) => row.id === completion.changesetId);
+  const creationGroup = rows.slice(0, Math.max(0, boundary) + 1).filter((row) => row.author === first.author);
   const last = creationGroup[creationGroup.length - 1] ?? first;
   const creation: HistoryEntry = {
     changesetId: first.id,

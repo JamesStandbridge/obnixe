@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { StyleSheet, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { asc, eq } from "drizzle-orm";
 import {
@@ -18,13 +17,10 @@ import { programSlot, programVariant } from "@obnixe/schema";
 import type { Id, Session } from "@obnixe/schema";
 import { db, environment } from "@/data/database";
 import { write } from "@/data/write";
+import { Message } from "@/features/training/Message";
 import { deviceTimeZone, useLiveLoad } from "@/features/training/useLiveLoad";
 import { LiveWorkoutScreen } from "@/features/training/workout/LiveWorkoutScreen";
 import { loadLiveWorkout } from "@/features/training/workout/liveWorkout";
-import { LinkButton, PrimaryButton } from "@/ui/Button";
-import { IconButton } from "@/ui/Inputs";
-import { AppBar, Screen } from "@/ui/Layout";
-import { Text } from "@/ui/Text";
 
 interface WorkoutScreenProps {
   readonly id: string;
@@ -33,11 +29,6 @@ interface WorkoutScreenProps {
 export function WorkoutScreen({ id }: WorkoutScreenProps) {
   if (id === "new") return <StartWorkout />;
   return <WorkoutGate sessionId={id as Id} />;
-}
-
-function goBack(): void {
-  if (router.canGoBack()) router.back();
-  else router.replace("/");
 }
 
 function openSessionHref(session: Session): void {
@@ -121,6 +112,10 @@ function StartWorkout() {
 
 type GateState = "missing" | "completed" | "resume" | "expired" | "live";
 
+interface WorkoutGateProps {
+  readonly sessionId: Id;
+}
+
 function WorkoutGate({ sessionId }: WorkoutGateProps) {
   const live = useLiveLoad(() => loadLiveWorkout(sessionId), [sessionId]);
   const session = live?.data.session ?? null;
@@ -140,10 +135,11 @@ function WorkoutGate({ sessionId }: WorkoutGateProps) {
     }
   })();
 
+  const completedOnOpen = useRef(state === "completed");
   useEffect(() => {
     if (session === null) return;
     if (state === "resume") write("Séance reprise", resumeMutations(session, environment.now()));
-    if (state === "completed") router.replace({ pathname: "/session/[id]", params: { id: session.id } });
+    if (state === "completed" && completedOnOpen.current) router.replace({ pathname: "/session/[id]", params: { id: session.id } });
   }, [state, session]);
 
   switch (state) {
@@ -175,34 +171,3 @@ function WorkoutGate({ sessionId }: WorkoutGateProps) {
     }
   }
 }
-
-interface WorkoutGateProps {
-  readonly sessionId: Id;
-}
-
-interface MessageProps {
-  readonly title: string;
-  readonly detail: string;
-  readonly action: { readonly label: string; readonly run: () => void } | null;
-}
-
-function Message({ title, detail, action }: MessageProps) {
-  return (
-    <Screen>
-      <AppBar title="" leading={<IconButton icon="back" label="Retour" edge="start" onPress={goBack} />} />
-      <View style={styles.message}>
-        <Text variant="title" accessibilityRole="header">
-          {title}
-        </Text>
-        <Text tone="secondary">{detail}</Text>
-        {action === null ? <LinkButton label="Retour" onPress={goBack} style={styles.back} /> : <PrimaryButton label={action.label} onPress={action.run} style={styles.action} />}
-      </View>
-    </Screen>
-  );
-}
-
-const styles = StyleSheet.create({
-  message: { marginTop: 24, gap: 10 },
-  action: { marginTop: 16 },
-  back: { alignSelf: "flex-start", marginLeft: -10, marginTop: 8 },
-});

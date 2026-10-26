@@ -251,10 +251,13 @@ describe("sessionHistory", () => {
     const setId = data.exercises[0]?.sets[1]?.id as Id;
     apply(context, correctSetMutations(data, setId, kgReps(80, 7)), "Squat barre, série 2 : 8 → 7 rép.");
     data = reload(context, data.session.id);
-    const history = sessionHistory(context.db, data.session.id, data.session.endedAt);
+    context.advance(60_000);
+    apply(context, [{ kind: "update", table: "session", key: data.session.id, patch: { startedAt: (data.session.startedAt - 86_400_000) as EpochMs, endedAt: ((data.session.endedAt ?? 0) - 86_400_000) as EpochMs } }], "Date ou heure modifiée");
+    const history = sessionHistory(context.db, data.session.id);
     expect(history.map((entry) => [entry.summary, entry.creation, entry.revertible])).toEqual([
       ["Test", true, false],
       ["Squat barre, série 2 : 8 → 7 rép.", false, true],
+      ["Date ou heure modifiée", false, true],
     ]);
     expect(history[0]?.createdAt).toBe(data.session.endedAt);
   });

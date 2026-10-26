@@ -129,7 +129,7 @@ interface LiveWorkoutScreenProps {
 }
 
 export function LiveWorkoutScreen({ live }: LiveWorkoutScreenProps) {
-  useKeepAwake();
+  useKeepAwake(undefined, { suppressDeactivateWarnings: true });
   const { colors, name: palette, reduceMotion } = useTheme();
   const insets = useSafeAreaInsets();
   const unit = useMassUnit();
