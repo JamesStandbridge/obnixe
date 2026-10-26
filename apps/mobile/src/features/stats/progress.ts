@@ -23,7 +23,10 @@ import { eq, inArray } from "drizzle-orm";
 import { exerciseZone, programItem, programVariant, sportKeys, sports } from "@obnixe/schema";
 import type { ExerciseMeasure, FieldDefinition, GradeScaleKey, Id, IndicatorDefinition, LocalDate, SportDefinition, SportKey, ZoneKey } from "@obnixe/schema";
 import type { AppDatabase } from "@/data/database";
-import { formatInteger, formatKilometers, formatNumber, plural, rowDate, shortDate, sleepHours } from "@/features/stats/format";
+import { formatKilometers, rowDate, sleepHours } from "@/features/stats/format";
+import { formatInteger, formatNumber } from "@/format/numbers";
+import { plural } from "@/format/labels";
+import { shortDate } from "@/format/dates";
 import { distanceFigure, formatRatio, sessionFigure, sportLabel } from "@/features/stats/presentation";
 
 export type ChartKind = "line" | "step" | "bars";

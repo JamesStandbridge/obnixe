@@ -2,7 +2,7 @@ import { StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import type { CheckIn, PainLevel, PainReport, SleepBucket, ZoneKey } from "@obnixe/schema";
 import { formatCompactDay } from "@/features/activity/format";
-import { zoneLabel } from "@/features/activity/presentation";
+import { zoneLabel } from "@/format/labels";
 import { LinkButton } from "@/ui/Button";
 import { PainMark } from "@/ui/Controls";
 import { Section } from "@/ui/Layout";

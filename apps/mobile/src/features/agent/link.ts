@@ -2,16 +2,17 @@ import { Platform } from "react-native";
 import { getRandomValues } from "expo-crypto";
 import { PhoneSession, ProtocolError, closeConnection, generatePairingCode, openConnection, pairingCodeTtlMs, renameConnectionClient, runAgentTool } from "@obnixe/core";
 import type { PhoneLinkStatus, RejectionReason } from "@obnixe/core";
-import type { ConnectionEndReason, Id } from "@obnixe/schema";
+import type { ConnectionEndReason, EpochMs, Id } from "@obnixe/schema";
 import { db, environment } from "@/data/database";
 import { bridgeUrl } from "@/features/agent/host";
+import { deviceTimeZone } from "@/format/dates";
 
 export type NetworkState = "idle" | "dialing" | "reachable" | "unreachable";
 
 export type LinkView =
   | { readonly kind: "pairing"; readonly code: string; readonly expiresAt: number; readonly network: NetworkState }
   | { readonly kind: "connected"; readonly connectionId: Id; readonly since: number }
-  | { readonly kind: "disconnected"; readonly connectionId: Id; readonly at: number };
+  | { readonly kind: "disconnected"; readonly connectionId: Id; readonly at: EpochMs };
 
 export type LinkNotice = "code_refused" | "version";
 
@@ -46,10 +47,6 @@ function deviceName(): string {
       return String(unreachable);
     }
   }
-}
-
-function deviceTimeZone(): string {
-  return Intl.DateTimeFormat().resolvedOptions().timeZone;
 }
 
 /** Owns the socket to the bridge for the Agent screen: rotates single-use codes, redials while pairing and ends the connection on demand. */

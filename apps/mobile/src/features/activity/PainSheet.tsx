@@ -3,7 +3,7 @@ import { StyleSheet, View } from "react-native";
 import type { ZonePain } from "@obnixe/core";
 import type { PainLevel, ZoneKey } from "@obnixe/schema";
 import { OtherZoneButton } from "@/features/activity/components";
-import { zoneLabel } from "@/features/activity/presentation";
+import { zoneLabel } from "@/format/labels";
 import { SheetButton } from "@/ui/Button";
 import { PainLevels } from "@/ui/Inputs";
 import { Sheet } from "@/ui/Overlays";

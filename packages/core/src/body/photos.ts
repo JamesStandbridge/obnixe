@@ -1,7 +1,7 @@
 import { photoPoses } from "@obnixe/schema";
 import type { EpochMs, Id, LocalDate, Photo, PhotoPose } from "@obnixe/schema";
 import type { Mutation } from "../writer.ts";
-import { localDateOf } from "../activity/dates.ts";
+import { localDateOf } from "../dates.ts";
 
 export interface PhotoDraft {
   readonly id: Id;

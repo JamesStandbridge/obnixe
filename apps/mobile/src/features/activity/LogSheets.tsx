@@ -1,9 +1,13 @@
 import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
+import { localDateOf } from "@obnixe/core";
 import type { GearUsage } from "@obnixe/core";
 import type { ChoiceOption, Id, LocalDate, SportKey, ZoneKey } from "@obnixe/schema";
-import { formatShortDay, formatTimeOfDay, shiftDay, todayLocal } from "@/features/activity/format";
-import { formatKilometers, zoneLabel } from "@/features/activity/presentation";
+import { formatShortDay, shiftDay } from "@/features/activity/format";
+import { deviceTimeZone, formatTimeOfDay } from "@/format/dates";
+import { environment } from "@/data/database";
+import { formatKilometers } from "@/features/activity/presentation";
+import { zoneLabel } from "@/format/labels";
 import { ControlButton, LinkButton, SheetButton } from "@/ui/Button";
 import { Segmented } from "@/ui/Controls";
 import { Icon } from "@/ui/icons/Icon";
@@ -70,7 +74,7 @@ interface WhenSheetProps {
 
 export function WhenSheet({ open, value, onConfirm, onClose }: WhenSheetProps) {
   const [draft, setDraft] = useState<WhenValue>(value);
-  const today = todayLocal();
+  const today = localDateOf(environment.now(), deviceTimeZone());
 
   useEffect(() => {
     if (open) setDraft(value);

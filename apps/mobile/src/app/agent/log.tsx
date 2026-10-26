@@ -1,10 +1,11 @@
 import { useCallback } from "react";
 import { StyleSheet, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
-import { callTag, clockTime, frenchWeekdayTitle, historyTitle, readsLine, revertState } from "@obnixe/core";
+import { callTag, historyTitle, readsLine, revertState } from "@obnixe/core";
 import type { RevertIndex } from "@obnixe/core";
 import type { AgentConnection } from "@obnixe/schema";
 import { ActivityRow, AgentAppBar, Heading } from "@/features/agent/components";
+import { deviceTimeZone, formatTimeAt, weekdayTitle } from "@/format/dates";
 import { markAgentChangesSeen, useCalls, useConnections, useRevertIndex } from "@/features/agent/queries";
 import type { CallRow } from "@/features/agent/queries";
 import { useToggleChange } from "@/features/agent/useToggleChange";
@@ -27,12 +28,12 @@ interface ConnectionSectionProps {
 
 function ConnectionSection({ connection, calls, index, onToggle }: ConnectionSectionProps) {
   const { colors } = useTheme();
-  const span = connection.endedAt === null ? `depuis ${clockTime(connection.startedAt)}` : `${clockTime(connection.startedAt)} – ${clockTime(connection.endedAt)}`;
+  const span = connection.endedAt === null ? `depuis ${formatTimeAt(connection.startedAt, deviceTimeZone())}` : `${formatTimeAt(connection.startedAt, deviceTimeZone())} – ${formatTimeAt(connection.endedAt, deviceTimeZone())}`;
   const reads = readsLine(calls);
   const writes = calls.filter((call) => call.kind === "write");
   return (
     <Section
-      title={frenchWeekdayTitle(connection.startedAt)}
+      title={weekdayTitle(connection.startedAt, deviceTimeZone())}
       action={
         <Text variant="small" tone="secondary">
           {connection.client} · {span}
@@ -56,7 +57,7 @@ function ConnectionSection({ connection, calls, index, onToggle }: ConnectionSec
           <ActivityRow
             key={call.id}
             wide
-            time={clockTime(call.calledAt)}
+            time={formatTimeAt(call.calledAt, deviceTimeZone())}
             tag={callTag(call)}
             title={historyTitle(call)}
             tool={null}

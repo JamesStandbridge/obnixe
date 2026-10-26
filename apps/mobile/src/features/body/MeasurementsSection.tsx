@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
-import { DuplicateKindError, EmptyKindLabelError, epochAt, measurementsOverview, planKindArchive, planMeasurement, planMeasurementKind, planTrash } from "@obnixe/core";
+import { DuplicateKindError, EmptyKindLabelError, epochAt, localDateOf, measurementsOverview, planKindArchive, planMeasurement, planMeasurementKind, planTrash } from "@obnixe/core";
 import type { Id, LocalDate, Measurement, MeasurementKind } from "@obnixe/schema";
 import { db, environment } from "@/data/database";
 import { useUndoableWrite, write } from "@/data/write";
-import { deviceTimeZone, formatDayMonth, formatNumber, formatRelativeDay, formatSigned, todayLocal } from "@/features/activity/format";
+import { formatDayMonth, formatRelativeDay } from "@/features/activity/format";
+import { deviceTimeZone } from "@/format/dates";
+import { formatNumber, formatSigned } from "@/format/numbers";
 import { PadSheet } from "@/features/activity/PadSheet";
 import { ControlButton, LinkButton, SheetButton } from "@/ui/Button";
 import { Icon } from "@/ui/icons/Icon";
@@ -42,8 +44,8 @@ function deltaLabel(delta: number | null): string | undefined {
 export function MeasurementsSection({ kinds, measurements }: MeasurementsSectionProps) {
   const { colors } = useTheme();
   const undoable = useUndoableWrite();
-  const today = todayLocal();
   const timeZone = deviceTimeZone();
+  const today = localDateOf(environment.now(), timeZone);
   const [sheet, setSheet] = useState<MeasureSheet>({ kind: "none" });
   const [label, setLabel] = useState("");
   const [labelError, setLabelError] = useState<string | null>(null);

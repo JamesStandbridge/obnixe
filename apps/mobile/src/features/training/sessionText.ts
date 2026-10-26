@@ -1,35 +1,22 @@
 import { activeSeconds, completedSets, gramsToMass, parseGrade } from "@obnixe/core";
 import type { ClimbBreakdown, ExerciseOutcome, ExerciseReport, SessionReport, StrengthSummary } from "@obnixe/core";
 import { sports } from "@obnixe/schema";
-import type { Dimension, EpochMs, FieldDefinition, FieldValue, FieldValues, IndicatorDefinition, LocalDate, MassUnit, Session, SessionItem, SportKey } from "@obnixe/schema";
-import { formatClock, formatDuration, formatLongClock, formatMass, formatNumber, formatSigned, formatTime, plural, relativeDay } from "@/features/training/format";
+import type { Dimension, EpochMs, FieldDefinition, FieldValue, FieldValues, IndicatorDefinition, LocalDate, MassUnit, Session, SessionItem } from "@obnixe/schema";
+import { formatDuration, formatMass, formatTime } from "@/features/training/format";
+import { formatClock, formatLongClock } from "@/format/durations";
+import { formatNumber, formatSigned } from "@/format/numbers";
+import { freeStrengthTitle, plural } from "@/format/labels";
+import type { SessionTitleSource } from "@/format/labels";
+import { relativeDay } from "@/format/dates";
 
 export function choiceLabel(field: FieldDefinition, key: string): string {
   if (field.type !== "choice") return key;
   return field.options.find((option) => option.key === key)?.label ?? key;
 }
 
-function fieldOf(sport: SportKey, key: string): FieldDefinition | undefined {
-  return sports[sport].sessionFields.find((field) => field.key === key);
-}
-
-export const freeStrengthTitle = "Musculation libre";
-
-export function sessionTitle(report: Pick<SessionReport, "data">): string {
+export function titleSource(report: Pick<SessionReport, "data">): SessionTitleSource {
   const { session, slot, variant } = report.data;
-  if (session.title !== null) return session.title;
-  if (session.sport === "strength") return slot === null ? freeStrengthTitle : variant === null ? slot.name : `${slot.name} · ${variant.name}`;
-  const sport = sports[session.sport];
-  if (session.sport === "climb") {
-    const discipline = session.values.discipline;
-    const disciplineField = fieldOf("climb", "discipline");
-    const label = typeof discipline === "string" && disciplineField !== undefined ? choiceLabel(disciplineField, discipline) : sport.label;
-    return typeof session.values.place === "string" ? `${label} · ${session.values.place}` : label;
-  }
-  const kind = session.values.kind;
-  const kindField = fieldOf(session.sport, "kind");
-  if (typeof kind === "string" && kindField !== undefined) return choiceLabel(kindField, kind);
-  return slot?.name ?? sport.label;
+  return { sport: session.sport, title: session.title, slotName: slot?.name ?? null, variantName: variant?.name ?? null, values: session.values };
 }
 
 export function shortTitle(report: Pick<SessionReport, "data">): string {

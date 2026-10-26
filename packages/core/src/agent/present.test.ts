@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { frenchDistance, frenchDuration, frenchSpan, localDateIn } from "./format.ts";
+import type { LocalDate } from "@obnixe/schema";
+import { frenchDistance, frenchDuration, frenchSpan } from "./format.ts";
 import { callTag, connectionRecap, historyTitle, readsLine } from "./present.ts";
 
 describe("format", () => {
@@ -9,13 +10,8 @@ describe("format", () => {
     expect(frenchDistance(800)).toBe("800 m");
     expect(frenchDuration(2700)).toBe("45 min");
     expect(frenchDuration(5400)).toBe("1 h 30");
-    expect(frenchSpan("2026-10-03", "2026-10-30")).toBe("du 3 au 30 octobre");
-    expect(frenchSpan("2026-09-28", "2026-10-01")).toBe("du 28 septembre au 1er octobre");
-  });
-
-  it("finds the local day in a time zone", () => {
-    expect(localDateIn(Date.parse("2026-10-24T23:30:00Z"), "Europe/Paris")).toBe("2026-10-25");
-    expect(localDateIn(Date.parse("2026-10-24T23:30:00Z"), "UTC")).toBe("2026-10-24");
+    expect(frenchSpan("2026-10-03" as LocalDate, "2026-10-30" as LocalDate)).toBe("du 3 au 30 octobre");
+    expect(frenchSpan("2026-09-28" as LocalDate, "2026-10-01" as LocalDate)).toBe("du 28 septembre au 1er octobre");
   });
 });
 

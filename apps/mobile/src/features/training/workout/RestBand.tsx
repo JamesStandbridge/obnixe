@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Animated, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { formatClock } from "@/features/training/format";
+import { formatClock } from "@/format/durations";
 import { Text } from "@/ui/Text";
 import { useTheme } from "@/ui/theme";
 import { fonts, layout } from "@/ui/tokens";

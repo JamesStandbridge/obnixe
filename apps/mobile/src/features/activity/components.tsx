@@ -1,10 +1,7 @@
 import type { ReactNode } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useLiveQuery } from "drizzle-orm/expo-sqlite";
-import { settings } from "@obnixe/schema";
-import type { MassUnit, PainLevel, SportKey } from "@obnixe/schema";
-import { db } from "@/data/database";
+import type { PainLevel, SportKey } from "@obnixe/schema";
 import { PainMark, Switch } from "@/ui/Controls";
 import { Icon } from "@/ui/icons/Icon";
 import { SportIcon } from "@/ui/icons/SportIcon";
@@ -13,11 +10,6 @@ import { useTheme } from "@/ui/theme";
 import { fonts, layout, radii } from "@/ui/tokens";
 
 export const bottomPanelHeight = 86;
-
-export function useMassUnit(): MassUnit {
-  const { data } = useLiveQuery(db().select({ massUnit: settings.massUnit }).from(settings));
-  return data[0]?.massUnit ?? "kg";
-}
 
 interface BottomPanelProps {
   readonly children: ReactNode;

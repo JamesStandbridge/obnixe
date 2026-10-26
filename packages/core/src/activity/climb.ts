@@ -3,7 +3,7 @@ import { gradeScales, painReport, session, sessionItem, sports } from "@obnixe/s
 import type { EpochMs, FieldValues, GradeScaleKey, GradeValue, Id, Session, SessionItem } from "@obnixe/schema";
 import type { Environment, ObnixeDatabase } from "../database.ts";
 import type { Mutation } from "../writer.ts";
-import { localDateOf } from "./dates.ts";
+import { localDateOf } from "../dates.ts";
 import type { SlotLink } from "./freeSession.ts";
 import { parseGrade } from "../stats/indicators.ts";
 import { evaluateIndicators } from "./indicators.ts";

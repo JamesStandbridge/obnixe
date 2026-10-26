@@ -9,7 +9,7 @@ import { write } from "@/data/write";
 import { useExerciseCatalog, useRevision, useZonePain } from "@/features/programs/data";
 import { ExerciseForm } from "@/features/programs/exercises/ExerciseForm";
 import { ExercisePicker } from "@/features/programs/exercises/ExercisePicker";
-import { useMassUnit } from "@/features/training/useLiveLoad";
+import { useMassUnit } from "@/data/settings";
 import { LinkButton } from "@/ui/Button";
 
 type Step = { readonly kind: "pick"; readonly query: string } | { readonly kind: "form"; readonly exerciseId: Id | null; readonly name: string; readonly query: string };

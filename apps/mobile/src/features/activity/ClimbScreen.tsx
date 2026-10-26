@@ -13,6 +13,7 @@ import {
   climbSummary,
   defaultGrade,
   disciplineOf,
+  localDateOf,
   normalizeDraft,
   planClimbItem,
   planClimbItemRemoval,
@@ -31,11 +32,13 @@ import { db, environment } from "@/data/database";
 import { useUndoableWrite, write } from "@/data/write";
 import { BottomPanel, ChoiceButton, Chips, Comparison, Figure, FigureRow, GradeGrid, PainIndicator, bottomPanelHeight } from "@/features/activity/components";
 import { cellText, disciplineLabels, itemTitle, nounFor, resultLabels, scaleShortLabels, styleLabels, summaryText } from "@/features/activity/climbText";
-import { capitalize, deviceTimeZone, formatClock, formatHoursMinutes, lastPainLabel, todayLocal } from "@/features/activity/format";
+import { formatHoursMinutes, lastPainLabel } from "@/features/activity/format";
+import { capitalize, zoneLabel } from "@/format/labels";
+import { deviceTimeZone } from "@/format/dates";
+import { formatLongClock } from "@/format/durations";
 import { TextSheet } from "@/features/activity/LogSheets";
 import { PainSheet } from "@/features/activity/PainSheet";
 import type { PainZoneRow } from "@/features/activity/PainSheet";
-import { zoneLabel } from "@/features/activity/presentation";
 import { LinkButton, PrimaryButton } from "@/ui/Button";
 import { Icon } from "@/ui/icons/Icon";
 import { Choices } from "@/ui/Inputs";
@@ -90,8 +93,8 @@ export function ClimbScreen({ current }: ClimbScreenProps) {
   const notify = useSnackbar();
   const undoable = useUndoableWrite();
   const { colors } = useTheme();
-  const today = todayLocal();
   const timeZone = deviceTimeZone();
+  const today = localDateOf(environment.now(), timeZone);
 
   const { data: items } = useLiveQuery(db().select().from(sessionItem).where(eq(sessionItem.sessionId, current.id)).orderBy(asc(sessionItem.position)), [current.id]);
   const { data: pains } = useLiveQuery(db().select().from(painReport).where(eq(painReport.sessionId, current.id)).orderBy(asc(painReport.occurredAt)), [current.id]);
@@ -260,7 +263,7 @@ export function ClimbScreen({ current }: ClimbScreenProps) {
               </Text>
             </Pressable>
             <Text style={styles.elapsed} tone="secondary" accessibilityLabel={`Durée ${formatHoursMinutes(elapsed)}`}>
-              {formatClock(elapsed)}
+              {formatLongClock(elapsed)}
             </Text>
             <LinkButton label="Terminer" onPress={() => setSheet("end")} style={styles.contextLink} />
           </View>

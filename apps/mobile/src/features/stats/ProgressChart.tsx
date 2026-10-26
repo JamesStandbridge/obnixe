@@ -8,7 +8,7 @@ import { gradeScales } from "@obnixe/schema";
 import type { LocalDate } from "@obnixe/schema";
 import { useTheme } from "@/ui/theme";
 import { fonts } from "@/ui/tokens";
-import { monthShort, shortDate } from "@/features/stats/format";
+import { monthShort, shortDate } from "@/format/dates";
 import type { ChartPoint, Series } from "@/features/stats/progress";
 
 const W = 358;

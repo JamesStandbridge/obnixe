@@ -11,11 +11,14 @@ import { Section } from "@/ui/Layout";
 import { Text } from "@/ui/Text";
 import { useTheme } from "@/ui/theme";
 import { fonts, layout } from "@/ui/tokens";
-import { formatDuration, formatNumber, monthShort, sessionsCount, weekRange } from "@/features/stats/format";
+import { formatDuration, sessionsCount, weekRange } from "@/features/stats/format";
+import { formatNumber } from "@/format/numbers";
+import { monthShort } from "@/format/dates";
 import { useLiveValue, useLocalNow } from "@/features/stats/live";
 import { FilterChips, JournalHeader } from "@/features/stats/parts";
 import type { ChipOption } from "@/features/stats/parts";
-import { sessionTitle, sportLabel } from "@/features/stats/presentation";
+import { sportLabel } from "@/features/stats/presentation";
+import { sessionTitle } from "@/format/labels";
 import { SessionRow } from "@/features/stats/SessionRow";
 
 export type SportFilter = SportKey | "all";

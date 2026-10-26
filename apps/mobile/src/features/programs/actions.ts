@@ -7,6 +7,7 @@ import {
   exerciseRefs,
   latestVersion,
   loadVersionTree,
+  localDateOf,
   planActivate,
   planArchive,
   planCreateProgram,
@@ -14,18 +15,14 @@ import {
 } from "@obnixe/core";
 import type { ProgramEntry, VersionEntry } from "@obnixe/core";
 import { exercise, program } from "@obnixe/schema";
-import type { Id, LocalDate, ProgramSlot } from "@obnixe/schema";
+import type { Id, ProgramSlot } from "@obnixe/schema";
 import { db, environment } from "@/data/database";
 import { undo, useUndoableWrite } from "@/data/write";
+import { deviceTimeZone } from "@/format/dates";
 import { issueMessage } from "@/features/programs/format";
 import type { ExerciseName } from "@/features/programs/format";
 import { versionTitle } from "@/features/programs/VersionRows";
 import { useSnackbar } from "@/ui/SnackbarHost";
-
-export function localDateOf(ms: number): LocalDate {
-  const date = new Date(ms);
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}` as LocalDate;
-}
 
 export function skipLabel(slot: ProgramSlot): string {
   const match = /^Séance (.+)$/.exec(slot.name.trim());
@@ -99,7 +96,7 @@ export function useProgramActions(name: ExerciseName): ProgramActions {
       const now = environment.now();
       undoable({
         summary: `${slot.name} passée`,
-        mutations: [{ kind: "insert", table: "rotation_skip", row: { id: environment.newId(), programId, slotLineageId: slot.lineageId, skippedAt: now, localDate: localDateOf(now) } }],
+        mutations: [{ kind: "insert", table: "rotation_skip", row: { id: environment.newId(), programId, slotLineageId: slot.lineageId, skippedAt: now, localDate: localDateOf(now, deviceTimeZone()) } }],
         message: `${slot.name} passée`,
       });
     },

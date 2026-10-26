@@ -19,8 +19,9 @@ import type { Id, Session } from "@obnixe/schema";
 import { db, environment } from "@/data/database";
 import { write } from "@/data/write";
 import { Message } from "@/features/training/Message";
-import { freeStrengthTitle } from "@/features/training/sessionText";
-import { deviceTimeZone, useLiveLoad } from "@/features/training/useLiveLoad";
+import { freeStrengthTitle } from "@/format/labels";
+import { useLiveLoad } from "@/features/training/useLiveLoad";
+import { deviceTimeZone } from "@/format/dates";
 import { LiveWorkoutScreen } from "@/features/training/workout/LiveWorkoutScreen";
 import { loadLiveWorkout } from "@/features/training/workout/liveWorkout";
 

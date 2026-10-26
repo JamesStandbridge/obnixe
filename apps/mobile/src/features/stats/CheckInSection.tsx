@@ -8,7 +8,9 @@ import { Question, Scale, ZoneRow } from "@/ui/Inputs";
 import type { ScaleOption } from "@/ui/Inputs";
 import { Section } from "@/ui/Layout";
 import { Text } from "@/ui/Text";
-import { formatTimeOf, levelWords, painWords, relativeDay, zoneLabel } from "@/features/stats/format";
+import { levelWords, painWords } from "@/features/stats/format";
+import { deviceTimeZone, formatTimeAt, relativeDay } from "@/format/dates";
+import { zoneLabel } from "@/format/labels";
 import { useLiveValue } from "@/features/stats/live";
 
 const energyOptions: readonly ScaleOption<number>[] = [
@@ -71,7 +73,7 @@ export function CheckInSection({ today, timeZone, snackbarOffset }: CheckInSecti
       action={
         answered === 0 ? undefined : (
           <Text variant="caption" tone="secondary">
-            {`${answered}/${total} · enregistré à ${formatTimeOf(savedAt)}`}
+            {`${answered}/${total} · enregistré à ${formatTimeAt(savedAt, deviceTimeZone())}`}
           </Text>
         )
       }

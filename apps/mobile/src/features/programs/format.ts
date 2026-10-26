@@ -1,6 +1,8 @@
-import { sports, zones } from "@obnixe/schema";
-import type { Author, Effort, Equipment, ExerciseMeasure, Id, MassUnit, ZoneKey } from "@obnixe/schema";
+import { sports } from "@obnixe/schema";
+import type { Author, Effort, Equipment, ExerciseMeasure, Id, MassUnit } from "@obnixe/schema";
 import type { DraftIssue, DraftItem, DraftSlot, DraftVariant, ItemTarget, ProgramChange, ProgramDraft, PublishIssue, VersionAuthor } from "@obnixe/core";
+import { formatClock } from "@/format/durations";
+import { capitalize, lowerFirst, plural } from "@/format/labels";
 
 export type ExerciseName = (id: Id) => string;
 
@@ -9,25 +11,9 @@ const months = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet"
 const monthsShort = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."] as const;
 const dayMs = 86_400_000;
 
-export function plural(count: number, singular: string, pluralForm = `${singular}s`): string {
-  return `${count} ${count > 1 ? pluralForm : singular}`;
-}
-
-export function lowerFirst(text: string): string {
-  return text.length === 0 ? text : `${text.charAt(0).toLocaleLowerCase("fr-FR")}${text.slice(1)}`;
-}
-
-export function upperFirst(text: string): string {
-  return text.length === 0 ? text : `${text.charAt(0).toLocaleUpperCase("fr-FR")}${text.slice(1)}`;
-}
-
 export function formatDecimal(value: number, digits = 2): string {
   const rounded = Math.round(value * 10 ** digits) / 10 ** digits;
   return String(rounded).replace(".", ",");
-}
-
-export function formatClock(seconds: number): string {
-  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
 export function formatTargetDuration(seconds: number): string {
@@ -171,10 +157,6 @@ export function formatLoadStep(grams: number, unit: MassUnit): string {
   }
 }
 
-export function zoneLabel(zone: ZoneKey): string {
-  return zones[zone].label;
-}
-
 function elided(preposition: "de", name: string): string {
   return /^[aeiouyhàâäéèêëîïôöùûü]/i.test(name) ? `d'${lowerFirst(name)}` : `${preposition} ${lowerFirst(name)}`;
 }
@@ -213,7 +195,7 @@ export function describeChange(change: ProgramChange, name: ExerciseName): DiffB
     case "slot_removed":
       return { before: { label: "Retiré de la rotation", text: describeSlot(change.slot) }, after: null };
     case "slot_changed": {
-      const describe = change.fields.includes("name") || change.fields.includes("sport") ? describeSlot : (slot: DraftSlot) => upperFirst(slotDetail(slot));
+      const describe = change.fields.includes("name") || change.fields.includes("sport") ? describeSlot : (slot: DraftSlot) => capitalize(slotDetail(slot));
       return { before: { label: `Avant · ${lowerFirst(change.before.name)}`, text: describe(change.before) }, after: { label: "Après", text: describe(change.after) } };
     }
     case "slots_reordered":

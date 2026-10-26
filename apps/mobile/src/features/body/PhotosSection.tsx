@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { Image } from "expo-image";
-import { nextPose, photoOverview, photosOfPose, planPhoto, planTrash } from "@obnixe/core";
+import { localDateOf, nextPose, photoOverview, photosOfPose, planPhoto, planTrash } from "@obnixe/core";
 import type { Id, Photo, PhotoPose } from "@obnixe/schema";
 import { environment } from "@/data/database";
 import { useUndoableWrite, write } from "@/data/write";
-import { deviceTimeZone, formatDayMonth, formatRelativeDay, todayLocal } from "@/features/activity/format";
+import { formatDayMonth, formatRelativeDay } from "@/features/activity/format";
+import { deviceTimeZone } from "@/format/dates";
 import { capturePhoto, photoUri } from "@/features/body/photoStore";
 import { PhotoPermissionError } from "@/features/body/photoTypes";
 import type { PhotoSource } from "@/features/body/photoTypes";
@@ -32,7 +33,7 @@ export function PhotosSection({ photos }: PhotosSectionProps) {
   const { colors } = useTheme();
   const undoable = useUndoableWrite();
   const notify = useSnackbar();
-  const today = todayLocal();
+  const today = localDateOf(environment.now(), deviceTimeZone());
   const [sheet, setSheet] = useState<PhotoSheet>({ kind: "none" });
   const [pose, setPose] = useState<PhotoPose>("front");
   const [busy, setBusy] = useState(false);

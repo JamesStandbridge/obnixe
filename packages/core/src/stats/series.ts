@@ -1,5 +1,5 @@
 import type { LocalDate } from "@obnixe/schema";
-import { addDays, daysBetween, mondayOf } from "./dates.ts";
+import { addDays, daysBetween, mondayOf } from "../dates.ts";
 
 export type Better = "higher" | "lower" | null;
 

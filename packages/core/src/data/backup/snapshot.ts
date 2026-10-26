@@ -13,16 +13,17 @@ import {
   rowSchemas,
   session,
   sessionValuesSchema,
-  settings,
   sports,
   targetValuesSchema,
   themes,
   weighIn,
   measurement,
 } from "@obnixe/schema";
-import type { EpochMs, FieldValues, Id, JournaledTable, RowImage, Settings, SportKey } from "@obnixe/schema";
+import type { EpochMs, FieldValues, Id, JournaledTable, RowImage, SportKey } from "@obnixe/schema";
 import type { ObnixeDatabase } from "../../database.ts";
 import { keyColumnsOf } from "../../keys.ts";
+import { readSettings } from "../../settings.ts";
+import type { SettingsValues } from "../../settings.ts";
 import { columnsOf } from "../foreignKeys.ts";
 
 export const backupSchemaVersion = 1;
@@ -31,7 +32,6 @@ export type TableRow<T extends JournaledTable> = InferSelectModel<(typeof journa
 
 export type SnapshotTables = { readonly [T in JournaledTable]: readonly TableRow<T>[] };
 
-export type SnapshotSettings = Omit<Settings, "singleton">;
 
 export interface PhotoFile {
   readonly photoId: Id;
@@ -51,7 +51,7 @@ export interface Snapshot {
   readonly catalogVersion: number;
   readonly createdAt: EpochMs;
   readonly tables: SnapshotTables;
-  readonly settings: SnapshotSettings;
+  readonly settings: SettingsValues;
   readonly photos: readonly PhotoFile[];
 }
 
@@ -67,21 +67,8 @@ export class InvalidSnapshotError extends CorruptedBackupError {
   }
 }
 
-export class MissingSettingsError extends Error {
-  constructor() {
-    super("The settings row does not exist");
-  }
-}
-
-export function readSettings(db: ObnixeDatabase): SnapshotSettings {
-  const row = db.select().from(settings).get();
-  if (row === undefined) throw new MissingSettingsError();
-  const { singleton: _singleton, ...rest } = row;
-  return rest;
-}
-
 /** Agent permissions and the bridge pairing belong to this device: importing a backup never grants an agent access. */
-export function keepLocalAccess(incoming: SnapshotSettings, local: SnapshotSettings): SnapshotSettings {
+export function keepLocalAccess(incoming: SettingsValues, local: SettingsValues): SettingsValues {
   return { ...incoming, agentCanReadBody: local.agentCanReadBody, agentCanWrite: local.agentCanWrite, agentCanReadPhotos: local.agentCanReadPhotos, bridgeHost: local.bridgeHost };
 }
 
@@ -108,12 +95,12 @@ const settingsSchema = z.object({
   agentChangesSeenAt: z.int().nullable(),
   bridgeHost: z.string().nullable(),
   updatedAt: z.int(),
-}) satisfies z.ZodType<Omit<SnapshotSettings, "remindersExportedAt" | "agentChangesSeenAt" | "updatedAt">, unknown>;
+}) satisfies z.ZodType<Omit<SettingsValues, "remindersExportedAt" | "agentChangesSeenAt" | "updatedAt">, unknown>;
 
-export function parseSnapshotSettings(raw: unknown): SnapshotSettings {
+export function parseSnapshotSettings(raw: unknown): SettingsValues {
   const parsed = settingsSchema.safeParse(raw);
   if (!parsed.success) throw new InvalidSnapshotError("settings", 0, parsed.error.message);
-  return parsed.data as SnapshotSettings;
+  return parsed.data as SettingsValues;
 }
 
 export function parseSnapshotTables(raw: unknown): SnapshotTables {

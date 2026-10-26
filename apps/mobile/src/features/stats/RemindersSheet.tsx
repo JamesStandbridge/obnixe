@@ -2,27 +2,29 @@ import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { File, Paths } from "expo-file-system";
 import { isAvailableAsync, shareAsync } from "expo-sharing";
-import { clampReminderMinutes, daysBetween, reminderDays, reminderMinutesRange, remindersIcs, toggleReminderDay } from "@obnixe/core";
-import { settings } from "@obnixe/schema";
+import { clampReminderMinutes, daysBetween, localDateOf, reminderDays, reminderMinutesRange, remindersIcs, toggleReminderDay } from "@obnixe/core";
 import type { EpochMs, LocalDate } from "@obnixe/schema";
-import { db, environment } from "@/data/database";
+import { environment } from "@/data/database";
+import { updateSettings } from "@/data/settings";
 import { SheetButton } from "@/ui/Button";
 import { Sheet } from "@/ui/Overlays";
 import { useSnackbar } from "@/ui/SnackbarHost";
 import { Text } from "@/ui/Text";
 import { useTheme } from "@/ui/theme";
 import { fonts, layout, radii } from "@/ui/tokens";
-import { capitalize, formatClockMinutes, localDateOf, shortDate, weekdayAbbrev, weekdayLetters, weekdayLong } from "@/features/stats/format";
+import { weekdayAbbrev, weekdayLetters } from "@/features/stats/format";
+import { capitalize } from "@/format/labels";
+import { deviceTimeZone, formatTimeOfDay, shortDate, weekdayLong } from "@/format/dates";
 
 const fileName = "obnixe-rappels.ics";
 
 export function remindersSummary(mask: number, minutes: number, exportedAt: EpochMs | null, today: LocalDate): string {
   const days = reminderDays(mask);
   if (days.length === 0 || exportedAt === null) return "aucun";
-  const exportedOn = localDateOf(exportedAt);
+  const exportedOn = localDateOf(exportedAt, deviceTimeZone());
   const age = daysBetween(exportedOn, today);
   const when = age === 0 ? "aujourd'hui" : age === 1 ? "hier" : `le ${shortDate(exportedOn)}`;
-  return `${days.map((day) => weekdayAbbrev[day]).join(", ")} à ${formatClockMinutes(minutes)} · exporté ${when}`;
+  return `${days.map((day) => weekdayAbbrev[day]).join(", ")} à ${formatTimeOfDay(minutes)} · exporté ${when}`;
 }
 
 interface RemindersSheetProps {
@@ -63,7 +65,7 @@ export function RemindersSheet({ open, mask: savedMask, minutes: savedMinutes, t
       file.create();
       file.write(remindersIcs({ mask, minutes, from: today, stamp, summary: "Séance Obnixe", description: "Ouvre Obnixe pour la séance du jour.", durationMinutes: 30 }));
       await shareAsync(file.uri, { mimeType: "text/calendar", UTI: "com.apple.ical.ics", dialogTitle: "Rappels dans l'agenda" });
-      db().update(settings).set({ reminderWeekdays: mask, reminderMinutes: minutes, remindersExportedAt: stamp, updatedAt: stamp }).run();
+      updateSettings({ reminderWeekdays: mask, reminderMinutes: minutes, remindersExportedAt: stamp }, stamp);
       onClose();
       notify({ text: `${fileName} enregistré · ouvre-le avec ton agenda`, aboveTabBar: true });
     } finally {
@@ -105,8 +107,8 @@ export function RemindersSheet({ open, mask: savedMask, minutes: savedMinutes, t
         </Text>
         <View style={styles.stepper}>
           <StepButton label="−" accessibilityLabel="30 minutes plus tôt" disabled={minutes <= reminderMinutesRange.min} onPress={() => setMinutes(clampReminderMinutes(minutes - reminderMinutesRange.step))} />
-          <View style={styles.stepValue} accessible accessibilityLabel={`Rappel à ${formatClockMinutes(minutes)}`}>
-            <Text style={styles.stepFigure}>{formatClockMinutes(minutes)}</Text>
+          <View style={styles.stepValue} accessible accessibilityLabel={`Rappel à ${formatTimeOfDay(minutes)}`}>
+            <Text style={styles.stepFigure}>{formatTimeOfDay(minutes)}</Text>
           </View>
           <StepButton label="+" accessibilityLabel="30 minutes plus tard" disabled={minutes >= reminderMinutesRange.max} onPress={() => setMinutes(clampReminderMinutes(minutes + reminderMinutesRange.step))} />
         </View>

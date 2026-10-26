@@ -1,59 +1,15 @@
 import { indicatorOver, matchesFilter } from "@obnixe/core";
 import type { IndicatorValue, SessionSummary } from "@obnixe/core";
 import { sports } from "@obnixe/schema";
-import type { FieldDefinition, FieldValue, FieldValues, IndicatorDefinition, SportDefinition, SportKey } from "@obnixe/schema";
-import { durationFigure, effortLabel, formatInteger, formatKilometers, formatMinutesSeconds, formatNumber, lowerFirst, plural } from "@/features/stats/format";
+import type { FieldDefinition, FieldValues, IndicatorDefinition, SportDefinition, SportKey } from "@obnixe/schema";
+import { durationFigure, effortLabel, formatKilometers } from "@/features/stats/format";
+import { formatInteger, formatNumber } from "@/format/numbers";
+import { formatClock } from "@/format/durations";
+import { choiceLabel, lowerFirst, plural } from "@/format/labels";
 import type { FigureText } from "@/features/stats/format";
-import { freeStrengthTitle } from "@/features/training/sessionText";
 
 export function sportLabel(sport: SportKey): string {
   return sports[sport].label;
-}
-
-function choiceLabel(field: FieldDefinition | undefined, value: FieldValue | undefined): string | null {
-  if (field?.type !== "choice" || typeof value !== "string") return null;
-  return field.options.find((option) => option.key === value)?.label ?? null;
-}
-
-function textValue(sport: SportDefinition, values: FieldValues): string | null {
-  for (const field of sport.sessionFields) {
-    const value = values[field.key];
-    if (field.type === "text" && typeof value === "string") return value;
-  }
-  return null;
-}
-
-function firstChoice(sport: SportDefinition, values: FieldValues): string | null {
-  for (const field of sport.sessionFields) {
-    const label = choiceLabel(field, values[field.key]);
-    if (label !== null) return label;
-  }
-  return null;
-}
-
-export function sessionTitle(summary: Pick<SessionSummary, "sport" | "title" | "slotName" | "variantName" | "values">): string {
-  if (summary.title !== null) return summary.title;
-  const sport: SportDefinition = sports[summary.sport];
-  switch (sport.archetype) {
-    case "strength":
-      if (summary.slotName !== null) return summary.variantName === null ? summary.slotName : `${summary.slotName} · ${summary.variantName}`;
-      return freeStrengthTitle;
-    case "itemized": {
-      const choice = firstChoice(sport, summary.values);
-      const text = textValue(sport, summary.values);
-      return [choice ?? sport.label, text].filter((part): part is string => part !== null).join(" · ");
-    }
-    case "continuous": {
-      const text = textValue(sport, summary.values);
-      const choice = firstChoice(sport, summary.values);
-      const suffix = text ?? (choice === null ? null : lowerFirst(choice));
-      return suffix === null ? (summary.slotName ?? sport.label) : `${sport.label} · ${suffix}`;
-    }
-    default: {
-      const unreachable: never = sport.archetype;
-      return unreachable;
-    }
-  }
 }
 
 function prefersMeters(sport: SportDefinition): boolean {
@@ -66,7 +22,7 @@ export function distanceFigure(sport: SportDefinition, meters: number): FigureTe
 
 export function formatRatio(indicator: Extract<IndicatorDefinition, { type: "ratio" }>, value: number): FigureText {
   if (indicator.numerator === "duration" && indicator.denominator === "distance") {
-    return { value: formatMinutesSeconds(value), unit: indicator.per === 1000 ? "/km" : `/${formatInteger(indicator.per)} m` };
+    return { value: formatClock(value), unit: indicator.per === 1000 ? "/km" : `/${formatInteger(indicator.per)} m` };
   }
   if (indicator.numerator === "distance" && indicator.denominator === "duration" && indicator.per === 3600) {
     return { value: formatNumber(value / 1000, 1, 1), unit: "km/h" };

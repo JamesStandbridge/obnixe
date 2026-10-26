@@ -2,9 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import type { DependencyList } from "react";
 import { AppState } from "react-native";
 import { addDatabaseChangeListener } from "expo-sqlite";
-import { localClock } from "@obnixe/core";
+import { localDateOf } from "@obnixe/core";
 import type { EpochMs, LocalDate } from "@obnixe/schema";
 import { environment } from "@/data/database";
+import { deviceTimeZone } from "@/format/dates";
 
 export type WatchedTable =
   | "agent_connection"
@@ -42,8 +43,6 @@ export function useLiveValue<T>(compute: () => T, tables: readonly WatchedTable[
   return useMemo(compute, [version, ...deps]);
 }
 
-export const deviceTimeZone: string = Intl.DateTimeFormat().resolvedOptions().timeZone;
-
 export interface LocalNow {
   readonly today: LocalDate;
   readonly now: EpochMs;
@@ -52,7 +51,8 @@ export interface LocalNow {
 
 function readNow(): LocalNow {
   const now = environment.now();
-  return { today: localClock(now, deviceTimeZone).date, now, timeZone: deviceTimeZone };
+  const timeZone = deviceTimeZone();
+  return { today: localDateOf(now, timeZone), now, timeZone };
 }
 
 export function useLocalNow(): LocalNow {

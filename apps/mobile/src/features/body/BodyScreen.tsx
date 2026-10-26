@@ -3,7 +3,7 @@ import { desc, isNotNull, isNull } from "drizzle-orm";
 import { useLiveQuery } from "drizzle-orm/expo-sqlite";
 import { checkIn, measurement, measurementKind, painReport, photo, weighIn, zoneTracking } from "@obnixe/schema";
 import { db } from "@/data/database";
-import { useMassUnit } from "@/features/activity/components";
+import { useMassUnit } from "@/data/settings";
 import { CheckInsSection } from "@/features/body/CheckInsSection";
 import { MeasurementsSection } from "@/features/body/MeasurementsSection";
 import { PhotosSection } from "@/features/body/PhotosSection";

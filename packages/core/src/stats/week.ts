@@ -1,5 +1,5 @@
 import type { LocalDate } from "@obnixe/schema";
-import { addDays, mondayOf, weekDates } from "./dates.ts";
+import { addDays, mondayOf, weekDates } from "../dates.ts";
 import type { SessionSummary } from "./sessions.ts";
 
 export type WeekDayState = "done" | "planned" | "rest";

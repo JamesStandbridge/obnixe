@@ -1,13 +1,14 @@
 import { useState } from "react";
 import { StyleSheet, View } from "react-native";
-import { replacedSnapshots, restoreBlocker, restoreMutation, trashItems, trashRetentionMs } from "@obnixe/core";
+import { daysBetween, localDateOf, replacedSnapshots, restoreBlocker, restoreMutation, trashItems, trashRetentionMs } from "@obnixe/core";
 import type { RestoreBlocker, TrashItem } from "@obnixe/core";
 import { sports, zones } from "@obnixe/schema";
 import type { Backup, EpochMs, MassUnit } from "@obnixe/schema";
 import { db, environment } from "@/data/database";
 import { write } from "@/data/write";
 import { restoreReplaced } from "@/features/data/backup";
-import { daysBetween, shortDate, shortLocalDate } from "@/features/data/format";
+import { shortDate, shortLocalDate } from "@/features/data/format";
+import { deviceTimeZone } from "@/format/dates";
 import { useDatabaseVersion } from "@/features/data/useDatabaseVersion";
 import { LinkButton } from "@/ui/Button";
 import { Choices } from "@/ui/Inputs";
@@ -69,7 +70,8 @@ function blockerLabel(blocker: RestoreBlocker): string {
 }
 
 function remaining(expiresAt: number, now: EpochMs): string {
-  const days = Math.max(0, daysBetween(now, expiresAt as EpochMs));
+  const timeZone = deviceTimeZone();
+  const days = Math.max(0, daysBetween(localDateOf(now, timeZone), localDateOf(expiresAt as EpochMs, timeZone)));
   return days <= 1 ? "effacé demain" : `encore ${days} jours`;
 }
 

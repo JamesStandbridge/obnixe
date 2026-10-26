@@ -1,11 +1,14 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
-import { addDays, epochAt, gramsToMass, massToGrams, massUnitOf, planTrash, planWeighIn, weighInBounds, weightTrend } from "@obnixe/core";
+import { addDays, epochAt, gramsToMass, localDateOf, massToGrams, massUnitOf, planTrash, planWeighIn, weighInBounds, weightTrend } from "@obnixe/core";
 import type { MassUnit, LocalDate, WeighIn } from "@obnixe/schema";
 import { db, environment } from "@/data/database";
 import { useUndoableWrite } from "@/data/write";
-import { capitalize, deviceTimeZone, formatNumber, formatRelativeDay, formatShortDay, formatSigned, todayLocal, weekdayInitial, weekdayName } from "@/features/activity/format";
+import { formatRelativeDay, formatShortDay, weekdayInitial, weekdayName } from "@/features/activity/format";
+import { capitalize } from "@/format/labels";
+import { deviceTimeZone } from "@/format/dates";
+import { formatNumber, formatSigned } from "@/format/numbers";
 import { PadSheet } from "@/features/activity/PadSheet";
 import type { PadResult } from "@/features/activity/PadSheet";
 import { Sparkline } from "@/features/body/Sparkline";
@@ -29,8 +32,8 @@ const historyStep = 5;
 export function WeightSection({ weighIns, massUnit, children }: WeightSectionProps) {
   const { colors } = useTheme();
   const undoable = useUndoableWrite();
-  const today = todayLocal();
   const timeZone = deviceTimeZone();
+  const today = localDateOf(environment.now(), timeZone);
   const unit = massUnitOf(massUnit);
   const [draft, setDraft] = useState<number | null>(null);
   const [sheet, setSheet] = useState<DaySheet>({ kind: "none" });

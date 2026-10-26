@@ -3,8 +3,8 @@ import { agentConnection, changeset, exercise, exerciseZone, painReport, program
 import type { EpochMs, ExerciseMeasure, Id, LocalDate, PainLevel, ProgramItem, ProgramSlot, Session, SportKey, ZoneKey } from "@obnixe/schema";
 import type { ObnixeDatabase } from "../database.ts";
 import type { Mutation } from "../writer.ts";
-import { addDays } from "./dates.ts";
-import type { LocalClock } from "./dates.ts";
+import { addDays } from "../dates.ts";
+import type { LocalTime } from "../dates.ts";
 import { lastPerformances } from "./exercise.ts";
 import type { LastPerformance } from "./exercise.ts";
 import { groupBy } from "./sessions.ts";
@@ -58,7 +58,7 @@ export function finishOpenSessionMutations(open: OpenSession): Mutation[] {
 
 export const resumeUntilMinutes = 6 * 60;
 
-export function resumeDeadlineDate(lastActivity: LocalClock): LocalDate {
+export function resumeDeadlineDate(lastActivity: LocalTime): LocalDate {
   return lastActivity.minutes < resumeUntilMinutes ? lastActivity.date : addDays(lastActivity.date, 1);
 }
 

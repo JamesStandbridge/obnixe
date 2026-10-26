@@ -5,8 +5,9 @@ import { asc, count, desc, eq, isNull } from "drizzle-orm";
 import { loadRevertIndex } from "@obnixe/core";
 import type { RevertIndex } from "@obnixe/core";
 import { agentCall, agentConnection, photo, programVersion, settings } from "@obnixe/schema";
-import type { AgentCallKind, AgentConnection, Id } from "@obnixe/schema";
+import type { AgentCallKind, AgentConnection, EpochMs, Id } from "@obnixe/schema";
 import { db, environment } from "@/data/database";
+import { updateSettings } from "@/data/settings";
 
 function useLiveRead<T>(tables: readonly string[], read: () => T, deps: DependencyList): T {
   const [value, setValue] = useState<T>(read);
@@ -53,18 +54,16 @@ export type PermissionKey = "agentCanReadBody" | "agentCanWrite" | "agentCanRead
 
 export function setPermission(key: PermissionKey, value: boolean): void {
   const patch: Partial<Record<PermissionKey, boolean>> = { [key]: value };
-  db()
-    .update(settings)
-    .set({ ...patch, updatedAt: environment.now() })
-    .run();
+  updateSettings(patch);
 }
 
 export function saveBridgeHost(host: string | null): void {
-  db().update(settings).set({ bridgeHost: host, updatedAt: environment.now() }).run();
+  updateSettings({ bridgeHost: host });
 }
 
 export function markAgentChangesSeen(): void {
-  db().update(settings).set({ agentChangesSeenAt: environment.now(), updatedAt: environment.now() }).run();
+  const now = environment.now();
+  updateSettings({ agentChangesSeenAt: now }, now);
 }
 
 export interface CallRow {
@@ -74,7 +73,7 @@ export interface CallRow {
   readonly kind: AgentCallKind;
   readonly summary: string;
   readonly changesetId: Id | null;
-  readonly calledAt: number;
+  readonly calledAt: EpochMs;
   readonly versionNumber: number | null;
 }
 

@@ -15,6 +15,7 @@ import { fonts, layout, radii } from "@/ui/tokens";
 import { isTailscaleHost, normalizeHost } from "@/features/agent/host";
 import type { NetworkState } from "@/features/agent/link";
 import type { AgentSettings, PermissionKey } from "@/features/agent/queries";
+import { formatClock } from "@/format/durations";
 
 export const bottomPanelHeight = 71;
 
@@ -100,10 +101,6 @@ interface CodePanelProps {
   readonly remainingSeconds: number;
 }
 
-function clock(seconds: number): string {
-  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
-}
-
 export function CodePanel({ code, remainingSeconds }: CodePanelProps) {
   const { colors } = useTheme();
   return (
@@ -117,7 +114,7 @@ export function CodePanel({ code, remainingSeconds }: CodePanelProps) {
         </Text>
       </View>
       <Text tone="secondary" style={styles.expiry} accessibilityLiveRegion="none">
-        Expire dans <Text style={styles.expiryClock}>{clock(remainingSeconds)}</Text>
+        Expire dans <Text style={styles.expiryClock}>{formatClock(remainingSeconds)}</Text>
       </Text>
     </View>
   );

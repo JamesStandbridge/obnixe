@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import type { PainLevel, ZoneKey } from "@obnixe/schema";
-import { zoneLabel } from "@/features/training/format";
+import { zoneLabel } from "@/format/labels";
 import { SheetButton } from "@/ui/Button";
 import { Choices, PainLevels } from "@/ui/Inputs";
 import { Sheet } from "@/ui/Overlays";

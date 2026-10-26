@@ -28,12 +28,12 @@ import {
 } from "@obnixe/schema";
 import type { EpochMs, Exercise, FieldDefinition, SportDefinition, Id, LocalDate, ProgramVersion, Session, StrengthSet } from "@obnixe/schema";
 import type { ObnixeDatabase } from "../database.ts";
-import { daysBetween } from "../stats/dates.ts";
+import { daysBetween, localDateOf } from "../dates.ts";
 import type { ToolInput } from "./contract.ts";
 import type { AgentEnvironment, Json, ToolResult } from "./environment.ts";
 import { ToolInputError } from "./environment.ts";
 import { findExercise } from "./exercises.ts";
-import { frenchSpan, localDateIn, lowerFirst } from "./format.ts";
+import { frenchSpan, lowerFirst } from "./format.ts";
 
 const dayMs = 86_400_000;
 
@@ -92,9 +92,9 @@ export function listSports(): ToolResult {
   return { kind: "read", summary: "Sports", data: { catalogVersion, sports: list, zones: Object.entries(zones).map(([key, zone]) => ({ key, label: zone.label })) } };
 }
 
-function rangeSummary(prefix: string, from: string, to: string, env: AgentEnvironment): string {
-  const today = localDateIn(env.now(), env.timeZone);
-  if (to === today) return `${prefix} des ${daysBetween(from as LocalDate, to as LocalDate) + 1} derniers jours`;
+function rangeSummary(prefix: string, from: LocalDate, to: LocalDate, env: AgentEnvironment): string {
+  const today = localDateOf(env.now(), env.timeZone);
+  if (to === today) return `${prefix} des ${daysBetween(from, to) + 1} derniers jours`;
   return `${prefix} ${frenchSpan(from, to)}`;
 }
 
@@ -155,7 +155,7 @@ export function getHistory(db: ObnixeDatabase, env: AgentEnvironment, input: Too
       .map((pain) => ({ zone: pain.zone, zoneLabel: zones[pain.zone].label, level: pain.level, phase: pain.phase, note: pain.note })),
   }));
   const sportLabel = input.sport === undefined ? "" : `, ${lowerFirst(sports[input.sport].label)}`;
-  return { kind: "read", summary: `${rangeSummary("Historique", input.from, input.to, env)}${sportLabel}`, data: { from: input.from, to: input.to, sessions } };
+  return { kind: "read", summary: `${rangeSummary("Historique", input.from as LocalDate, input.to as LocalDate, env)}${sportLabel}`, data: { from: input.from, to: input.to, sessions } };
 }
 
 function progressArticle(name: string): string {

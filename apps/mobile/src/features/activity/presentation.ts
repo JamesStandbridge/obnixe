@@ -1,8 +1,7 @@
 import { fromStored, quantityUnit } from "@obnixe/core";
 import type { IndicatorResult, QuantityField, QuantityUnit } from "@obnixe/core";
-import { zones } from "@obnixe/schema";
-import type { MassUnit, SportKey, ZoneKey } from "@obnixe/schema";
-import { formatNumber } from "@/features/activity/format";
+import type { MassUnit, SportKey } from "@obnixe/schema";
+import { formatNumber } from "@/format/numbers";
 
 const articles: Partial<Readonly<Record<SportKey, string>>> = {
   run: "la course",
@@ -24,10 +23,6 @@ export function sportArticle(sport: SportKey): string {
 
 export function gearLabel(sport: SportKey): string {
   return gearLabels[sport] ?? "Équipement";
-}
-
-export function zoneLabel(zone: ZoneKey): string {
-  return zones[zone].label;
 }
 
 export function formatQuantity(stored: number, unit: QuantityUnit): string {

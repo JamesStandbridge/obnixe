@@ -8,9 +8,11 @@ import type { Theme } from "@obnixe/schema";
 import { db } from "@/data/database";
 import { BackupPanel } from "@/features/data/BackupPanel";
 import { storageBytes } from "@/features/data/files";
-import { clock, megabytes, weekdayList } from "@/features/data/format";
+import { megabytes, weekdayList } from "@/features/data/format";
+import { formatTimeOfDay } from "@/format/dates";
 import { BackButton, Chevron } from "@/features/data/parts";
-import { MassUnitSheet, RemindersSheet, massUnitLabels, updateSettings } from "@/features/data/PreferenceSheets";
+import { MassUnitSheet, RemindersSheet, massUnitLabels } from "@/features/data/PreferenceSheets";
+import { updateSettings } from "@/data/settings";
 import { SportsSheet } from "@/features/data/SportsSheet";
 import { TrashSheet, useTrash } from "@/features/data/TrashSheet";
 import { ZonesSheet, useTrackedZones } from "@/features/data/ZonesSheet";
@@ -64,7 +66,7 @@ export default function Settings() {
           <Row title="Espace utilisé" detail="sur ce téléphone" {...(bytes === null ? {} : { value: megabytes(bytes), valueDetail: "Mo" })} trailing={<View style={styles.chevronSpace} />} />
           <Row
             title="Rappels dans l'agenda"
-            {...(current?.remindersExportedAt == null || reminderDays.length === 0 ? {} : { detail: `${weekdayList(reminderDays)} à ${clock(current.reminderMinutes)}` })}
+            {...(current?.remindersExportedAt == null || reminderDays.length === 0 ? {} : { detail: `${weekdayList(reminderDays)} à ${formatTimeOfDay(current.reminderMinutes)}` })}
             trailing={<Chevron />}
             onPress={() => setSheet("reminders")}
             last

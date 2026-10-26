@@ -3,11 +3,12 @@ import { StyleSheet, View } from "react-native";
 import { desc, eq, isNull } from "drizzle-orm";
 import { useLiveQuery } from "drizzle-orm/expo-sqlite";
 import { CodedError } from "expo";
+import { daysBetween, localDateOf } from "@obnixe/core";
 import { backup, photo } from "@obnixe/schema";
 import type { Backup, EpochMs } from "@obnixe/schema";
 import { db, environment } from "@/data/database";
+import { deviceTimeZone } from "@/format/dates";
 import { exportBackup } from "@/features/data/backup";
-import { daysBetween } from "@/features/data/format";
 import { NoticeMark, SwitchRow } from "@/features/data/parts";
 import { PrimaryButton, SheetButton } from "@/ui/Button";
 import { Panel, TextField } from "@/ui/Inputs";
@@ -27,7 +28,8 @@ interface BackupStatus {
 function backupStatus(last: Backup | undefined, hasPhotos: boolean, now: EpochMs): BackupStatus {
   if (last === undefined) return { label: "Jamais sauvegardé", stale: true };
   const suffix = hasPhotos && !last.includesPhotos ? " · sans photos" : "";
-  const days = daysBetween(last.createdAt, now);
+  const timeZone = deviceTimeZone();
+  const days = daysBetween(localDateOf(last.createdAt, timeZone), localDateOf(now, timeZone));
   if (now - last.createdAt < 120_000) return { label: `Sauvegardée à l'instant${suffix}`, stale: false };
   if (days === 0) return { label: `Sauvegardée aujourd'hui${suffix}`, stale: false };
   if (days === 1) return { label: `Sauvegardée hier${suffix}`, stale: false };

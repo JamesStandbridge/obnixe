@@ -12,8 +12,8 @@ import {
   nextSlot,
 } from "@obnixe/core";
 import type { NextSlot, ProgramEntry, VersionEntry, VersionTree, LatestZonePain } from "@obnixe/core";
-import { changeset, exercise, settings, sportPreference } from "@obnixe/schema";
-import type { EpochMs, Exercise, Id, MassUnit, SportKey, ZoneKey } from "@obnixe/schema";
+import { changeset, exercise, sportPreference } from "@obnixe/schema";
+import type { EpochMs, Exercise, Id, SportKey, ZoneKey } from "@obnixe/schema";
 import { db, environment } from "@/data/database";
 import type { ExerciseName } from "@/features/programs/format";
 
@@ -87,11 +87,6 @@ export function useZonePain(revision: string): ReadonlyMap<ZoneKey, LatestZonePa
 
 export function useEnabledSports(revision: string): readonly SportKey[] {
   return useMemo(() => enabledSports(db().select().from(sportPreference).all()), [revision]);
-}
-
-export function useMassUnit(): MassUnit {
-  const { data } = useLiveQuery(db().select({ massUnit: settings.massUnit }).from(settings));
-  return data[0]?.massUnit ?? "kg";
 }
 
 export function worstPain(exerciseZones: readonly ZoneKey[], pain: ReadonlyMap<ZoneKey, LatestZonePain>): LatestZonePain | null {

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { efforts, equipments, exerciseMeasures, sensations, sportKeys, zoneKeys } from "@obnixe/schema";
 import type { AgentCallKind, LocalDate, SportKey } from "@obnixe/schema";
-import { daysBetween } from "../stats/dates.ts";
+import { daysBetween } from "../dates.ts";
 
 export type AgentPermission = "body" | "photos" | "write";
 

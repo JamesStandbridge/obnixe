@@ -2,7 +2,10 @@ import { gramsToMass, latestPainByZone, loadWorkout, massStep, massToGrams, pain
 import type { PerformedSet, PreviousPerformance, Progression, SetDraft, WorkoutData, WorkoutExercise } from "@obnixe/core";
 import type { EpochMs, Exercise, Id, MassUnit, PainReport, ZoneKey } from "@obnixe/schema";
 import { db } from "@/data/database";
-import { formatClock, formatMass, formatSigned, lowerFirst, zoneLabel } from "@/features/training/format";
+import { formatMass } from "@/features/training/format";
+import { formatClock } from "@/format/durations";
+import { formatSigned } from "@/format/numbers";
+import { lowerFirst, zoneLabel } from "@/format/labels";
 
 export interface LiveWorkout {
   readonly data: WorkoutData;

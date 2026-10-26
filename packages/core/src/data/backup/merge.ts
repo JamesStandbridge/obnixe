@@ -1,4 +1,4 @@
-import { journaledTables, mergePolicies, settings as settingsTable } from "@obnixe/schema";
+import { journaledTables, mergePolicies } from "@obnixe/schema";
 import type { EpochMs, Id, JournaledTable, MergePolicy, RowImage } from "@obnixe/schema";
 import type { Environment, ObnixeDatabase } from "../../database.ts";
 import { rowKey } from "../../keys.ts";
@@ -6,8 +6,10 @@ import { commit } from "../../writer.ts";
 import type { Actor, Mutation } from "../../writer.ts";
 import { foreignKeysOf } from "../foreignKeys.ts";
 import type { ForeignKey } from "../foreignKeys.ts";
-import { buildSnapshot, keepLocalAccess, readSettings } from "./snapshot.ts";
-import type { Snapshot, SnapshotSettings, SnapshotTables } from "./snapshot.ts";
+import { readSettings, updateSettings } from "../../settings.ts";
+import type { SettingsValues } from "../../settings.ts";
+import { buildSnapshot, keepLocalAccess } from "./snapshot.ts";
+import type { Snapshot, SnapshotTables } from "./snapshot.ts";
 
 export const importActor: Actor = { author: "import", connectionId: null };
 export const mergeSummary = "Fusion d'une sauvegarde";
@@ -31,7 +33,7 @@ export interface MergeCounts {
 export interface MergePlan {
   readonly mutations: readonly Mutation[];
   readonly counts: MergeCounts;
-  readonly settings: SnapshotSettings | null;
+  readonly settings: SettingsValues | null;
   readonly photoIds: readonly Id[];
 }
 
@@ -471,6 +473,7 @@ export function mergeSnapshot(db: ObnixeDatabase, env: Environment, incoming: Sn
   return { changesetId, counts: plan.counts, photoIds: plan.photoIds };
 }
 
-function applySettings(db: ObnixeDatabase, next: SnapshotSettings, env: Environment): void {
-  db.update(settingsTable).set({ ...keepLocalAccess(next, readSettings(db)), updatedAt: env.now() }).run();
+function applySettings(db: ObnixeDatabase, next: SettingsValues, env: Environment): void {
+  const { updatedAt: _updatedAt, ...values } = keepLocalAccess(next, readSettings(db));
+  updateSettings(db, values, env.now());
 }

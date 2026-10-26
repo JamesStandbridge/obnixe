@@ -4,7 +4,7 @@ import type { Effort, EpochMs, FieldValues, Id, LocalDate, Sensation, Session, S
 import type { Environment, ObnixeDatabase } from "../database.ts";
 import type { Mutation } from "../writer.ts";
 import { emphasisQuantity, isFreeSport, sportOf } from "./catalog.ts";
-import { localDateOf } from "./dates.ts";
+import { localDateOf } from "../dates.ts";
 import { sessionPainMutations } from "./pain.ts";
 import type { ZonePain } from "./pain.ts";
 

@@ -1,6 +1,5 @@
 import type { EpochMs, Session } from "@obnixe/schema";
-import { localTimeOf } from "../activity/dates.ts";
-import { addDays } from "../stats/dates.ts";
+import { addDays, localTimeOf } from "../dates.ts";
 
 export const resumeUntilHour = 6;
 

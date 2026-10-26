@@ -1,9 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { EpochMs, LocalDate } from "@obnixe/schema";
-import { localDateOf } from "../activity/dates.ts";
+import { addDays, localDateOf } from "../dates.ts";
 import { activeSeconds } from "../activity/freeSession.ts";
 import { gramsToMass, massToGrams } from "../body/weight.ts";
-import { addDays } from "../stats/dates.ts";
 import { isResumable } from "./time.ts";
 import { massStep } from "./units.ts";
 

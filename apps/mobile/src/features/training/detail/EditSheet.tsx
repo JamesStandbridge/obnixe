@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, View } from "react-native";
 import { gramsToMass, massToGrams } from "@obnixe/core";
 import { sports } from "@obnixe/schema";
 import type { Dimension, FieldDefinition, FieldValue, FieldValues, MassUnit, Session } from "@obnixe/schema";
-import { formatNumber } from "@/features/training/format";
+import { formatNumber } from "@/format/numbers";
 import { SheetButton } from "@/ui/Button";
 import { Segmented, Switch } from "@/ui/Controls";
 import { Question, TextField } from "@/ui/Inputs";

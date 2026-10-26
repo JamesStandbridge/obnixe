@@ -20,7 +20,9 @@ import { sports } from "@obnixe/schema";
 import type { Id, LocalDate, MassUnit, PainPhase } from "@obnixe/schema";
 import { db, environment } from "@/data/database";
 import { undo, useUndoableWrite, write } from "@/data/write";
-import { capitalize, effortLabels, formatClock, formatDay, formatLongClock, formatLongDate, formatMass, formatTime, lowerFirst, sensationPhrases, zoneLabel } from "@/features/training/format";
+import { effortLabels, formatDay, formatLongDate, formatMass, formatTime, sensationPhrases } from "@/features/training/format";
+import { capitalize, lowerFirst, sessionTitle, zoneLabel } from "@/format/labels";
+import { formatClock, formatLongClock } from "@/format/durations";
 import { goBack, Message } from "@/features/training/Message";
 import { DateSheet } from "@/features/training/detail/DateSheet";
 import type { SessionTiming } from "@/features/training/detail/DateSheet";
@@ -28,8 +30,10 @@ import { EditSheet } from "@/features/training/detail/EditSheet";
 import type { SessionPatch } from "@/features/training/detail/EditSheet";
 import { SetSheet } from "@/features/training/detail/SetSheet";
 import type { SetTarget } from "@/features/training/detail/SetSheet";
-import { climbFacts, climbItemText, climbItemWord, continuousIndicators, distanceFigure, durationText, fieldValueText, outcomeText, sessionTitle, setsFact, shortTitle, timeRange } from "@/features/training/sessionText";
-import { deviceTimeZone, useLiveLoad, useMassUnit } from "@/features/training/useLiveLoad";
+import { climbFacts, climbItemText, climbItemWord, continuousIndicators, distanceFigure, durationText, fieldValueText, outcomeText, setsFact, shortTitle, timeRange, titleSource } from "@/features/training/sessionText";
+import { useLiveLoad } from "@/features/training/useLiveLoad";
+import { deviceTimeZone } from "@/format/dates";
+import { useMassUnit } from "@/data/settings";
 import { setText, targetText } from "@/features/training/workout/liveWorkout";
 import type { Draft } from "@/features/training/workout/liveWorkout";
 import { ControlButton, LinkButton } from "@/ui/Button";
@@ -71,7 +75,7 @@ export function SessionDetailScreen({ sessionId }: SessionDetailScreenProps) {
         action={{
           label: "Restaurer",
           run: () => {
-            write(`Restauration : ${sessionTitle(data.report)}`, [{ kind: "update", table: "session", key: session.id, patch: { deletedAt: null } }]);
+            write(`Restauration : ${sessionTitle(titleSource(data.report))}`, [{ kind: "update", table: "session", key: session.id, patch: { deletedAt: null } }]);
             notify({ text: "Séance restaurée", aboveTabBar: false });
           },
         }}
@@ -186,7 +190,7 @@ function Detail({ data }: DetailProps) {
   const [editing, setEditing] = useState(false);
   const [dating, setDating] = useState(false);
   const [setTarget, setSetTarget] = useState<SetTarget | null>(null);
-  const title = sessionTitle(report);
+  const title = sessionTitle(titleSource(report));
   const sport = sports[session.sport];
   const completed = session.status === "completed";
   const itemWord = climbItemWord(session);

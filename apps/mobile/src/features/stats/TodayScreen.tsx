@@ -8,7 +8,8 @@ import {
   daysBetween,
   estimatedSlotSeconds,
   finishOpenSessionMutations,
-  localClock,
+  localDateOf,
+  localTimeOf,
   mondayOf,
   nextSlot,
   openSession,
@@ -21,7 +22,7 @@ import {
 import type { NextSlot, OpenSession, PainCarry, PlanItem, TodayNotices } from "@obnixe/core";
 import { settings, sportPreference, sports } from "@obnixe/schema";
 import type { Archetype, Id, LocalDate, ProgramSlot, SportKey, SportPreference } from "@obnixe/schema";
-import { db, environment } from "@/data/database";
+import { db } from "@/data/database";
 import { useUndoableWrite } from "@/data/write";
 import { ControlButton, LinkButton, PrimaryButton } from "@/ui/Button";
 import { PainMark, Segmented } from "@/ui/Controls";
@@ -33,10 +34,14 @@ import { Sheet } from "@/ui/Overlays";
 import { Text } from "@/ui/Text";
 import { useTheme } from "@/ui/theme";
 import { fonts, layout, radii } from "@/ui/tokens";
+import { markAgentChangesSeen } from "@/features/agent/queries";
 import { CheckInSection } from "@/features/stats/CheckInSection";
-import { capitalize, formatDuration, formatInteger, formatKilograms, formatTimeOf, localDateOf, longDate, lowerFirst, painWords, plural, relativeDay, shortDate, weekdayLong, zoneLabel } from "@/features/stats/format";
-import { deviceTimeZone, useLiveValue, useLocalNow } from "@/features/stats/live";
-import { sessionTitle, sportLabel } from "@/features/stats/presentation";
+import { formatDuration, formatKilograms, longDate, painWords } from "@/features/stats/format";
+import { capitalize, lowerFirst, plural, sessionTitle, zoneLabel } from "@/format/labels";
+import { formatInteger } from "@/format/numbers";
+import { deviceTimeZone, formatTimeAt, relativeDay, shortDate, weekdayLong } from "@/format/dates";
+import { useLiveValue, useLocalNow } from "@/features/stats/live";
+import { sportLabel } from "@/features/stats/presentation";
 import { WeekStrip } from "@/features/stats/WeekStrip";
 
 const bottomPanelHeight = 84;
@@ -205,7 +210,7 @@ export function TodayScreen() {
           </View>
         </Section>
 
-        <CheckInSection today={today} timeZone={deviceTimeZone} snackbarOffset={snackbarOffset} />
+        <CheckInSection today={today} timeZone={deviceTimeZone()} snackbarOffset={snackbarOffset} />
 
         {isEmpty && week.sessionsDone === 0 ? null : (
           <Section title="Cette semaine" action={<LinkButton label="Journal" onPress={() => router.navigate("/journal")} style={styles.sectionLink} />}>
@@ -247,9 +252,9 @@ function effectiveVariant(next: NextSlot | null, chosen: Id | null): Id | null {
 
 function ResumeCard({ open, onFinish }: { readonly open: OpenSession; readonly onFinish: (open: OpenSession) => void }) {
   const { colors } = useTheme();
-  const last = localClock(open.lastActivityAt, deviceTimeZone);
+  const last = localTimeOf(open.lastActivityAt, deviceTimeZone());
   const deadline = resumeDeadlineDate(last);
-  const eyebrow = open.session.status === "interrupted" ? `Séance interrompue · ${formatTimeOf(open.lastActivityAt)}` : `Séance en cours · depuis ${formatTimeOf(open.session.startedAt)}`;
+  const eyebrow = open.session.status === "interrupted" ? `Séance interrompue · ${formatTimeAt(open.lastActivityAt, deviceTimeZone())}` : `Séance en cours · depuis ${formatTimeAt(open.session.startedAt, deviceTimeZone())}`;
   const recorded = open.setCount > 0 ? `${plural(open.setCount, "série enregistrée", "séries enregistrées")}` : open.itemCount > 0 ? plural(open.itemCount, "passage noté", "passages notés") : null;
   const window = `reprise jusqu'à ${deadline === last.date ? "" : "demain "}6 h`;
   return (
@@ -416,7 +421,7 @@ interface OtherPoints {
 
 function otherPoints(notices: TodayNotices, today: LocalDate, afterPains: boolean): OtherPoints {
   const parts: string[] = [];
-  if (notices.agent !== null) parts.push(`${notices.agent.client ?? "Agent"} ${relativeDay(localDateOf(notices.agent.latestAt), today)}`);
+  if (notices.agent !== null) parts.push(`${notices.agent.client ?? "Agent"} ${relativeDay(localDateOf(notices.agent.latestAt, deviceTimeZone()), today)}`);
   const firstReview = notices.reviews[0];
   if (notices.reviews.length === 1 && firstReview !== undefined) parts.push(lowerFirst(reviewLabel(firstReview.localDate, today)));
   if (notices.reviews.length > 1) parts.push(plural(notices.reviews.length, "bilan"));
@@ -441,7 +446,7 @@ interface NoticesSheetProps {
 
 function NoticesSheet({ open, notices, today, onClose }: NoticesSheetProps) {
   const openAgentLog = (): void => {
-    db().update(settings).set({ agentChangesSeenAt: environment.now(), updatedAt: environment.now() }).run();
+    markAgentChangesSeen();
     onClose();
     router.push("/agent/log");
   };
@@ -451,7 +456,7 @@ function NoticesSheet({ open, notices, today, onClose }: NoticesSheetProps) {
         {notices.agent === null ? null : (
           <MenuItem
             label={`${plural(notices.agent.count, "modification")} de ${notices.agent.client ?? "l'agent"}`}
-            detail={relativeDay(localDateOf(notices.agent.latestAt), today)}
+            detail={relativeDay(localDateOf(notices.agent.latestAt, deviceTimeZone()), today)}
             onPress={openAgentLog}
           />
         )}

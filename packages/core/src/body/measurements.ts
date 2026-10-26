@@ -3,7 +3,7 @@ import { measurement, measurementKind } from "@obnixe/schema";
 import type { EpochMs, Id, LocalDate, Measurement, MeasurementKind } from "@obnixe/schema";
 import type { Environment, ObnixeDatabase } from "../database.ts";
 import type { Mutation } from "../writer.ts";
-import { localDateOf } from "../activity/dates.ts";
+import { localDateOf } from "../dates.ts";
 
 export interface MeasurementDraft {
   readonly kindId: Id;

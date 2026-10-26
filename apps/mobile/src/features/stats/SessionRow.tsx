@@ -2,10 +2,11 @@ import { router } from "expo-router";
 import type { SessionSummary } from "@obnixe/core";
 import { SportIcon } from "@/ui/icons/SportIcon";
 import { Row } from "@/ui/Layout";
-import { rowDay, zoneLabel } from "@/features/stats/format";
+import { rowDay } from "@/features/stats/format";
+import { sessionTitle, zoneLabel } from "@/format/labels";
 import { DetailLine } from "@/features/stats/parts";
 import type { DetailPart } from "@/features/stats/parts";
-import { sessionFigure, sessionTitle, sportLabel } from "@/features/stats/presentation";
+import { sessionFigure, sportLabel } from "@/features/stats/presentation";
 
 export function openSession(sessionId: string): void {
   router.push({ pathname: "/session/[id]", params: { id: sessionId } });

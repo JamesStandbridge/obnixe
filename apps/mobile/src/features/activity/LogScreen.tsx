@@ -13,6 +13,7 @@ import {
   gearUsage,
   isFreeSport,
   lastSessionSuggestion,
+  localDateOf,
   localTimeOf,
   newGear,
   planFreeSession,
@@ -23,17 +24,21 @@ import {
 } from "@obnixe/core";
 import type { QuantityField } from "@obnixe/core";
 import { gradeScales, programSlot, session, sportKeys, sportPreference, sports, zoneKeys } from "@obnixe/schema";
-import type { Effort, FieldDefinition, FieldValue, FieldValues, Id, LocalDate, PainLevel, Sensation, SportDefinition, SportKey, ZoneKey } from "@obnixe/schema";
+import type { Effort, EpochMs, FieldDefinition, FieldValue, FieldValues, Id, LocalDate, PainLevel, Sensation, SportDefinition, SportKey, ZoneKey } from "@obnixe/schema";
 import { db, environment } from "@/data/database";
 import { write } from "@/data/write";
-import { BottomPanel, Chips, Comparison, DetailRow, Figure, FigureRow, GradeGrid, OtherZoneButton, SportStrip, SwitchRow, bottomPanelHeight, useMassUnit } from "@/features/activity/components";
+import { BottomPanel, Chips, Comparison, DetailRow, Figure, FigureRow, GradeGrid, OtherZoneButton, SportStrip, SwitchRow, bottomPanelHeight } from "@/features/activity/components";
+import { useMassUnit } from "@/data/settings";
 import type { SportChoice } from "@/features/activity/components";
-import { deviceTimeZone, formatClock, formatDayMonth, formatRelativeDay, lastPainLabel, todayLocal, weekdayName } from "@/features/activity/format";
+import { formatDayMonth, formatRelativeDay, lastPainLabel, weekdayName } from "@/features/activity/format";
+import { deviceTimeZone } from "@/format/dates";
+import { formatLongClock } from "@/format/durations";
 import { CatalogueSheet, ChoiceSheet, GearSheet, TextSheet, WhenSheet, ZonePickerSheet, whenLabel } from "@/features/activity/LogSheets";
 import type { WhenValue } from "@/features/activity/LogSheets";
 import { PadSheet } from "@/features/activity/PadSheet";
 import type { PadResult } from "@/features/activity/PadSheet";
-import { fieldUnit, formatKilometers, formatQuantity, formatRatio, gearLabel, sportArticle, zoneLabel } from "@/features/activity/presentation";
+import { fieldUnit, formatKilometers, formatQuantity, formatRatio, gearLabel, sportArticle } from "@/features/activity/presentation";
+import { zoneLabel } from "@/format/labels";
 import { LinkButton, PrimaryButton } from "@/ui/Button";
 import { Icon } from "@/ui/icons/Icon";
 import { IconButton, Question, Scale, TextField, ZoneRow } from "@/ui/Inputs";
@@ -133,7 +138,7 @@ export function LogScreen() {
   const requested = single(params.sport);
   const slotId = single(params.slotId);
   const timeZone = deviceTimeZone();
-  const today = todayLocal();
+  const today = localDateOf(environment.now(), timeZone);
 
   const slot = useMemo<SlotRow | null>(() => {
     if (slotId === undefined) return null;
@@ -173,7 +178,7 @@ export function LogScreen() {
   const [sheet, setSheet] = useState<LogSheet>({ kind: slot === null && (requested === undefined || requested === "catalogue") ? "catalogue" : "none" });
   const [when, setWhen] = useState<WhenValue>(() => {
     const suggested = lastSessionSuggestion(db(), initialSport);
-    const local = localTimeOf(Date.now() - (suggested?.durationSeconds ?? 0) * 1000, timeZone);
+    const local = localTimeOf((Date.now() - (suggested?.durationSeconds ?? 0) * 1000) as EpochMs, timeZone);
     const minutes = Math.floor(local.minutes / 15) * 15;
     return { day: local.date === today ? "today" : "yesterday", date: local.date, minutes };
   });
@@ -354,9 +359,9 @@ export function LogScreen() {
     if (sheet.kind !== "pad") return null;
     switch (sheet.target.kind) {
       case "duration":
-        return { title: "Durée", unit: "h:min:s", decimals: 0, mode: "clock", current: duration === null && suggestion === null ? null : formatClock(shownDuration), field: null };
+        return { title: "Durée", unit: "h:min:s", decimals: 0, mode: "clock", current: duration === null && suggestion === null ? null : formatLongClock(shownDuration), field: null };
       case "paused":
-        return { title: "Pause", unit: "h:min:s", decimals: 0, mode: "clock", current: paused === 0 ? null : formatClock(paused), field: null };
+        return { title: "Pause", unit: "h:min:s", decimals: 0, mode: "clock", current: paused === 0 ? null : formatLongClock(paused), field: null };
       case "field": {
         const field = fieldOf(sheet.target.key);
         if (field === undefined || field.type !== "quantity") return null;
@@ -475,11 +480,11 @@ export function LogScreen() {
             }
             right={
               <Figure
-                value={formatClock(shownDuration)}
+                value={formatLongClock(shownDuration)}
                 label="Durée"
                 suggested={duration === null}
                 size={longFigure ? 60 : 84}
-                accessibilityLabel={`Durée, ${formatClock(shownDuration)}${duration === null ? ", proposée" : ""}`}
+                accessibilityLabel={`Durée, ${formatLongClock(shownDuration)}${duration === null ? ", proposée" : ""}`}
                 onPress={() => setSheet({ kind: "pad", target: { kind: "duration" } })}
               />
             }
@@ -496,7 +501,7 @@ export function LogScreen() {
               onPress={() => setSheet({ kind: "gear" })}
             />
           ) : null}
-          <DetailRow title="Pause" value={paused === 0 ? null : formatClock(paused)} last onPress={() => setSheet({ kind: "pad", target: { kind: "paused" } })} />
+          <DetailRow title="Pause" value={paused === 0 ? null : formatLongClock(paused)} last onPress={() => setSheet({ kind: "pad", target: { kind: "paused" } })} />
         </Section>
 
         <Section title="Ressenti" action={<Text variant="caption" tone="secondary">facultatif</Text>}>

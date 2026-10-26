@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import type { EpochMs, Id } from "@obnixe/schema";
-import { localDateOf } from "../activity/dates.ts";
+import { localDateOf } from "../dates.ts";
 import { painReportMutations } from "../activity/pain.ts";
 import { createTestContext } from "../testing.ts";
 import type { TestContext } from "../testing.ts";

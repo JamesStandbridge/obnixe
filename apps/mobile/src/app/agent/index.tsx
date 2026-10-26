@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { router } from "expo-router";
-import { callTag, changeCount, clockTime, connectionRecap, plural, revertState } from "@obnixe/core";
+import { callTag, changeCount, connectionRecap, revertState } from "@obnixe/core";
 import type { RevertIndex } from "@obnixe/core";
-import type { Id } from "@obnixe/schema";
+import type { EpochMs, Id } from "@obnixe/schema";
 import { environment } from "@/data/database";
+import { deviceTimeZone, formatTimeAt } from "@/format/dates";
+import { plural } from "@/format/labels";
 import {
   ActivityRow,
   AgentAppBar,
@@ -89,7 +91,7 @@ function Connected({ connectionId, settings }: ConnectedProps) {
   if (connection === null) return null;
   return (
     <>
-      <StatusPanel title={`${connection.client} · ${connection.host}`} since={clockTime(connection.startedAt)} />
+      <StatusPanel title={`${connection.client} · ${connection.host}`} since={formatTimeAt(connection.startedAt, deviceTimeZone())} />
       <Section
         title="Activité"
         action={
@@ -109,7 +111,7 @@ function Connected({ connectionId, settings }: ConnectedProps) {
             return (
               <ActivityRow
                 key={call.id}
-                time={clockTime(call.calledAt)}
+                time={formatTimeAt(call.calledAt, deviceTimeZone())}
                 tag={callTag(call)}
                 title={call.summary}
                 tool={call.tool}
@@ -128,7 +130,7 @@ function Connected({ connectionId, settings }: ConnectedProps) {
 
 interface DisconnectedProps {
   readonly connectionId: Id;
-  readonly at: number;
+  readonly at: EpochMs;
 }
 
 function Disconnected({ connectionId, at }: DisconnectedProps) {
@@ -139,7 +141,7 @@ function Disconnected({ connectionId, at }: DisconnectedProps) {
   const writes = calls.length - reads;
   return (
     <>
-      <Heading eyebrow={`Connexion coupée à ${clockTime(endedAt)}`} title="Plus aucun accès réseau" />
+      <Heading eyebrow={`Connexion coupée à ${formatTimeAt(endedAt, deviceTimeZone())}`} title="Plus aucun accès réseau" />
       {connection === null ? null : (
         <Text tone="secondary" style={styles.summary}>
           {connectionRecap(connection.client, reads, writes, endedAt - connection.startedAt)}

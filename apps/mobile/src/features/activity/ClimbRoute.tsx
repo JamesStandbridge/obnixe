@@ -9,7 +9,7 @@ import type { Id, Session } from "@obnixe/schema";
 import { db, environment } from "@/data/database";
 import { write } from "@/data/write";
 import { ClimbScreen } from "@/features/activity/ClimbScreen";
-import { deviceTimeZone } from "@/features/activity/format";
+import { deviceTimeZone } from "@/format/dates";
 import { LinkButton, PrimaryButton } from "@/ui/Button";
 import { IconButton } from "@/ui/Inputs";
 import { Screen } from "@/ui/Layout";

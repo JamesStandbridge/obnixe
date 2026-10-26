@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { CodedError } from "expo";
-import { remindersCalendar, toggleWeekday, weekdayIndexes, weekdaysOf } from "@obnixe/core";
-import { settings } from "@obnixe/schema";
-import type { MassUnit, Settings } from "@obnixe/schema";
-import { db, environment } from "@/data/database";
+import { localDateOf, remindersCalendar, toggleWeekday, weekdayIndexes, weekdaysOf } from "@obnixe/core";
+import type { MassUnit } from "@obnixe/schema";
+import { environment } from "@/data/database";
+import { updateSettings } from "@/data/settings";
 import { shareFile } from "@/features/data/files";
-import { clock, localDateOf, weekdayInitials, weekdayLabels } from "@/features/data/format";
+import { weekdayInitials, weekdayLabels } from "@/features/data/format";
+import { deviceTimeZone, formatTimeOfDay } from "@/format/dates";
 import { SheetButton } from "@/ui/Button";
 import { Stepper } from "@/ui/Controls";
 import { Choices, Question } from "@/ui/Inputs";
@@ -16,13 +17,6 @@ import { useTheme } from "@/ui/theme";
 import { fonts, layout, radii } from "@/ui/tokens";
 
 export const massUnitLabels: Readonly<Record<MassUnit, string>> = { kg: "kg", lb: "lb" };
-
-export function updateSettings(patch: Partial<Omit<Settings, "singleton" | "updatedAt">>): void {
-  db()
-    .update(settings)
-    .set({ ...patch, updatedAt: environment.now() })
-    .run();
-}
 
 interface MassUnitSheetProps {
   readonly open: boolean;
@@ -69,7 +63,7 @@ export function RemindersSheet({ open, weekdays, minutes, onClose }: RemindersSh
 
   const exportCalendar = async (): Promise<void> => {
     const now = environment.now();
-    const calendar = remindersCalendar({ weekdays: mask, minutes: time, from: localDateOf(now), now, uid: environment.newId(), title: "Séance Obnixe" });
+    const calendar = remindersCalendar({ weekdays: mask, minutes: time, from: localDateOf(now, deviceTimeZone()), now, uid: environment.newId(), title: "Séance Obnixe" });
     try {
       await shareFile({ name: "obnixe-rappels.ics", bytes: calendar, mimeType: "text/calendar" });
     } catch (error) {
@@ -77,7 +71,7 @@ export function RemindersSheet({ open, weekdays, minutes, onClose }: RemindersSh
       setFailure("Impossible d'ouvrir l'agenda");
       return;
     }
-    updateSettings({ reminderWeekdays: mask, reminderMinutes: time, remindersExportedAt: now });
+    updateSettings({ reminderWeekdays: mask, reminderMinutes: time, remindersExportedAt: now }, now);
     onClose();
   };
 
@@ -114,7 +108,7 @@ export function RemindersSheet({ open, weekdays, minutes, onClose }: RemindersSh
         </View>
       </Question>
       <Question title="Heure">
-        <Stepper value={time} step={15} min={0} max={23 * 60 + 45} unit="" label="Heure" format={clock} onChange={setTime} />
+        <Stepper value={time} step={15} min={0} max={23 * 60 + 45} unit="" label="Heure" format={formatTimeOfDay} onChange={setTime} />
       </Question>
       {failure === null ? null : (
         <Text variant="small" tone="secondary" style={styles.failure} accessibilityLiveRegion="polite">

@@ -3,7 +3,7 @@ import { StyleSheet } from "react-native";
 import { SheetButton } from "@/ui/Button";
 import { NumberPad, parsePadValue } from "@/ui/Inputs";
 import { Sheet } from "@/ui/Overlays";
-import { formatNumber, formatSigned } from "@/features/training/format";
+import { formatNumber, formatSigned } from "@/format/numbers";
 
 export interface PadRequest {
   readonly title: string;

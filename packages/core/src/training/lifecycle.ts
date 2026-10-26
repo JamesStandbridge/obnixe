@@ -2,7 +2,7 @@ import { and, asc, eq, inArray, isNull, ne } from "drizzle-orm";
 import { exercise, programItem, programSlot, programVariant, session } from "@obnixe/schema";
 import type { EpochMs, Id, Session } from "@obnixe/schema";
 import type { ObnixeDatabase } from "../database.ts";
-import { localDateOf } from "../activity/dates.ts";
+import { localDateOf } from "../dates.ts";
 import type { Mutation } from "../writer.ts";
 import type { WorkoutData } from "./workout.ts";
 

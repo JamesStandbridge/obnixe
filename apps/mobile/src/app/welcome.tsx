@@ -8,7 +8,7 @@ import type { SportKey, Theme } from "@obnixe/schema";
 import { db } from "@/data/database";
 import { write } from "@/data/write";
 import { BottomPanel } from "@/features/data/parts";
-import { updateSettings } from "@/features/data/PreferenceSheets";
+import { updateSettings } from "@/data/settings";
 import { PrimaryButton } from "@/ui/Button";
 import { Segmented } from "@/ui/Controls";
 import { SportIcon } from "@/ui/icons/SportIcon";

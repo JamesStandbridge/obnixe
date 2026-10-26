@@ -33,13 +33,15 @@ import {
   activeSeconds,
 } from "@obnixe/core";
 import type { Mutation, WorkoutExercise } from "@obnixe/core";
-import { settings, sports, zoneKeys } from "@obnixe/schema";
+import { sports, zoneKeys } from "@obnixe/schema";
 import type { EpochMs, Exercise, Id, PainLevel, StrengthSet, ZoneKey } from "@obnixe/schema";
 import { db, environment } from "@/data/database";
 import { useUndoableWrite, write } from "@/data/write";
-import { equipmentLabels, formatClock, formatLongClock, formatMass, lowerFirst, zoneLabel } from "@/features/training/format";
-import { freeStrengthTitle } from "@/features/training/sessionText";
-import { useMassUnit, useNow } from "@/features/training/useLiveLoad";
+import { equipmentLabels, formatMass } from "@/features/training/format";
+import { formatClock, formatLongClock } from "@/format/durations";
+import { freeStrengthTitle, lowerFirst, zoneLabel } from "@/format/labels";
+import { useNow } from "@/features/training/useLiveLoad";
+import { updateSettings, useMassUnit } from "@/data/settings";
 import { ExerciseSheet } from "@/features/training/workout/ExerciseSheet";
 import type { ExerciseSheetMode } from "@/features/training/workout/ExerciseSheet";
 import {
@@ -484,10 +486,7 @@ export function LiveWorkoutScreen({ live }: LiveWorkoutScreenProps) {
   };
 
   const toggleTheme = (): void => {
-    db()
-      .update(settings)
-      .set({ theme: palette === "sunlight" ? "dark" : "sunlight", updatedAt: environment.now() })
-      .run();
+    updateSettings({ theme: palette === "sunlight" ? "dark" : "sunlight" });
   };
 
   const stopped = display === undefined ? [] : stoppedZones(display.zones, live.latestPains);

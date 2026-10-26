@@ -10,9 +10,7 @@ import { commit } from "../writer.ts";
 import type { Mutation } from "../writer.ts";
 import { emphasisQuantity, fromStored, isFreeSport, quantityUnit, toStored } from "./catalog.ts";
 import type { QuantityField } from "./catalog.ts";
-import { addDays, daysBetween } from "../stats/dates.ts";
 import { parseGrade } from "../stats/indicators.ts";
-import { epochAt, localDateOf, localTimeOf, weekdayOf } from "./dates.ts";
 import { FutureSessionError, InvalidDurationError, NotFreeSportError, activeSeconds, lastSessionSuggestion, planFreeSession } from "./freeSession.ts";
 import type { FreeSessionDraft } from "./freeSession.ts";
 import { EmptyGearNameError, gearUsage, newGear } from "./gear.ts";
@@ -48,27 +46,6 @@ function draft(overrides: Partial<FreeSessionDraft> = {}): FreeSessionDraft {
     ...overrides,
   };
 }
-
-describe("dates", () => {
-  it("derives the local day and time in the session time zone", () => {
-    const late = Date.UTC(2026, 9, 24, 22, 30);
-    expect(localDateOf(late, zone)).toBe("2026-10-25");
-    expect(localDateOf(late, "UTC")).toBe("2026-10-24");
-    expect(localTimeOf(late, zone)).toEqual({ date: "2026-10-25", minutes: 30 });
-  });
-
-  it("converts a wall clock back to an instant across daylight saving changes", () => {
-    expect(epochAt({ date: "2026-10-24" as LocalDate, minutes: 14 * 60 + 30 }, zone)).toBe(Date.UTC(2026, 9, 24, 12, 30));
-    expect(epochAt({ date: "2026-10-26" as LocalDate, minutes: 14 * 60 + 30 }, zone)).toBe(Date.UTC(2026, 9, 26, 13, 30));
-  });
-
-  it("walks calendar days", () => {
-    expect(addDays("2026-10-30" as LocalDate, 3)).toBe("2026-11-02");
-    expect(addDays("2026-03-01" as LocalDate, -1)).toBe("2026-02-28");
-    expect(daysBetween("2026-10-19" as LocalDate, "2026-10-25" as LocalDate)).toBe(6);
-    expect(weekdayOf("2026-10-25" as LocalDate)).toBe(0);
-  });
-});
 
 describe("catalog helpers", () => {
   it("logs only continuous sports as free activities", () => {

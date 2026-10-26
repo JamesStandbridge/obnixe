@@ -1,5 +1,5 @@
 import type { EpochMs, LocalDate } from "@obnixe/schema";
-import { addDays, dateParts, weekdayIndex } from "./dates.ts";
+import { addDays, dateParts, weekdayIndex } from "../dates.ts";
 
 export const reminderMinutesRange = { min: 5 * 60, max: 22 * 60, step: 30 } as const;
 

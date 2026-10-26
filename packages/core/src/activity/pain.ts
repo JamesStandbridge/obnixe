@@ -3,7 +3,7 @@ import { painReport, zoneTracking } from "@obnixe/schema";
 import type { EpochMs, Id, LocalDate, PainLevel, PainPhase, ZoneKey } from "@obnixe/schema";
 import type { Environment, ObnixeDatabase } from "../database.ts";
 import type { Mutation } from "../writer.ts";
-import { localDateOf } from "./dates.ts";
+import { localDateOf } from "../dates.ts";
 
 export interface ZonePain {
   readonly zone: ZoneKey;
