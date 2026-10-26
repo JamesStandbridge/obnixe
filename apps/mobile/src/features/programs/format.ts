@@ -1,6 +1,7 @@
 import { sports } from "@obnixe/schema";
 import type { Author, Effort, Equipment, ExerciseMeasure, Id, MassUnit } from "@obnixe/schema";
 import type { DraftIssue, DraftItem, DraftSlot, DraftVariant, ItemTarget, ProgramChange, ProgramDraft, PublishIssue, VersionAuthor } from "@obnixe/core";
+import { formatDecimal, formatQuantity, quantityUnit } from "@/features/programs/units";
 import { formatClock } from "@/format/durations";
 import { capitalize, lowerFirst, plural } from "@/format/labels";
 
@@ -10,11 +11,6 @@ const weekdaysShort = ["dim.", "lun.", "mar.", "mer.", "jeu.", "ven.", "sam."] a
 const months = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"] as const;
 const monthsShort = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."] as const;
 const dayMs = 86_400_000;
-
-export function formatDecimal(value: number, digits = 2): string {
-  const rounded = Math.round(value * 10 ** digits) / 10 ** digits;
-  return String(rounded).replace(".", ",");
-}
 
 export function formatTargetDuration(seconds: number): string {
   const minutes = Math.round(seconds / 60);
@@ -80,8 +76,20 @@ export function slotDetail(slot: DraftSlot): string {
     return slot.variants.length > 1 ? `${exercises} · ${plural(slot.variants.length, "variante")}` : exercises;
   }
   const parts: string[] = [];
+  const fields = sports[slot.sport].sessionFields;
+  for (const field of fields) {
+    const value = slot.targetValues[field.key];
+    if (field.type === "choice" && typeof value === "string") {
+      const option = field.options.find((entry) => entry.key === value);
+      if (option !== undefined) parts.push(lowerFirst(option.label));
+    }
+  }
   if (slot.targetDurationSeconds !== null) parts.push(formatTargetDuration(slot.targetDurationSeconds));
-  if (slot.targetEffort !== null) parts.push(lowerFirst(effortLabels[slot.targetEffort]));
+  for (const field of fields) {
+    const value = slot.targetValues[field.key];
+    if (field.type === "quantity" && typeof value === "number") parts.push(formatQuantity(value, quantityUnit(field.dimension, field.key, slot.sport)));
+  }
+  if (slot.targetEffort !== null) parts.push(`effort ${lowerFirst(effortLabels[slot.targetEffort])}`);
   return parts.length === 0 ? "sans objectif" : parts.join(" · ");
 }
 

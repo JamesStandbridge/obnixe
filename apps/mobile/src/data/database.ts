@@ -1,7 +1,8 @@
 import { drizzle } from "drizzle-orm/expo-sqlite";
 import type { ExpoSQLiteDatabase } from "drizzle-orm/expo-sqlite";
 import { getRandomValues } from "expo-crypto";
-import { openDatabaseAsync } from "expo-sqlite";
+import { deleteDatabaseAsync, openDatabaseAsync } from "expo-sqlite";
+import type { SQLiteDatabase } from "expo-sqlite";
 import { createIdFactory, schema, settings } from "@obnixe/schema";
 import type { EpochMs } from "@obnixe/schema";
 import type { Environment } from "@obnixe/core";
@@ -14,14 +15,26 @@ export class DatabaseNotOpenError extends Error {
   }
 }
 
+const databaseName = "obnixe.db";
+
+let connection: SQLiteDatabase | null = null;
 let current: AppDatabase | null = null;
 
 export async function openDatabase(): Promise<AppDatabase> {
   if (current !== null) return current;
-  const sqlite = await openDatabaseAsync("obnixe.db", { enableChangeListener: true });
+  const sqlite = await openDatabaseAsync(databaseName, { enableChangeListener: true });
+  connection = sqlite;
   await sqlite.execAsync("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;");
   current = drizzle(sqlite, { schema });
   return current;
+}
+
+export async function eraseDatabase(): Promise<void> {
+  const sqlite = connection;
+  connection = null;
+  current = null;
+  if (sqlite !== null) await sqlite.closeAsync();
+  await deleteDatabaseAsync(databaseName);
 }
 
 export function db(): AppDatabase {

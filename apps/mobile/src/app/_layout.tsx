@@ -17,6 +17,8 @@ import { SnackbarHost } from "@/ui/SnackbarHost";
 import { StartupError } from "@/ui/StartupError";
 import { ThemeProvider, useTheme } from "@/ui/theme";
 
+export { RouteError as ErrorBoundary } from "@/ui/RouteError";
+
 void preventAutoHideAsync();
 
 function Navigator() {

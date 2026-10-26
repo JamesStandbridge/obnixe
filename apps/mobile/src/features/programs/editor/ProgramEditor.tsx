@@ -22,7 +22,7 @@ import {
   validateDraft,
 } from "@obnixe/core";
 import type { DraftItem, DraftSlot, ProgramDraft, PublishedBase, LatestZonePain } from "@obnixe/core";
-import { exercise as exerciseTable, program, sports } from "@obnixe/schema";
+import { exercise as exerciseTable, program, programVersion, sports } from "@obnixe/schema";
 import type { Exercise, Id, MassUnit, ProgramStatus, SportKey, ZoneKey } from "@obnixe/schema";
 import { db, environment } from "@/data/database";
 import { useUndoableWrite, write } from "@/data/write";
@@ -173,6 +173,7 @@ function Editor({ base, onReload }: EditorProps) {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [stale, setStale] = useState<number | null>(null);
   const pendingLeave = useRef<(() => void) | null>(null);
+  const submittedVersion = useRef<Id | null>(null);
 
   const refs = useMemo(() => exerciseRefs(catalog.exercises), [catalog.exercises]);
   const changes = useMemo(() => (base === null ? [] : diffDrafts(base.published.draft, draft)), [base, draft]);
@@ -217,12 +218,18 @@ function Editor({ base, onReload }: EditorProps) {
   };
 
   const publish = (): void => {
+    const submitted = submittedVersion.current;
+    if (submitted !== null && db().select({ id: programVersion.id }).from(programVersion).where(eq(programVersion.id, submitted)).get() !== undefined) {
+      leave();
+      return;
+    }
     if (!canSave) return;
     const name = draft.name.trim();
     if (base === null) {
       const hasActive = db().select({ id: program.id }).from(program).where(eq(program.status, "active")).get() !== undefined;
       const result = planCreateProgram({ draft, status: hasActive ? "draft" : "active", copiedFromId: null, summary: null, reason: null, exercises: refs }, environment.newId);
       if (!result.ok) return;
+      submittedVersion.current = result.plan.versionId;
       undoable({ summary: `Création : ${name}`, mutations: result.plan.mutations, message: hasActive ? `${name} créé en brouillon` : `${name} créé et actif` });
       leave();
       return;
@@ -237,6 +244,7 @@ function Editor({ base, onReload }: EditorProps) {
       environment.newId,
     );
     if (!result.ok) return;
+    submittedVersion.current = result.plan.versionId;
     undoable({ summary: `${name} · v${result.plan.number}`, mutations: result.plan.mutations, message: `Enregistré comme v${result.plan.number}` });
     leave();
   };
@@ -265,7 +273,7 @@ function Editor({ base, onReload }: EditorProps) {
 
   const marks: ItemMarks = { name: catalog.name, zones: catalog.zones, pain, agentItems: base?.agentItems ?? new Set(), agentLabel: base?.agentLabel ?? null };
   const firstIssue = validation.valid ? null : issueMessage(validation.issues[0], draft, catalog.name);
-  const changeLabel = base === null ? (dirty ? "Nouveau programme" : "Aucune modification") : changeCountLabel(changes.length);
+  const changeLabel = base === null ? null : changeCountLabel(changes.length);
   const contextLabel = base === null ? "Nouveau programme" : `Modifier le programme · v${base.published.version.number}`;
 
   return (
@@ -328,9 +336,11 @@ function Editor({ base, onReload }: EditorProps) {
           <ControlButton label="Ajouter à la rotation" onPress={() => show({ kind: "add_slot" })} style={styles.add} />
         </Section>
         <View style={styles.changes}>
-          <Text variant="small" style={styles.changeCount}>
-            {changeLabel}
-          </Text>
+          {changeLabel === null ? null : (
+            <Text variant="small" style={styles.changeCount}>
+              {changeLabel}
+            </Text>
+          )}
           {(dirty || base !== null) && firstIssue !== null ? (
             <Text variant="small" tone="secondary">
               {firstIssue}

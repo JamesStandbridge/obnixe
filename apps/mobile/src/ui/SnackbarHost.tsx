@@ -22,6 +22,7 @@ type Notify = (message: SnackbarMessage) => void;
 const SnackbarContext = createContext<Notify>(() => undefined);
 
 const visibleMs = 5000;
+const visibleWithActionMs = 8000;
 
 interface SnackbarHostProps {
   readonly children: ReactNode;
@@ -35,7 +36,7 @@ export function SnackbarHost({ children }: SnackbarHostProps) {
   const notify = useCallback<Notify>((next) => {
     if (timer.current !== null) clearTimeout(timer.current);
     setMessage(next);
-    timer.current = setTimeout(() => setMessage(null), visibleMs);
+    timer.current = setTimeout(() => setMessage(null), next.action === undefined ? visibleMs : visibleWithActionMs);
   }, []);
 
   useEffect(

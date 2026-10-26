@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Animated, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import type { ScrollViewInstance } from "react-native";
 import { notificationAsync, NotificationFeedbackType, impactAsync, ImpactFeedbackStyle } from "expo-haptics";
-import { useKeepAwake } from "expo-keep-awake";
 import { router, useNavigation } from "expo-router";
 import type { NativeStackNavigationProp } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -74,6 +73,7 @@ import { useSnackbar } from "@/ui/SnackbarHost";
 import { Text } from "@/ui/Text";
 import { useTheme } from "@/ui/theme";
 import { fonts, layout, radii } from "@/ui/tokens";
+import { useKeepAwakeWhile } from "@/ui/useKeepAwakeWhile";
 
 interface Editing {
   readonly setId: Id;
@@ -133,7 +133,7 @@ interface LiveWorkoutScreenProps {
 }
 
 export function LiveWorkoutScreen({ live }: LiveWorkoutScreenProps) {
-  useKeepAwake(undefined, { suppressDeactivateWarnings: true });
+  useKeepAwakeWhile(true);
   const { colors, name: palette, reduceMotion } = useTheme();
   const insets = useSafeAreaInsets();
   const unit = useMassUnit();

@@ -1,5 +1,9 @@
 import type { Dimension, SportKey } from "@obnixe/schema";
-import { formatDecimal } from "@/features/programs/format";
+
+export function formatDecimal(value: number, digits = 2): string {
+  const rounded = Math.round(value * 10 ** digits) / 10 ** digits;
+  return String(rounded).replace(".", ",");
+}
 
 export interface QuantityUnit {
   readonly unit: string;

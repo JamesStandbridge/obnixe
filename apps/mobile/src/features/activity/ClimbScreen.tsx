@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import type { ScrollViewInstance } from "react-native";
 import { useRouter } from "expo-router";
-import { useKeepAwake } from "expo-keep-awake";
 import { asc, eq } from "drizzle-orm";
 import { useLiveQuery } from "drizzle-orm/expo-sqlite";
 import {
@@ -48,6 +47,7 @@ import { useSnackbar } from "@/ui/SnackbarHost";
 import { Text } from "@/ui/Text";
 import { useTheme } from "@/ui/theme";
 import { fonts, layout, radii } from "@/ui/tokens";
+import { useKeepAwakeWhile } from "@/ui/useKeepAwakeWhile";
 
 interface Draft {
   readonly grade: string;
@@ -88,7 +88,7 @@ interface ClimbScreenProps {
 }
 
 export function ClimbScreen({ current }: ClimbScreenProps) {
-  useKeepAwake();
+  useKeepAwakeWhile(true);
   const router = useRouter();
   const notify = useSnackbar();
   const undoable = useUndoableWrite();

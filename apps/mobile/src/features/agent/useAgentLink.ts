@@ -1,49 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState } from "react-native";
-import { activateKeepAwakeAsync, deactivateKeepAwake, isAvailableAsync } from "expo-keep-awake";
 import { closeDanglingConnections } from "@obnixe/core";
 import type { ConnectionEndReason } from "@obnixe/schema";
 import { db } from "@/data/database";
 import { AgentLink } from "@/features/agent/link";
 import type { LinkNotice, LinkView } from "@/features/agent/link";
-
-const keepAwakeTag = "obnixe-agent";
+import { useKeepAwakeWhile } from "@/ui/useKeepAwakeWhile";
 
 export interface AgentLinkControls {
   readonly view: LinkView;
   readonly end: (reason: ConnectionEndReason) => void;
   readonly restart: () => void;
-}
-
-function isWakeLockRefusal(error: unknown): boolean {
-  return typeof DOMException !== "undefined" && error instanceof DOMException && error.name === "NotAllowedError";
-}
-
-async function keepAwake(): Promise<boolean> {
-  if (!(await isAvailableAsync())) return false;
-  try {
-    await activateKeepAwakeAsync(keepAwakeTag);
-    return true;
-  } catch (error) {
-    if (isWakeLockRefusal(error)) return false;
-    throw error;
-  }
-}
-
-function useKeepAwakeWhile(active: boolean): void {
-  useEffect(() => {
-    if (!active) return;
-    let cancelled = false;
-    let activated = false;
-    void keepAwake().then((granted) => {
-      activated = granted;
-      if (granted && cancelled) void deactivateKeepAwake(keepAwakeTag);
-    });
-    return () => {
-      cancelled = true;
-      if (activated) void deactivateKeepAwake(keepAwakeTag);
-    };
-  }, [active]);
 }
 
 export function useAgentLink(host: string | null, onNotice: (notice: LinkNotice) => void): AgentLinkControls {
