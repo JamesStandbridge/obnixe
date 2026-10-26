@@ -1,6 +1,6 @@
 import { asc, eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
-import { agentCall, agentConnection, change, changeset, exercise, painReport, programSlot, programVersion, session, sessionItem, settings, strengthSet } from "@obnixe/schema";
+import { agentCall, agentConnection, changeset, exercise, painReport, programSlot, programVersion, session, sessionItem, settings, strengthSet } from "@obnixe/schema";
 import type { EpochMs, Id, LocalDate } from "@obnixe/schema";
 import { createTestContext } from "../testing.ts";
 import type { TestContext } from "../testing.ts";
@@ -212,9 +212,9 @@ describe("writes", () => {
     });
     expect(calls().at(-1)?.summary).toBe("Musculation du 20 octobre · 2 exercices");
     expect(context.db.select().from(strengthSet).all()).toHaveLength(3);
-    const logged = calls().at(-1);
-    expect(context.db.select({ changesetId: change.changesetId }).from(change).where(eq(change.tableName, "exercise")).all()).toEqual([{ changesetId: logged?.changesetId }, { changesetId: logged?.changesetId }]);
-    expect(context.db.select().from(changeset).all()).toHaveLength(1);
+    const exercises = context.db.select().from(changeset).where(eq(changeset.summary, "Exercices ajoutés · Squat, Gainage")).get();
+    expect(exercises?.author).toBe("agent");
+    expect(context.db.select({ companionId: changeset.companionId }).from(changeset).where(eq(changeset.id, calls().at(-1)?.changesetId ?? ("" as Id))).get()).toEqual({ companionId: exercises?.id });
 
     const history = ok<{ sessions: { sport: string; durationSeconds: number; exercises: { exercise: string; sets: { loadGrams: number | null }[] }[] }[] }>("get_history", { from: "2026-10-01", to: "2026-10-24" });
     expect(history.sessions).toHaveLength(1);
@@ -227,34 +227,107 @@ describe("writes", () => {
     expect(calls().at(-1)?.summary).toBe("Progression au squat");
   });
 
-  it("undoes a strength session and the exercises it created in one step", () => {
-    ok("create_exercise", { name: "Squat", measure: "load_reps", equipment: "barbell" });
-    ok("log_strength_session", {
-      startedAt: "2026-10-20T18:00:00+02:00",
-      durationSeconds: 3600,
-      exercises: [
-        { exercise: "Squat", sets: [{ loadGrams: 80000, reps: 8 }] },
-        { exercise: "Fentes", newExercise: { measure: "load_reps", equipment: "dumbbell" }, sets: [{ loadGrams: 20000, reps: 10 }] },
-      ],
-    });
-    const logged = calls().at(-1);
-    if (logged?.changesetId == null) throw new Error("No strength write");
-    toggleChange(context.db, context.env, user, logged.changesetId, logged.summary);
-    expect(context.db.select({ name: exercise.name }).from(exercise).all()).toEqual([{ name: "Squat" }]);
-    expect(context.db.select().from(session).all()).toHaveLength(0);
-    expect(context.db.select().from(strengthSet).all()).toHaveLength(0);
-
-    toggleChange(context.db, context.env, user, logged.changesetId, logged.summary);
-    expect(context.db.select({ name: exercise.name }).from(exercise).orderBy(asc(exercise.name)).all()).toEqual([{ name: "Fentes" }, { name: "Squat" }]);
-    expect(context.db.select().from(strengthSet).all()).toHaveLength(2);
-  });
-
   it("refuses duplicate exercises", () => {
     ok("create_exercise", { name: "Rowing haltère", measure: "load_reps", equipment: "dumbbell", loadStepGrams: 1000, zones: ["lower_back"] });
     expect(call("create_exercise", { name: "rowing  HALTERE", measure: "load_reps", equipment: "dumbbell" }).text).toContain("already exists");
     expect(ok<{ exercises: { name: string; zones: string[] }[] }>("list_exercises", { query: "rowing" }).exercises).toEqual([
       expect.objectContaining({ name: "Rowing haltère", zones: ["lower_back"] }),
     ]);
+  });
+});
+
+describe("exercises created with a strength session", () => {
+  beforeEach(() => allow({ agentCanWrite: true }));
+
+  interface Write {
+    readonly changesetId: Id;
+    readonly summary: string;
+  }
+
+  const lunges = { exercise: "Fentes", sets: [{ loadGrams: 20000, reps: 10 }] };
+
+  function logWithLunges(): Write {
+    ok("create_exercise", { name: "Squat", measure: "load_reps", equipment: "barbell" });
+    ok("log_strength_session", {
+      startedAt: "2026-10-20T18:00:00+02:00",
+      durationSeconds: 3600,
+      exercises: [{ exercise: "Squat", sets: [{ loadGrams: 80000, reps: 8 }] }, { ...lunges, newExercise: { measure: "load_reps", equipment: "dumbbell" } }],
+    });
+    const logged = calls().at(-1);
+    if (logged?.changesetId == null) throw new Error("No strength write");
+    return { changesetId: logged.changesetId, summary: logged.summary };
+  }
+
+  function toggle(write: Write): void {
+    toggleChange(context.db, context.env, user, write.changesetId, write.summary);
+  }
+
+  function exerciseNames(): string[] {
+    return context.db.select({ name: exercise.name }).from(exercise).orderBy(asc(exercise.name)).all().map((row) => row.name);
+  }
+
+  function sessionCount(): number {
+    return context.db.select().from(session).all().length;
+  }
+
+  it("undoes the session and its new exercises together right after logging, and redoes both", () => {
+    const logged = logWithLunges();
+    toggle(logged);
+    expect(exerciseNames()).toEqual(["Squat"]);
+    expect(sessionCount()).toBe(0);
+    expect(context.db.select().from(strengthSet).all()).toHaveLength(0);
+
+    toggle(logged);
+    expect(exerciseNames()).toEqual(["Fentes", "Squat"]);
+    expect(context.db.select().from(strengthSet).all()).toHaveLength(2);
+
+    toggle(logged);
+    expect(exerciseNames()).toEqual(["Squat"]);
+    expect(sessionCount()).toBe(0);
+    expect(revertState(loadRevertIndex(context.db), logged.changesetId).reverted).toBe(true);
+  });
+
+  it("keeps exercises a later session reuses and undoes only the session", () => {
+    const logged = logWithLunges();
+    ok("log_strength_session", { startedAt: "2026-10-22T18:00:00+02:00", durationSeconds: 1800, exercises: [lunges] });
+    toggle(logged);
+    expect(exerciseNames()).toEqual(["Fentes", "Squat"]);
+    expect(sessionCount()).toBe(1);
+
+    toggle(logged);
+    expect(sessionCount()).toBe(2);
+    expect(context.db.select().from(strengthSet).all()).toHaveLength(3);
+  });
+
+  it("keeps exercises a program uses", () => {
+    const logged = logWithLunges();
+    ok("upsert_program", { name: "Jambes", sessionsPerWeek: 1, summary: "Programme jambes", slots: [{ name: "Séance", sport: "strength", variants: [{ name: "Salle", items: [{ exercise: "Fentes", sets: 3, repsMin: 8, repsMax: 10 }] }] }] });
+    toggle(logged);
+    expect(exerciseNames()).toEqual(["Fentes", "Squat"]);
+    expect(sessionCount()).toBe(0);
+  });
+
+  it("keeps an exercise edited since and redoes the session onto it", () => {
+    const logged = logWithLunges();
+    ok("update_exercise", { exercise: "Fentes", name: "Fentes marchées" });
+    toggle(logged);
+    expect(exerciseNames()).toEqual(["Fentes marchées", "Squat"]);
+    expect(sessionCount()).toBe(0);
+
+    toggle(logged);
+    expect(sessionCount()).toBe(1);
+    expect(context.db.select().from(strengthSet).all()).toHaveLength(2);
+  });
+
+  it("refuses the whole redo when the exercises cannot come back", () => {
+    const logged = logWithLunges();
+    toggle(logged);
+    ok("create_exercise", { name: "Fentes", measure: "load_reps", equipment: "dumbbell" });
+    const journal = context.db.select().from(changeset).all().length;
+    expect(() => toggle(logged)).toThrow(/UNIQUE/);
+    expect(context.db.select().from(changeset).all()).toHaveLength(journal);
+    expect(sessionCount()).toBe(0);
+    expect(revertState(loadRevertIndex(context.db), logged.changesetId).reverted).toBe(true);
   });
 });
 
