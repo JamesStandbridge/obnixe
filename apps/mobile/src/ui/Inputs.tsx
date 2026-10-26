@@ -22,7 +22,7 @@ export function IconButton({ icon, label, onPress, edge, pressed: active = false
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
-      accessibilityState={{ selected: active }}
+      aria-selected={active}
       onPress={onPress}
       style={({ pressed }) => [
         styles.iconButton,
@@ -62,7 +62,7 @@ export function Scale<T extends string | number>({ label, options, value, onChan
           <Pressable
             key={String(option.value)}
             accessibilityRole="radio"
-            accessibilityState={{ checked: selected }}
+            aria-checked={selected}
             accessibilityLabel={option.caption === undefined ? option.label : `${option.label}, ${option.caption}`}
             onPress={() => onChange(selected && optional ? null : option.value)}
             style={({ pressed }) => [
@@ -129,7 +129,7 @@ export function PainLevels({ label, value, onChange, levels = ["none", "discomfo
           <Pressable
             key={level}
             accessibilityRole="radio"
-            accessibilityState={{ checked: selected }}
+            aria-checked={selected}
             onPress={() => onChange(selected ? null : level)}
             style={({ pressed }) => [
               styles.level,
@@ -184,7 +184,7 @@ export function Question({ title, hint, children }: QuestionProps) {
       <View style={styles.questionHead}>
         <Text variant="bodyStrong">{title}</Text>
         {hint === undefined ? null : (
-          <Text variant="caption" tone="secondary">
+          <Text variant="caption" tone="secondary" style={styles.questionHint}>
             {hint}
           </Text>
         )}
@@ -215,7 +215,7 @@ export function ViewSwitch<T extends string>({ items, value, onChange }: ViewSwi
           <Pressable
             key={item.value}
             accessibilityRole="tab"
-            accessibilityState={{ selected: current }}
+            aria-selected={current}
             onPress={() => onChange(item.value)}
             style={[styles.viewSwitchItem, current && { borderBottomColor: colors.text }]}
           >
@@ -286,6 +286,7 @@ export interface ChoiceItem<T extends string> {
   readonly value: T;
   readonly label: string;
   readonly primary?: boolean;
+  readonly selected?: boolean;
 }
 
 interface ChoicesProps<T extends string> {
@@ -295,25 +296,30 @@ interface ChoicesProps<T extends string> {
 
 export function Choices<T extends string>({ items, onChoose }: ChoicesProps<T>) {
   const { colors } = useTheme();
+  const choosing = items.some((item) => item.selected !== undefined);
   return (
-    <View style={styles.choices}>
-      {items.map((item) => (
-        <Pressable
-          key={item.value}
-          accessibilityRole="button"
-          onPress={() => onChoose(item.value)}
-          style={({ pressed }) => [
-            styles.choice,
-            item.primary === true
-              ? { backgroundColor: colors.text }
-              : { borderColor: colors.controlBorder, borderWidth: layout.borderControl, backgroundColor: pressed ? colors.surfacePress : "transparent" },
-          ]}
-        >
-          <Text tone={item.primary === true ? "inverse" : "primary"} style={styles.choiceLabel}>
-            {item.label}
-          </Text>
-        </Pressable>
-      ))}
+    <View style={styles.choices} {...(choosing ? { accessibilityRole: "radiogroup" } : {})}>
+      {items.map((item) => {
+        const highlighted = item.primary === true || item.selected === true;
+        return (
+          <Pressable
+            key={item.value}
+            accessibilityRole={choosing ? "radio" : "button"}
+            {...(choosing ? { "aria-checked": item.selected === true } : {})}
+            onPress={() => onChoose(item.value)}
+            style={({ pressed }) => [
+              styles.choice,
+              highlighted
+                ? { backgroundColor: colors.text }
+                : { borderColor: colors.controlBorder, borderWidth: layout.borderControl, backgroundColor: pressed ? colors.surfacePress : "transparent" },
+            ]}
+          >
+            <Text tone={highlighted ? "inverse" : "primary"} style={styles.choiceLabel}>
+              {item.label}
+            </Text>
+          </Pressable>
+        );
+      })}
     </View>
   );
 }
@@ -434,6 +440,7 @@ const styles = StyleSheet.create({
   zoneDetail: { fontFamily: fonts.text500 },
   question: { gap: 8, marginTop: 20 },
   questionHead: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between", gap: 12 },
+  questionHint: { flexShrink: 1, textAlign: "right" },
   viewSwitch: { flexDirection: "row", gap: 22, marginTop: 6, borderBottomWidth: 1 },
   viewSwitchItem: { minHeight: 44, minWidth: 44, paddingHorizontal: 4, justifyContent: "center", borderBottomWidth: 2, borderBottomColor: "transparent", marginBottom: -1 },
   viewSwitchLabel: { fontFamily: fonts.text600, fontSize: 16 },

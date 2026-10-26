@@ -27,10 +27,17 @@ export function SportsSheet({ open, onClose }: SportsSheetProps) {
   useDatabaseVersion(["program", "program_version", "program_slot"]);
   const locked = lockedSports(db());
   const [ordering, setOrdering] = useState(false);
-  const choices = sportChoices(preferences);
-  const enabledCount = choices.filter((choice) => choice.enabled).length;
+  const [frozenOrder, setFrozenOrder] = useState<readonly SportKey[] | null>(null);
+  const live = sportChoices(preferences);
+  const enabledCount = live.filter((choice) => choice.enabled).length;
+  const rank = (sport: SportKey): number => {
+    const index = frozenOrder?.indexOf(sport) ?? -1;
+    return index === -1 ? Number.MAX_SAFE_INTEGER : index;
+  };
+  const choices = ordering || frozenOrder === null ? live : [...live].sort((left, right) => rank(left.sport) - rank(right.sport));
 
   const toggle = (sport: SportKey, enabled: boolean): void => {
+    if (frozenOrder === null) setFrozenOrder(live.map((choice) => choice.sport));
     const mutations = setSportEnabledMutations(preferences, sport, enabled, locked);
     if (mutations.length > 0) write(`${sports[sport].label} ${enabled ? "affiché" : "masqué"}`, mutations);
   };
@@ -46,6 +53,7 @@ export function SportsSheet({ open, onClose }: SportsSheetProps) {
       title="Sports"
       onClose={() => {
         setOrdering(false);
+        setFrozenOrder(null);
         onClose();
       }}
     >
@@ -81,7 +89,13 @@ export function SportsSheet({ open, onClose }: SportsSheetProps) {
       </View>
       {enabledCount > 1 ? (
         <View style={styles.footer}>
-          <LinkButton label={ordering ? "Terminé" : "Changer l'ordre"} onPress={() => setOrdering((current) => !current)} />
+          <LinkButton
+            label={ordering ? "Terminé" : "Changer l'ordre"}
+            onPress={() => {
+              setFrozenOrder(null);
+              setOrdering((current) => !current);
+            }}
+          />
         </View>
       ) : null}
     </Sheet>

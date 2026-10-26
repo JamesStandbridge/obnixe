@@ -474,7 +474,7 @@ export function ClimbScreen({ current }: ClimbScreenProps) {
 
       <Sheet open={sheet === "discipline"} title="Discipline" {...(items.length > 0 ? { context: `Même cotation que les ${noun.many} saisis` } : {})} onClose={() => setSheet("none")}>
         <Choices
-          items={compatible.map((option) => ({ value: option, label: disciplineLabels[option], primary: option === discipline }))}
+          items={compatible.map((option) => ({ value: option, label: disciplineLabels[option], selected: option === discipline }))}
           onChoose={(value) => {
             setSheet("none");
             if (value !== discipline) changeSettings(value, place);

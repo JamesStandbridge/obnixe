@@ -234,7 +234,7 @@ interface ChoiceSheetProps {
 export function ChoiceSheet({ open, title, options, selected, onChoose, onClose }: ChoiceSheetProps) {
   return (
     <Sheet open={open} title={title} onClose={onClose}>
-      <Choices items={options.map((option) => ({ value: option.key, label: option.label, primary: option.key === selected }))} onChoose={(value) => onChoose(value === selected ? null : value)} />
+      <Choices items={options.map((option) => ({ value: option.key, label: option.label, selected: option.key === selected }))} onChoose={(value) => onChoose(value === selected ? null : value)} />
     </Sheet>
   );
 }

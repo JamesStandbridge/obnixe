@@ -219,7 +219,7 @@ export function GradeGrid({ grades, selected, onSelect }: GradeGridProps) {
           <Pressable
             key={grade}
             accessibilityRole="radio"
-            accessibilityState={{ checked: current }}
+            aria-checked={current}
             onPress={() => onSelect(grade)}
             style={({ pressed }) => [
               styles.grade,
@@ -262,7 +262,8 @@ export function Chips<T extends string>({ label, options, selected, multiple, co
           <Pressable
             key={option.value}
             accessibilityRole={multiple ? "checkbox" : "radio"}
-            accessibilityState={{ checked: on, disabled }}
+            aria-checked={on}
+            aria-disabled={disabled}
             disabled={disabled}
             onPress={() => onToggle(option.value)}
             style={({ pressed }) => [
@@ -303,7 +304,7 @@ export function SportStrip({ items, value, onChange }: SportStripProps) {
           <Pressable
             key={item.key}
             accessibilityRole="radio"
-            accessibilityState={{ checked: on }}
+            aria-checked={on}
             accessibilityLabel={item.label}
             onPress={() => onChange(item.key)}
             style={({ pressed }) => [

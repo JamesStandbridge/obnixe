@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import type { LocalDate } from "@obnixe/schema";
 import { createTestContext } from "../testing.ts";
-import { calendarMonth, checkInDays, dayPain, monthFacts, weighInDays } from "./calendar.ts";
+import { calendarMonth, checkInDays, dayPain, firstUseDate, monthFacts, weighInDays } from "./calendar.ts";
 import { completedSessions } from "./sessions.ts";
-import { Seeder } from "./testing.ts";
+import { Seeder, at } from "./testing.ts";
 import { plannedDays, regularity, weekSummary } from "./week.ts";
 
 const d = (value: string): LocalDate => value as LocalDate;
@@ -86,6 +86,7 @@ describe("calendar month", () => {
       sessions: completedSessions(seed.context.db, range),
       checkIns: checkInDays(seed.context.db, range),
       sessionsPerWeek: 4,
+      firstUse: firstUseDate(seed.context.db),
     });
     expect(month.isCurrent).toBe(true);
     expect(month.cells.slice(0, 4).map((cell) => [cell.date, cell.inMonth])).toEqual([
@@ -103,6 +104,22 @@ describe("calendar month", () => {
     expect(month.cells.filter((cell) => cell.planned).map((cell) => cell.date)).toEqual(["2026-10-26", "2026-10-27", "2026-10-29", "2026-10-31"]);
     expect(monthFacts(month, null)).toEqual({ sessions: 5, durationSeconds: (80 + 54 + 42 + 58 + 47) * 60, painDays: 4 });
     expect(monthFacts(month, "run")).toEqual({ sessions: 2, durationSeconds: (42 + 47) * 60, painDays: 1 });
+  });
+
+  it("marks days before the first recorded activity and lists each day most recent first", () => {
+    seedOctober();
+    seed.session({ sport: "run", date: "2026-10-22", startedAt: at("2026-10-22", "18:00"), minutes: 20, values: { kind: "easy", distance: 3000 } });
+    const range = { from: d("2026-10-01"), to: d("2026-10-31") };
+    const firstUse = firstUseDate(seed.context.db);
+    expect(firstUse).toBe("2026-10-12");
+    const month = calendarMonth({ month: { year: 2026, month: 10 }, today: d("2026-10-25"), sessions: completedSessions(seed.context.db, range), checkIns: checkInDays(seed.context.db, range), sessionsPerWeek: 4, firstUse });
+    const byDate = new Map(month.cells.map((cell) => [cell.date, cell]));
+    expect(byDate.get(d("2026-10-11"))?.beforeFirstUse).toBe(true);
+    expect(byDate.get(d("2026-10-12"))?.beforeFirstUse).toBe(false);
+    expect(byDate.get(d("2026-10-13"))?.beforeFirstUse).toBe(false);
+    const runs = byDate.get(d("2026-10-22"))?.sessions ?? [];
+    expect(runs.map((item) => item.durationSeconds)).toEqual([20 * 60, 42 * 60]);
+    expect(firstUseDate(new Seeder(createTestContext()).context.db)).toBeNull();
   });
 
   it("reads weigh-ins and skips trashed check-ins", () => {

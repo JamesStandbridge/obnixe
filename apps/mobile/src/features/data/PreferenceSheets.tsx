@@ -29,8 +29,8 @@ export function MassUnitSheet({ open, value, onClose }: MassUnitSheetProps) {
     <Sheet open={open} title="Charges et poids" context="Les valeurs enregistrées ne changent pas, seul l'affichage suit" onClose={onClose}>
       <Choices
         items={[
-          { value: "kg", label: "Kilogrammes (kg)", primary: value === "kg" },
-          { value: "lb", label: "Livres (lb)", primary: value === "lb" },
+          { value: "kg", label: "Kilogrammes (kg)", selected: value === "kg" },
+          { value: "lb", label: "Livres (lb)", selected: value === "lb" },
         ]}
         onChoose={(massUnit: MassUnit) => {
           updateSettings({ massUnit });

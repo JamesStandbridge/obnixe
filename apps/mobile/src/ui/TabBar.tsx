@@ -36,7 +36,7 @@ export function TabBar({ state, navigateToTab }: BottomTabBarProps) {
           <Pressable
             key={route.key}
             accessibilityRole="tab"
-            accessibilityState={{ selected: focused }}
+            aria-selected={focused}
             accessibilityLabel={tab.label}
             onPress={() => navigateToTab(route.key)}
             style={styles.tab}

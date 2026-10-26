@@ -11,6 +11,7 @@ import {
   currentProgram,
   dateParts,
   dayPain,
+  firstUseDate,
   monthEnd,
   monthFacts,
   monthOf,
@@ -68,6 +69,7 @@ export function CalendarScreen() {
         checkIns: checkInDays(database, range),
         weighIns: weighInDays(database, range),
         sessionsPerWeek: currentProgram(database)?.version.sessionsPerWeek ?? null,
+        firstUse: firstUseDate(database),
         next: next === null ? null : { sport: next.slot.sport, title: next.variants.length > 0 && next.variants[0] !== undefined ? `${next.slot.name} · ${next.variants[0].name}` : next.slot.name },
         settings: database.select().from(settings).get() ?? null,
       };
@@ -77,13 +79,12 @@ export function CalendarScreen() {
   );
 
   const calendar = useMemo(
-    () => calendarMonth({ month, today, sessions: data.all.filter((item) => item.localDate >= addDays(monthStart(month), -7) && item.localDate <= addDays(monthEnd(month), 7)), checkIns: data.checkIns, sessionsPerWeek: data.sessionsPerWeek }),
-    [month, today, data.all, data.checkIns, data.sessionsPerWeek],
+    () => calendarMonth({ month, today, sessions: data.all.filter((item) => item.localDate >= addDays(monthStart(month), -7) && item.localDate <= addDays(monthEnd(month), 7)), checkIns: data.checkIns, sessionsPerWeek: data.sessionsPerWeek, firstUse: data.firstUse }),
+    [month, today, data.all, data.checkIns, data.sessionsPerWeek, data.firstUse],
   );
   const facts = monthFacts(calendar, sportFilter);
   const options = useMemo(() => sportFilterOptions(data.all), [data.all]);
-  const firstDate = [data.all[0]?.localDate, data.checkIns[0]?.localDate].filter((value): value is LocalDate => value !== undefined).sort()[0] ?? today;
-  const firstMonth = monthOf(firstDate);
+  const firstMonth = monthOf(data.firstUse ?? today);
   const canGoBack = compareMonths(month, firstMonth) > 0;
   const canGoForward = compareMonths(month, monthOf(today)) < 0;
 
@@ -215,11 +216,12 @@ function DayCell({ day, filter, selected, onPress }: DayCellProps) {
   const visible = visibleSessions(day, filter);
   const pain = dayPain(day, filter);
   const empty = all.length === 0;
+  const blank = day.isFuture || day.beforeFirstUse;
   const ink = selected ? colors.bg : colors.text;
   const parts = [longDate(day.date)];
   if (!empty) parts.push(all.map((item) => sportLabel(item.sport)).join(", "));
   if (empty && day.checkIn !== null) parts.push("check-in seul");
-  if (empty && day.checkIn === null && !day.isFuture) parts.push(day.isToday ? "rien de noté" : "repos");
+  if (empty && day.checkIn === null && !blank) parts.push(day.isToday ? "rien de noté" : "repos");
   if (day.planned) parts.push("séance prévue");
   if (pain !== null) parts.push(pain === "stop" ? "arrêt signalé" : "gêne signalée");
   if (day.isToday) parts.push("aujourd'hui");
@@ -227,18 +229,18 @@ function DayCell({ day, filter, selected, onPress }: DayCellProps) {
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={parts.join(", ")}
-      accessibilityState={{ selected, disabled: day.isFuture }}
-      disabled={day.isFuture}
+      accessibilityState={{ selected, disabled: blank }}
+      disabled={blank}
       onPress={onPress}
       style={[
         styles.cell,
         { backgroundColor: empty ? "transparent" : colors.surface },
-        empty && !day.isFuture && { borderWidth: 1, borderColor: colors.line },
+        empty && !blank && { borderWidth: 1, borderColor: colors.line },
         day.isToday && { borderWidth: 2, borderColor: colors.text },
         selected && { backgroundColor: colors.text, borderWidth: 0 },
       ]}
     >
-      <Text style={[styles.cellNumber, empty && !selected && styles.cellEmptyNumber, day.isFuture && styles.cellFutureNumber, { color: selected ? colors.bg : day.isFuture ? colors.text3 : empty ? colors.text2 : colors.text }]}>
+      <Text style={[styles.cellNumber, empty && !selected && styles.cellEmptyNumber, blank && styles.cellFutureNumber, { color: selected ? colors.bg : blank ? colors.text3 : empty ? colors.text2 : colors.text }]}>
         {number}
       </Text>
       {pain === null ? null : (
@@ -339,7 +341,7 @@ function DayDetail({ day, filter, today, next, weighIn, sessions }: DayDetailPro
             last
           />
         ) : null}
-        {!isToday && items.length === 0 ? (
+        {!isToday && !day.beforeFirstUse && items.length === 0 ? (
           <Text tone="secondary" style={styles.rest}>
             {hidden > 0 ? `${plural(hidden, "séance masquée", "séances masquées")} par le filtre` : checkIn !== null ? "Pas de séance" : "Repos"}
           </Text>

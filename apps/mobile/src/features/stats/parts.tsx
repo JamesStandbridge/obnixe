@@ -118,7 +118,7 @@ export function FilterChips<T extends string>({ label, options, value, onChange 
           <Pressable
             key={option.value}
             accessibilityRole="radio"
-            accessibilityState={{ checked: selected }}
+            aria-checked={selected}
             onPress={() => onChange(option.value)}
             style={({ pressed }) => [
               styles.chip,

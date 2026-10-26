@@ -1,0 +1,26 @@
+diff --git a/build/ExponentImagePicker.web.js b/build/ExponentImagePicker.web.js
+index b649791c671987c56331f8cbdd71cf903d4306b9..2894cf140baa3d7bb69ec0f7e20798608e35a80b 100644
+--- a/build/ExponentImagePicker.web.js
++++ b/build/ExponentImagePicker.web.js
+@@ -233,7 +233,7 @@ function permissionGrantedResponse() {
+     for (const mediaType of filteredMediaTypes){
+         // Make sure the types don't repeat
+         if (!result.includes(MediaTypeInput[mediaType])) {
+-            result = result.concat(',', MediaTypeInput[mediaType]);
++            result = result === '' ? MediaTypeInput[mediaType] : result.concat(',', MediaTypeInput[mediaType]);
+         }
+     }
+     return result;
+diff --git a/src/ExponentImagePicker.web.ts b/src/ExponentImagePicker.web.ts
+index fffafd6a152fb989569dcd20b400ea88def23474..8d52bbf8d2d60c06ed34741eccc5a8c2af753239 100644
+--- a/src/ExponentImagePicker.web.ts
++++ b/src/ExponentImagePicker.web.ts
+@@ -258,7 +258,7 @@ function createMediaTypeFormat(mediaTypes: MediaType[]): string {
+   for (const mediaType of filteredMediaTypes) {
+     // Make sure the types don't repeat
+     if (!result.includes(MediaTypeInput[mediaType])) {
+-      result = result.concat(',', MediaTypeInput[mediaType]);
++      result = result === '' ? MediaTypeInput[mediaType] : result.concat(',', MediaTypeInput[mediaType]);
+     }
+   }
+   return result;

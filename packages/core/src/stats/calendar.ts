@@ -1,5 +1,5 @@
-import { and, asc, gte, isNotNull, isNull, lte } from "drizzle-orm";
-import { checkIn, painReport, weighIn } from "@obnixe/schema";
+import { and, asc, eq, gte, isNotNull, isNull, lte, min } from "drizzle-orm";
+import { checkIn, painReport, session, weighIn } from "@obnixe/schema";
 import type { Id, LocalDate, PainLevel, SleepBucket, SportKey, ZoneKey } from "@obnixe/schema";
 import type { ObnixeDatabase } from "../database.ts";
 import { addDays, compareMonths, daysInMonth, localDate, mondayOf, monthOf, weekdayIndex } from "../dates.ts";
@@ -64,11 +64,23 @@ export function weighInDays(db: ObnixeDatabase, range: DateRange): WeighInDay[] 
     .all();
 }
 
+export function firstUseDate(db: ObnixeDatabase): LocalDate | null {
+  const sessionDay = db
+    .select({ day: min(session.localDate) })
+    .from(session)
+    .where(and(isNull(session.deletedAt), eq(session.status, "completed")))
+    .get()?.day;
+  const checkInDay = db.select({ day: min(checkIn.localDate) }).from(checkIn).where(isNull(checkIn.deletedAt)).get()?.day;
+  const days = [sessionDay, checkInDay].filter((day): day is LocalDate => day !== null && day !== undefined).sort();
+  return days[0] ?? null;
+}
+
 export interface CalendarDay {
   readonly date: LocalDate;
   readonly inMonth: boolean;
   readonly isToday: boolean;
   readonly isFuture: boolean;
+  readonly beforeFirstUse: boolean;
   readonly planned: boolean;
   readonly sessions: readonly SessionSummary[];
   readonly checkIn: CheckInDay | null;
@@ -86,8 +98,10 @@ export interface CalendarInput {
   readonly sessions: readonly SessionSummary[];
   readonly checkIns: readonly CheckInDay[];
   readonly sessionsPerWeek: number | null;
+  readonly firstUse: LocalDate | null;
 }
 
+/** Days are listed most recent session first, like the journal list. */
 export function calendarMonth(input: CalendarInput): CalendarMonth {
   const first = localDate(input.month.year, input.month.month, 1);
   const offset = weekdayIndex(first);
@@ -109,8 +123,9 @@ export function calendarMonth(input: CalendarInput): CalendarMonth {
       inMonth,
       isToday: date === input.today,
       isFuture: date > input.today,
+      beforeFirstUse: date < (input.firstUse ?? input.today),
       planned: inMonth && planned.has(date) && date > input.today,
-      sessions: inMonth ? (byDay.get(date) ?? []) : [],
+      sessions: inMonth ? [...(byDay.get(date) ?? [])].reverse() : [],
       checkIn: inMonth ? (checkIns.get(date) ?? null) : null,
     });
   }

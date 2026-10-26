@@ -25,7 +25,7 @@ export function PrimaryButton({ label, onPress, disabled = false, icon, style, c
     <Animated.View style={[{ transform: [{ scale: press.scale }] }, style]}>
       <Pressable
         accessibilityRole="button"
-        accessibilityState={{ disabled }}
+        aria-disabled={disabled}
         disabled={disabled}
         onPress={onPress}
         onPressIn={press.onPressIn}
@@ -54,7 +54,7 @@ export function SheetButton({ label, onPress, disabled = false, style }: ButtonP
     <Animated.View style={[{ transform: [{ scale: press.scale }] }, disabled && styles.disabled, style]}>
       <Pressable
         accessibilityRole="button"
-        accessibilityState={{ disabled }}
+        aria-disabled={disabled}
         disabled={disabled}
         onPress={onPress}
         onPressIn={press.onPressIn}
@@ -74,7 +74,7 @@ export function ControlButton({ label, onPress, disabled = false, icon, style }:
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityState={{ disabled }}
+      aria-disabled={disabled}
       disabled={disabled}
       onPress={onPress}
       style={({ pressed }) => [
@@ -95,7 +95,7 @@ export function LinkButton({ label, onPress, disabled = false, style }: ButtonPr
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityState={{ disabled }}
+      aria-disabled={disabled}
       disabled={disabled}
       onPress={onPress}
       style={({ pressed }) => [styles.link, pressed && { backgroundColor: colors.surface }, disabled && styles.disabled, style]}

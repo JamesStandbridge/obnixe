@@ -1,4 +1,5 @@
 import { getDocumentAsync } from "expo-document-picker";
+import { backupFileExtension } from "@obnixe/core";
 
 export interface PickedFile {
   readonly name: string;
@@ -53,7 +54,7 @@ async function deleteEntry(path: readonly string[], name: string): Promise<void>
 }
 
 export async function pickBackupFile(): Promise<PickedFile | null> {
-  const result = await getDocumentAsync({ type: "*/*", multiple: false, base64: false });
+  const result = await getDocumentAsync({ type: `.${backupFileExtension}`, multiple: false, base64: false });
   if (result.canceled) return null;
   const [asset] = result.assets;
   const file = asset?.file;

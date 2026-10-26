@@ -58,7 +58,7 @@ export function cellText(result: ClimbResult, attempts: number): string {
     case "sent":
       return attempts > 1 ? `${attempts} essais` : "1 essai";
     case "project":
-      return `pas encore · ${attempts}`;
+      return `projet · ${attempts}`;
     default: {
       const unreachable: never = result;
       return unreachable;

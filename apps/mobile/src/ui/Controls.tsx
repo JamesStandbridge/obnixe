@@ -30,7 +30,7 @@ export function Segmented<T extends string>({ options, value, onChange }: Segmen
           <Pressable
             key={option.value}
             accessibilityRole="radio"
-            accessibilityState={{ checked: selected }}
+            aria-checked={selected}
             onPress={() => onChange(option.value)}
             style={({ pressed }) => [
               styles.segment,
@@ -78,7 +78,7 @@ export function Switch({ value, onChange, label }: SwitchProps) {
     <Pressable
       accessibilityRole="switch"
       accessibilityLabel={label}
-      accessibilityState={{ checked: value }}
+      aria-checked={value}
       hitSlop={6}
       onPress={() => onChange(!value)}
     >
