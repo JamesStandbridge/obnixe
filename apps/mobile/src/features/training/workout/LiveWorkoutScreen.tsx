@@ -65,12 +65,14 @@ import { Readout } from "@/features/training/workout/Readout";
 import type { DraftKey } from "@/features/training/workout/Readout";
 import { RestBand } from "@/features/training/workout/RestBand";
 import type { Band } from "@/features/training/workout/RestBand";
+import { useRestAlert } from "@/features/training/workout/useRestAlert";
 import { Steps, Track, UpNext } from "@/features/training/workout/WorkoutParts";
 import { ControlButton, LinkButton, PrimaryButton } from "@/ui/Button";
 import { PainMark } from "@/ui/Controls";
 import { Icon } from "@/ui/icons/Icon";
-import { IconButton } from "@/ui/Inputs";
+import { Choices, IconButton } from "@/ui/Inputs";
 import { usePressScale } from "@/ui/motion";
+import { Sheet } from "@/ui/Overlays";
 import { useSnackbar } from "@/ui/SnackbarHost";
 import { Text } from "@/ui/Text";
 import { useTheme } from "@/ui/theme";
@@ -187,6 +189,9 @@ export function LiveWorkoutScreen({ live }: LiveWorkoutScreenProps) {
     if (-remaining > overdueAfterSeconds) return { kind: "idle" };
     return { kind: "done", over: -remaining };
   })();
+
+  const nextSetHint = display === undefined ? "" : `Série ${setIndex + 1} sur ${display.target.sets} · ${display.exercise.name}${isDraftValid(display, draft) ? ` · ${setText(draft, unit)}` : ""}`;
+  const restAlert = useRestAlert(finished || active !== null || lastSet === null || restTotal === null ? null : { endsAt: lastSet.set.completedAt + restTotal * 1000, body: nextSetHint });
 
   const stripShown = band.kind === "running" || band.kind === "done";
   const placement = { aboveTabBar: false, extraOffset: Math.max(0, panelHeight - insets.bottom + (stripShown ? 0 : stripHeight)) } as const;
@@ -721,6 +726,18 @@ export function LiveWorkoutScreen({ live }: LiveWorkoutScreenProps) {
         onFinish={finishNow}
         onClose={closeSheet}
       />
+      <Sheet open={restAlert.explaining && !sheet.open && !pain.open && pad === null} title="Prévenir à la fin du repos" onClose={restAlert.later}>
+        <Text tone="secondary" style={styles.alertText}>
+          Si tu verrouilles l'écran ou changes d'application pendant un repos, Obnixe peut t'envoyer une notification quand il se termine, avec la série suivante. Rien d'autre, et rien ne quitte le téléphone.
+        </Text>
+        <Choices<"allow" | "later">
+          items={[
+            { value: "allow", label: "Autoriser les notifications", primary: true },
+            { value: "later", label: "Pas maintenant" },
+          ]}
+          onChoose={(choice) => (choice === "allow" ? restAlert.allow() : restAlert.later())}
+        />
+      </Sheet>
     </View>
   );
 }
@@ -815,5 +832,6 @@ const styles = StyleSheet.create({
   actionCell: { flex: 1 },
   action: { height: 64, borderRadius: radii.panel, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, paddingHorizontal: 12 },
   actionLabel: { fontFamily: fonts.text700, fontSize: 18, flexShrink: 1 },
+  alertText: { marginTop: 4 },
   disabled: { opacity: 0.4 },
 });
