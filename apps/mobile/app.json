@@ -54,7 +54,8 @@
           "cameraPermission": "Obnixe prend tes photos de progression et les garde sur ce téléphone.",
           "microphonePermission": false
         }
-      ]
+      ],
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true
