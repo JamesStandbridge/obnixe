@@ -39,7 +39,7 @@ export function fixtures(context: TestContext): Fixtures {
   const occurred = (localDate: string) => ({ occurredAt: env.now(), localDate: localDate as LocalDate, timeZone: "Europe/Paris" });
   return {
     write: (mutations) => commit(context.db, env, { actor: { author: "user", connectionId: null }, summary: "Test", revertsId: null, mutations }),
-    exercise: (name) => ({ id: env.newId(), name, nameKey: exerciseNameKey(name), measure: "load_reps", equipment: "barbell", loadStepGrams: 2500, zonesReviewed: true, mergedIntoId: null, archivedAt: null }),
+    exercise: (name) => ({ id: env.newId(), name, nameKey: exerciseNameKey(name), measure: "load_reps", equipment: "barbell", loadMode: "total", baseGrams: null, loadStepGrams: 2500, zonesReviewed: true, mergedIntoId: null, archivedAt: null }),
     session: (overrides = {}) => ({
       id: env.newId(),
       sport: "strength",

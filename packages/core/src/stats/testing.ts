@@ -2,6 +2,7 @@ import { agentConnection } from "@obnixe/schema";
 import type { Effort, EpochMs, ExerciseMeasure, FieldValues, Id, LocalDate, PainLevel, ReviewStatus, SessionStatus, SportKey, ZoneKey } from "@obnixe/schema";
 import { exerciseNameKey } from "@obnixe/schema";
 import type { TestContext } from "../testing.ts";
+import type { ExerciseLoad } from "../training/load.ts";
 import { commit } from "../writer.ts";
 import type { Actor, Mutation } from "../writer.ts";
 
@@ -22,13 +23,13 @@ export class Seeder {
     return this.context.env.newId();
   }
 
-  exercise(name: string, measure: ExerciseMeasure = "load_reps", zones: readonly ZoneKey[] = []): Id {
+  exercise(name: string, measure: ExerciseMeasure = "load_reps", zones: readonly ZoneKey[] = [], load: ExerciseLoad = { loadMode: "total", baseGrams: null }): Id {
     const id = this.id();
     this.write([
       {
         kind: "insert",
         table: "exercise",
-        row: { id, name, nameKey: exerciseNameKey(name), measure, equipment: measure === "load_reps" ? "barbell" : "bodyweight", loadStepGrams: null, zonesReviewed: true, mergedIntoId: null, archivedAt: null },
+        row: { id, name, nameKey: exerciseNameKey(name), measure, equipment: measure === "load_reps" ? "barbell" : "bodyweight", ...load, loadStepGrams: null, zonesReviewed: true, mergedIntoId: null, archivedAt: null },
       },
       ...zones.map((zone): Mutation => ({ kind: "insert", table: "exercise_zone", row: { exerciseId: id, zone } })),
     ]);

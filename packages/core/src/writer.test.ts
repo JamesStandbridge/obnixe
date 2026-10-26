@@ -26,7 +26,7 @@ function undo(changesetId: Id): Id {
 }
 
 function newExercise(name: string): NewRow<"exercise"> {
-  return { id: context.env.newId(), name, nameKey: exerciseNameKey(name), measure: "load_reps", equipment: "barbell", loadStepGrams: 2500, zonesReviewed: true, mergedIntoId: null, archivedAt: null };
+  return { id: context.env.newId(), name, nameKey: exerciseNameKey(name), measure: "load_reps", equipment: "barbell", loadMode: "total", baseGrams: null, loadStepGrams: 2500, zonesReviewed: true, mergedIntoId: null, archivedAt: null };
 }
 
 function newSession(overrides: Partial<NewRow<"session">> = {}): NewRow<"session"> {

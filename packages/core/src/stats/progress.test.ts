@@ -33,7 +33,7 @@ describe("exercise progress", () => {
     expect(exerciseSeries(sessions, "load").map((point) => point.isRecord)).toEqual([false, true, false, true]);
     expect(exerciseSeries(sessions, "volume").map((point) => point.value)).toEqual([1020, 1000, 600, 390]);
     expect(preferredExerciseMetric("load_reps", sessions)).toBe("e1rm");
-    expect(estimatedOneRepMaxKg({ loadGrams: 100_000, reps: 5, rir: null, durationSeconds: null, interrupted: false })).toBeCloseTo(116.667, 2);
+    expect(estimatedOneRepMaxKg({ loadGrams: 100_000, totalLoadGrams: 100_000, reps: 5, rir: null, durationSeconds: null, interrupted: false })).toBeCloseTo(116.667, 2);
   });
 
   it("prefers top load when most estimates are unreliable and handles bodyweight and timed work", () => {
@@ -70,6 +70,21 @@ describe("exercise progress", () => {
     const last = lastPerformances(seed.context.db, [rdl]).get(rdl);
     expect(last?.localDate).toBe("2026-09-08");
     expect(last?.top.loadGrams).toBe(90_000);
+  });
+
+  it("charts effective totals per load mode, each set under its own exercise once merged", () => {
+    const curl = seed.exercise("Curl barre EZ", "load_reps", [], { loadMode: "per_side", baseGrams: 10_000 });
+    const old = seed.exercise("Curl haltères", "load_reps", [], { loadMode: "per_hand", baseGrams: null });
+    seed.session({ sport: "strength", date: "2026-09-01", entries: [{ exerciseId: old, sets: [{ kg: 12, reps: 10 }] }] });
+    seed.session({ sport: "strength", date: "2026-09-08", entries: [{ exerciseId: curl, sets: [{ kg: 10, reps: 10 }, { kg: 7.5, reps: 12 }] }] });
+    seed.write([{ kind: "update", table: "exercise", key: old, patch: { mergedIntoId: curl, archivedAt: seed.context.env.now() } }]);
+
+    const sessions = exerciseSessions(seed.context.db, curl);
+    expect(sessions.map((item) => item.sets.map((set) => [set.loadGrams, set.totalLoadGrams]))).toEqual([[[12_000, 24_000]], [[10_000, 30_000], [7_500, 25_000]]]);
+    expect(exerciseSeries(sessions, "load").map((point) => point.value)).toEqual([24, 30]);
+    expect(exerciseSeries(sessions, "volume").map((point) => point.value)).toEqual([240, 600]);
+    expect(exerciseSeries(sessions, "e1rm").map((point) => point.value)).toEqual([32, 40]);
+    expect(lastPerformances(seed.context.db, [curl]).get(curl)?.top).toMatchObject({ loadGrams: 10_000, totalLoadGrams: 30_000 });
   });
 });
 

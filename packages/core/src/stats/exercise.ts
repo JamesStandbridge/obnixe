@@ -2,6 +2,8 @@ import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { exercise, session, strengthEntry, strengthSet } from "@obnixe/schema";
 import type { EpochMs, Exercise, ExerciseMeasure, Id, LocalDate } from "@obnixe/schema";
 import type { ObnixeDatabase } from "../database.ts";
+import { totalLoadGrams } from "../training/load.ts";
+import type { ExerciseLoad } from "../training/load.ts";
 import { groupBy } from "./sessions.ts";
 import { recordFlags } from "./series.ts";
 import type { Measured } from "./series.ts";
@@ -25,6 +27,7 @@ export function exerciseMetrics(measure: ExerciseMeasure): readonly [ExerciseMet
 
 export interface ExerciseSet {
   readonly loadGrams: number | null;
+  readonly totalLoadGrams: number | null;
   readonly reps: number | null;
   readonly durationSeconds: number | null;
   readonly rir: number | null;
@@ -36,6 +39,19 @@ export interface ExerciseSession {
   readonly localDate: LocalDate;
   readonly startedAt: EpochMs;
   readonly sets: readonly ExerciseSet[];
+}
+
+type ExerciseSetRow = Omit<ExerciseSet, "totalLoadGrams"> & ExerciseLoad;
+
+function exerciseSet(row: ExerciseSetRow): ExerciseSet {
+  return {
+    loadGrams: row.loadGrams,
+    totalLoadGrams: totalLoadGrams(row.loadGrams, row),
+    reps: row.reps,
+    durationSeconds: row.durationSeconds,
+    rir: row.rir,
+    interrupted: row.interrupted,
+  };
 }
 
 function exerciseIdsWithMerged(db: ObnixeDatabase, exerciseId: Id): Id[] {
@@ -55,10 +71,13 @@ export function exerciseSessions(db: ObnixeDatabase, exerciseId: Id): ExerciseSe
       durationSeconds: strengthSet.durationSeconds,
       rir: strengthSet.rir,
       interrupted: strengthSet.interrupted,
+      loadMode: exercise.loadMode,
+      baseGrams: exercise.baseGrams,
     })
     .from(strengthSet)
     .innerJoin(strengthEntry, eq(strengthSet.entryId, strengthEntry.id))
     .innerJoin(session, eq(strengthEntry.sessionId, session.id))
+    .innerJoin(exercise, eq(strengthEntry.exerciseId, exercise.id))
     .where(and(inArray(strengthEntry.exerciseId, ids), eq(session.status, "completed"), isNull(session.deletedAt)))
     .orderBy(asc(session.startedAt), asc(strengthEntry.position), asc(strengthSet.position))
     .all();
@@ -69,14 +88,14 @@ export function exerciseSessions(db: ObnixeDatabase, exerciseId: Id): ExerciseSe
       sessionId: first.sessionId,
       localDate: first.localDate,
       startedAt: first.startedAt,
-      sets: sets.map(({ loadGrams, reps, durationSeconds, rir, interrupted }) => ({ loadGrams, reps, durationSeconds, rir, interrupted })),
+      sets: sets.map(exerciseSet),
     };
   });
 }
 
 export function estimatedOneRepMaxKg(set: ExerciseSet): number | null {
-  if (set.loadGrams === null || set.reps === null || set.reps === 0) return null;
-  return (set.loadGrams / 1000) * (1 + (set.reps + (set.rir ?? 0)) / 30);
+  if (set.totalLoadGrams === null || set.reps === null || set.reps === 0) return null;
+  return (set.totalLoadGrams / 1000) * (1 + (set.reps + (set.rir ?? 0)) / 30);
 }
 
 export function isUnreliableEstimate(set: ExerciseSet): boolean {
@@ -118,11 +137,11 @@ function metricValue(metric: ExerciseMetric, sets: readonly ExerciseSet[]): Metr
       return top === null || value === null ? null : { value: Math.round(value * 10) / 10, top, unreliable: isUnreliableEstimate(top) };
     }
     case "load": {
-      const top = best(sets, (set) => (set.loadGrams === null || (set.reps ?? 0) === 0 ? null : set.loadGrams * 1000 + (set.reps ?? 0)));
-      return top?.loadGrams == null ? null : { value: top.loadGrams / 1000, top, unreliable: false };
+      const top = best(sets, (set) => (set.totalLoadGrams === null || (set.reps ?? 0) === 0 ? null : set.totalLoadGrams * 1000 + (set.reps ?? 0)));
+      return top?.totalLoadGrams == null ? null : { value: top.totalLoadGrams / 1000, top, unreliable: false };
     }
     case "volume": {
-      const value = sets.reduce((sum, set) => sum + ((set.loadGrams ?? 0) * (set.reps ?? 0)) / 1000, 0);
+      const value = sets.reduce((sum, set) => sum + ((set.totalLoadGrams ?? 0) * (set.reps ?? 0)) / 1000, 0);
       return value === 0 ? null : { value: Math.round(value), top: null, unreliable: false };
     }
     case "best_reps": {
@@ -233,23 +252,22 @@ export function lastPerformances(db: ObnixeDatabase, exerciseIds: readonly Id[])
       durationSeconds: strengthSet.durationSeconds,
       rir: strengthSet.rir,
       interrupted: strengthSet.interrupted,
+      loadMode: exercise.loadMode,
+      baseGrams: exercise.baseGrams,
     })
     .from(strengthSet)
     .innerJoin(strengthEntry, eq(strengthSet.entryId, strengthEntry.id))
     .innerJoin(session, eq(strengthEntry.sessionId, session.id))
+    .innerJoin(exercise, eq(strengthEntry.exerciseId, exercise.id))
     .where(and(inArray(strengthEntry.exerciseId, [...canonical.keys()]), eq(session.status, "completed"), isNull(session.deletedAt)))
     .all();
   const byExercise = groupBy(rows, (row) => canonical.get(row.exerciseId) ?? row.exerciseId);
   for (const [exerciseId, sets] of byExercise) {
     const latest = sets.reduce((winner, row) => (row.startedAt > winner.startedAt ? row : winner));
     const sameSession = sets.filter((row) => row.sessionId === latest.sessionId);
-    const top = best(sameSession, (row) => (row.loadGrams ?? 0) * 1000 + (row.reps ?? 0) + (row.durationSeconds ?? 0));
+    const top = best(sameSession.map(exerciseSet), (set) => (set.totalLoadGrams ?? 0) * 1000 + (set.reps ?? 0) + (set.durationSeconds ?? 0));
     if (top === null) continue;
-    result.set(exerciseId, {
-      exerciseId,
-      localDate: latest.localDate,
-      top: { loadGrams: top.loadGrams, reps: top.reps, durationSeconds: top.durationSeconds, rir: top.rir, interrupted: top.interrupted },
-    });
+    result.set(exerciseId, { exerciseId, localDate: latest.localDate, top });
   }
   return result;
 }

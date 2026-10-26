@@ -37,7 +37,7 @@ function exercises(): Exercise[] {
 }
 
 function createExercise(name: string, measure: ExerciseInput["measure"] = "load_reps", zones: readonly ZoneKey[] = []): Id {
-  const plan = planCreateExercise({ name, measure, equipment: measure === "load_reps" ? "barbell" : "bodyweight", loadStepGrams: measure === "load_reps" ? 2500 : null, zones }, exercises(), newId);
+  const plan = planCreateExercise({ name, measure, equipment: measure === "load_reps" ? "barbell" : "bodyweight", loadMode: "total", baseGrams: null, loadStepGrams: measure === "load_reps" ? 2500 : null, zones }, exercises(), newId);
   if (!plan.ok) throw new Error(`Exercise ${name} refused: ${plan.issue.kind}`);
   write(plan.mutations);
   return plan.exerciseId;
@@ -319,7 +319,7 @@ describe("program status", () => {
 describe("exercises", () => {
   it("rejects duplicate names by key and offers the existing exercise", () => {
     const id = createExercise("Développé couché");
-    const duplicate = planCreateExercise({ name: "  developpe   COUCHÉ ", measure: "load_reps", equipment: "barbell", loadStepGrams: 2500, zones: [] }, exercises(), newId);
+    const duplicate = planCreateExercise({ name: "  developpe   COUCHÉ ", measure: "load_reps", equipment: "barbell", loadMode: "total", baseGrams: null, loadStepGrams: 2500, zones: [] }, exercises(), newId);
     expect(duplicate.ok).toBe(false);
     if (!duplicate.ok) expect(duplicate.issue.kind === "name_taken" && duplicate.issue.existing.id).toBe(id);
     const archive = planArchiveExercise(exercises()[0] as Exercise, context.env.now());
@@ -327,14 +327,31 @@ describe("exercises", () => {
     write([archive]);
     expect(findExerciseByName(exercises(), "Developpe couche")?.id).toBe(id);
     expect(searchExercises(exercises(), "dev")).toEqual([]);
-    expect(planCreateExercise({ name: "Gainage", measure: "duration", equipment: "bodyweight", loadStepGrams: 1000, zones: [] }, exercises(), newId)).toEqual({
+    expect(planCreateExercise({ name: "Gainage", measure: "duration", equipment: "bodyweight", loadMode: "total", baseGrams: null, loadStepGrams: 1000, zones: [] }, exercises(), newId)).toEqual({
       ok: false,
       issue: { kind: "load_step_invalid" },
     });
-    expect(planCreateExercise({ name: " ", measure: "duration", equipment: "bodyweight", loadStepGrams: null, zones: [] }, exercises(), newId)).toEqual({
+    expect(planCreateExercise({ name: " ", measure: "duration", equipment: "bodyweight", loadMode: "total", baseGrams: null, loadStepGrams: null, zones: [] }, exercises(), newId)).toEqual({
       ok: false,
       issue: { kind: "name_missing" },
     });
+  });
+
+  it("stores the load mode and refuses a base weight outside per side loads", () => {
+    const base = { measure: "load_reps", equipment: "barbell", loadStepGrams: 1250, zones: [] } as const;
+    expect(planCreateExercise({ ...base, name: "Curl barre EZ", loadMode: "total", baseGrams: 10_000 }, exercises(), newId)).toEqual({ ok: false, issue: { kind: "load_mode_invalid" } });
+    expect(planCreateExercise({ ...base, name: "Gainage", measure: "duration", equipment: "bodyweight", loadStepGrams: null, loadMode: "per_hand", baseGrams: null }, exercises(), newId)).toEqual({
+      ok: false,
+      issue: { kind: "load_mode_invalid" },
+    });
+    const created = planCreateExercise({ ...base, name: "Curl barre EZ", loadMode: "per_side", baseGrams: 10_000 }, exercises(), newId);
+    if (!created.ok) throw new Error(created.issue.kind);
+    write(created.mutations);
+    const curl = exercises().find((row) => row.id === created.exerciseId) as Exercise;
+    expect(curl).toMatchObject({ loadMode: "per_side", baseGrams: 10_000 });
+    const update = planUpdateExercise({ exercise: curl, zones: [], inUse: true, input: { ...base, name: "Curl barre EZ", loadMode: "per_hand", baseGrams: null } }, exercises());
+    if (!update.ok) throw new Error(update.issue.kind);
+    expect(update.mutations).toEqual([expect.objectContaining({ kind: "update", patch: expect.objectContaining({ loadMode: "per_hand", baseGrams: null }) })]);
   });
 
   it("searches, edits zones and locks the measure once used", () => {
@@ -345,12 +362,12 @@ describe("exercises", () => {
     const bench = exercises().find((row) => row.id === fixture.bench) as Exercise;
     const usage = exerciseUsage(context.db, bench.id);
     expect(usage).toEqual({ inUse: true, programNames: ["Base hiver"] });
-    const locked = planUpdateExercise({ exercise: bench, zones: ["shoulder_right"], inUse: usage.inUse, input: { name: "Développé couché", measure: "bodyweight_reps", equipment: "barbell", loadStepGrams: null, zones: [] } }, exercises());
+    const locked = planUpdateExercise({ exercise: bench, zones: ["shoulder_right"], inUse: usage.inUse, input: { name: "Développé couché", measure: "bodyweight_reps", equipment: "barbell", loadMode: "total", baseGrams: null, loadStepGrams: null, zones: [] } }, exercises());
     expect(locked).toEqual({ ok: false, issue: { kind: "measure_locked" } });
-    const taken = planUpdateExercise({ exercise: bench, zones: ["shoulder_right"], inUse: true, input: { name: "squat BARRE", measure: "load_reps", equipment: "barbell", loadStepGrams: 2500, zones: [] } }, exercises());
+    const taken = planUpdateExercise({ exercise: bench, zones: ["shoulder_right"], inUse: true, input: { name: "squat BARRE", measure: "load_reps", equipment: "barbell", loadMode: "total", baseGrams: null, loadStepGrams: 2500, zones: [] } }, exercises());
     expect(taken.ok).toBe(false);
     const update = planUpdateExercise(
-      { exercise: bench, zones: ["shoulder_right"], inUse: true, input: { name: "Développé couché barre", measure: "load_reps", equipment: "barbell", loadStepGrams: 1250, zones: ["shoulder_left", "elbow_right"] } },
+      { exercise: bench, zones: ["shoulder_right"], inUse: true, input: { name: "Développé couché barre", measure: "load_reps", equipment: "barbell", loadMode: "total", baseGrams: null, loadStepGrams: 1250, zones: ["shoulder_left", "elbow_right"] } },
       exercises(),
     );
     if (!update.ok) throw new Error(update.issue.kind);
@@ -358,7 +375,7 @@ describe("exercises", () => {
     write(update.mutations);
     const renamed = exercises().find((row) => row.id === bench.id);
     expect(renamed?.nameKey).toBe("developpe couche barre");
-    const unchanged = planUpdateExercise({ exercise: renamed as Exercise, zones: ["shoulder_left", "elbow_right"], inUse: true, input: { name: "Développé couché barre", measure: "load_reps", equipment: "barbell", loadStepGrams: 1250, zones: ["elbow_right", "shoulder_left"] } }, exercises());
+    const unchanged = planUpdateExercise({ exercise: renamed as Exercise, zones: ["shoulder_left", "elbow_right"], inUse: true, input: { name: "Développé couché barre", measure: "load_reps", equipment: "barbell", loadMode: "total", baseGrams: null, loadStepGrams: 1250, zones: ["elbow_right", "shoulder_left"] } }, exercises());
     expect(unchanged).toEqual({ ok: true, exerciseId: bench.id, mutations: [] });
   });
 });

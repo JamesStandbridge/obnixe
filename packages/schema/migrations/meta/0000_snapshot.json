@@ -480,6 +480,20 @@
           "notNull": true,
           "autoincrement": false
         },
+        "load_mode": {
+          "name": "load_mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "base_grams": {
+          "name": "base_grams",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "load_step_grams": {
           "name": "load_step_grams",
           "type": "integer",
@@ -558,6 +572,14 @@
         "exercise_load_step": {
           "name": "exercise_load_step",
           "value": "\"exercise\".\"load_step_grams\" IS NULL OR (\"exercise\".\"measure\" <> 'duration' AND \"exercise\".\"load_step_grams\" > 0)"
+        },
+        "exercise_load_mode": {
+          "name": "exercise_load_mode",
+          "value": "\"exercise\".\"load_mode\" = 'total' OR \"exercise\".\"measure\" <> 'duration'"
+        },
+        "exercise_base": {
+          "name": "exercise_base",
+          "value": "\"exercise\".\"base_grams\" IS NULL OR (\"exercise\".\"load_mode\" = 'per_side' AND \"exercise\".\"base_grams\" > 0)"
         }
       }
     },

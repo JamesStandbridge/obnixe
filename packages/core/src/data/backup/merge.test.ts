@@ -187,6 +187,19 @@ describe("natural_key", () => {
     expect(local.db.select({ exerciseId: strengthEntry.exerciseId }).from(strengthEntry).get()).toEqual({ exerciseId: mine.id });
   });
 
+  it("carries the load mode and base weight of the newer exercise", () => {
+    const curl = { ...here.exercise("Curl barre EZ"), loadMode: "per_hand" as const };
+    here.write([{ kind: "insert", table: "exercise", row: curl }]);
+    copyLocalToRemote();
+    later();
+    there.write([{ kind: "update", table: "exercise", key: curl.id, patch: { loadMode: "per_side", baseGrams: 10_000 } }]);
+    mergeSnapshot(local.db, local.env, snapshotOf(remote));
+    expect(local.db.select({ loadMode: exercise.loadMode, baseGrams: exercise.baseGrams }).from(exercise).get()).toEqual({ loadMode: "per_side", baseGrams: 10_000 });
+    there.write([{ kind: "update", table: "exercise", key: curl.id, patch: { loadMode: "total", baseGrams: null } }]);
+    copyLocalToRemote();
+    expect(remote.db.select({ loadMode: exercise.loadMode, baseGrams: exercise.baseGrams }).from(exercise).get()).toEqual({ loadMode: "per_side", baseGrams: 10_000 });
+  });
+
   it("matches measurement kinds case-insensitively and remaps their measurements", () => {
     const mine = { id: local.env.newId(), label: "Tour de taille", zone: null, position: 0, archivedAt: null };
     here.write([{ kind: "insert", table: "measurement_kind", row: mine }]);
