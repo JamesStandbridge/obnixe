@@ -1,9 +1,5 @@
-import { AppBar, Screen } from "@/ui/Layout";
+import { ProgramsScreen } from "@/features/programs/ProgramsScreen";
 
 export default function Programs() {
-  return (
-    <Screen>
-      <AppBar title="Programmes" />
-    </Screen>
-  );
+  return <ProgramsScreen />;
 }
