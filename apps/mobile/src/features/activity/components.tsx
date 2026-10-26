@@ -130,6 +130,25 @@ export function OtherZoneButton({ label, onPress }: PlainButtonProps) {
   );
 }
 
+interface ChoiceButtonProps {
+  readonly label: string;
+  readonly destructive?: boolean;
+  readonly onPress: () => void;
+}
+
+export function ChoiceButton({ label, destructive = false, onPress }: ChoiceButtonProps) {
+  const { colors } = useTheme();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => [styles.choice, { borderColor: colors.controlBorder, backgroundColor: pressed ? colors.surfacePress : "transparent" }]}
+    >
+      <Text style={[styles.choiceLabel, destructive && { color: colors.stop }]}>{label}</Text>
+    </Pressable>
+  );
+}
+
 interface DetailRowProps {
   readonly title: string;
   readonly value: string | null;
@@ -333,6 +352,8 @@ const styles = StyleSheet.create({
   comparison: { paddingHorizontal: 4 },
   comparisonStrong: { fontFamily: fonts.text600, fontSize: 15 },
   otherZone: { minHeight: 48, borderTopWidth: 1, alignItems: "center", justifyContent: "center" },
+  choice: { minHeight: 56, paddingHorizontal: 16, borderRadius: radii.panel, borderWidth: layout.borderControl, justifyContent: "center" },
+  choiceLabel: { fontFamily: fonts.text600, fontSize: 16, lineHeight: 20 },
   detailRow: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 56, paddingVertical: 10 },
   detailTitle: { flex: 1 },
   detailValue: { flexShrink: 1, textAlign: "right" },
