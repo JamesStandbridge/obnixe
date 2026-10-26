@@ -27,6 +27,7 @@ export interface UndoableWrite {
   readonly message: string;
   readonly aboveTabBar?: boolean;
   readonly extraOffset?: number;
+  readonly onUndone?: () => void;
 }
 
 export function useUndoableWrite(): (request: UndoableWrite) => Id {
@@ -53,6 +54,7 @@ export function useUndoableWrite(): (request: UndoableWrite) => Id {
               }
               throw error;
             }
+            request.onUndone?.();
           },
         },
       });

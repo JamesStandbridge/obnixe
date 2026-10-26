@@ -1,9 +1,5 @@
-import { AppBar, Screen } from "@/ui/Layout";
+import { BodyScreen } from "@/features/body/BodyScreen";
 
 export default function Body() {
-  return (
-    <Screen>
-      <AppBar title="Corps" />
-    </Screen>
-  );
+  return <BodyScreen />;
 }

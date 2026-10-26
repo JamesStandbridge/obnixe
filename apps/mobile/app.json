@@ -46,7 +46,15 @@
         }
       ],
       "expo-sharing",
-      "expo-image"
+      "expo-image",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Obnixe importe tes photos de progression et les garde sur ce téléphone.",
+          "cameraPermission": "Obnixe prend tes photos de progression et les garde sur ce téléphone.",
+          "microphonePermission": false
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

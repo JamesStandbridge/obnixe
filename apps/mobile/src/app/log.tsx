@@ -1,9 +1,5 @@
-import { AppBar, Screen } from "@/ui/Layout";
+import { LogScreen } from "@/features/activity/LogScreen";
 
 export default function LogActivity() {
-  return (
-    <Screen>
-      <AppBar title="Nouvelle activité" />
-    </Screen>
-  );
+  return <LogScreen />;
 }

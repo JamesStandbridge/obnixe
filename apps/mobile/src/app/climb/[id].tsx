@@ -1,9 +1,5 @@
-import { AppBar, Screen } from "@/ui/Layout";
+import { ClimbRoute } from "@/features/activity/ClimbRoute";
 
 export default function ClimbSession() {
-  return (
-    <Screen>
-      <AppBar title="Escalade" />
-    </Screen>
-  );
+  return <ClimbRoute />;
 }

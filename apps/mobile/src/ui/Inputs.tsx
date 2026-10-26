@@ -325,13 +325,14 @@ interface NumberPadProps {
   readonly decimals: number;
   readonly maxLength?: number;
   readonly warning?: string;
+  readonly format?: (value: string) => string;
   readonly onChange: (value: string) => void;
 }
 
 const padKeys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "decimal", "0", "backspace"] as const;
 type PadKey = (typeof padKeys)[number];
 
-export function NumberPad({ value, unit, placeholder, decimals, maxLength = 6, warning, onChange }: NumberPadProps) {
+export function NumberPad({ value, unit, placeholder, decimals, maxLength = 6, warning, format, onChange }: NumberPadProps) {
   const { colors, name } = useTheme();
   const press = (key: PadKey): void => {
     switch (key) {
@@ -354,7 +355,7 @@ export function NumberPad({ value, unit, placeholder, decimals, maxLength = 6, w
     <View>
       <View style={styles.padDisplay} accessibilityLiveRegion="polite">
         <Text variant="display" tone={value === "" ? "tertiary" : "primary"}>
-          {value === "" ? placeholder : value}
+          {value === "" ? placeholder : format === undefined ? value : format(value)}
         </Text>
         <Text variant="label" tone="secondary">
           {unit}
