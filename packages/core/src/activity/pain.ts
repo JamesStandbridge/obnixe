@@ -14,8 +14,15 @@ export interface SessionPainContext {
   readonly sessionId: Id;
   readonly phase: PainPhase;
   readonly sessionItemId: Id | null;
+  readonly strengthSetId: Id | null;
   readonly occurredAt: EpochMs;
   readonly timeZone: string;
+}
+
+export interface PainReportRequest extends SessionPainContext {
+  readonly newId: () => Id;
+  readonly levels: ReadonlyMap<ZoneKey, PainLevel>;
+  readonly tracked: readonly ZoneKey[];
 }
 
 export interface PainPlan {
@@ -60,14 +67,13 @@ export function zoneStatuses(db: ObnixeDatabase, zones: readonly ZoneKey[]): Zon
   return zones.map((zone) => ({ zone, tracked: tracked.has(zone), last: lastPain(db, zone) }));
 }
 
-export function sessionPainMutations(db: ObnixeDatabase, env: Environment, context: SessionPainContext, pains: readonly ZonePain[]): PainPlan {
-  const tracked = new Set(trackedZones(db));
-  const localDate = localDateOf(context.occurredAt, context.timeZone);
-  const byZone = new Map(pains.map((pain) => [pain.zone, pain.level]));
+export function painReportMutations(request: PainReportRequest): PainPlan {
+  const tracked = new Set(request.tracked);
+  const localDate = localDateOf(request.occurredAt, request.timeZone);
   const reportIds: Id[] = [];
   const mutations: Mutation[] = [];
-  for (const [zone, level] of byZone) {
-    const reportId = env.newId();
+  for (const [zone, level] of request.levels) {
+    const reportId = request.newId();
     reportIds.push(reportId);
     mutations.push({
       kind: "insert",
@@ -76,13 +82,13 @@ export function sessionPainMutations(db: ObnixeDatabase, env: Environment, conte
         id: reportId,
         zone,
         level,
-        occurredAt: context.occurredAt,
+        occurredAt: request.occurredAt,
         localDate,
-        timeZone: context.timeZone,
-        sessionId: context.sessionId,
-        phase: context.phase,
-        strengthSetId: null,
-        sessionItemId: context.sessionItemId,
+        timeZone: request.timeZone,
+        sessionId: request.sessionId,
+        phase: request.phase,
+        strengthSetId: request.strengthSetId,
+        sessionItemId: request.sessionItemId,
         checkInId: null,
         note: null,
         deletedAt: null,
@@ -93,9 +99,13 @@ export function sessionPainMutations(db: ObnixeDatabase, env: Environment, conte
       mutations.push({
         kind: "insert",
         table: "zone_tracking",
-        row: { id: env.newId(), zone, reason: "pain_reported", painReportId: reportId, startedAt: context.occurredAt, endedAt: null },
+        row: { id: request.newId(), zone, reason: "pain_reported", painReportId: reportId, startedAt: request.occurredAt, endedAt: null },
       });
     }
   }
   return { reportIds, mutations };
+}
+
+export function sessionPainMutations(db: ObnixeDatabase, env: Environment, context: SessionPainContext, pains: readonly ZonePain[]): PainPlan {
+  return painReportMutations({ ...context, newId: env.newId, levels: new Map(pains.map((pain) => [pain.zone, pain.level])), tracked: trackedZones(db) });
 }

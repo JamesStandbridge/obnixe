@@ -203,7 +203,7 @@ export function ClimbScreen({ current }: ClimbScreenProps) {
   const otherZones = zoneKeys.filter((zone) => !painRows.some((row) => row.zone === zone));
 
   const savePains = (entries: readonly ZonePain[]): void => {
-    const plan = sessionPainMutations(db(), environment, { sessionId: current.id, phase: painTarget.phase, sessionItemId: painTarget.sessionItemId, occurredAt: environment.now(), timeZone }, entries);
+    const plan = sessionPainMutations(db(), environment, { sessionId: current.id, phase: painTarget.phase, strengthSetId: null, sessionItemId: painTarget.sessionItemId, occurredAt: environment.now(), timeZone }, entries);
     write("Douleur signalée", plan.mutations);
     if (painTarget.pendingDraft) setPendingPainIds([...pendingPainIds, ...plan.reportIds]);
     const stopped = entries.filter((entry) => entry.level === "stop").map((entry) => entry.zone);

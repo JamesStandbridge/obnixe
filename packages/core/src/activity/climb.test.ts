@@ -100,7 +100,7 @@ describe("climbing session lifecycle", () => {
     if (item === undefined) throw new Error("missing item");
     write([planClimbItemUpdate(current(id), item, { grade: "6A+", attempts: 4, result: "project", style: ["slab"] })]);
     expect(climbItems(context.db, id)[0]?.values).toEqual({ grade: "fontainebleau:6A+", attempts: 4, result: "project", style: ["slab"] });
-    write(sessionPainMutations(context.db, context.env, { sessionId: id, phase: "during", sessionItemId: first, occurredAt: context.env.now(), timeZone: zone }, [{ zone: "fingers_right", level: "discomfort" }]).mutations);
+    write(sessionPainMutations(context.db, context.env, { sessionId: id, phase: "during", strengthSetId: null, sessionItemId: first, occurredAt: context.env.now(), timeZone: zone }, [{ zone: "fingers_right", level: "discomfort" }]).mutations);
     expect(() => write([{ kind: "delete", table: "session_item", key: first }])).toThrow(DependentRowsError);
     const removal = write(planClimbItemRemoval(context.db, first));
     expect(climbItems(context.db, id)).toHaveLength(0);
@@ -111,7 +111,7 @@ describe("climbing session lifecycle", () => {
 
   it("links pains reported during the draft to the saved item", () => {
     const id = start();
-    const pains = sessionPainMutations(context.db, context.env, { sessionId: id, phase: "during", sessionItemId: null, occurredAt: context.env.now(), timeZone: zone }, [{ zone: "elbow_right", level: "discomfort" }]);
+    const pains = sessionPainMutations(context.db, context.env, { sessionId: id, phase: "during", strengthSetId: null, sessionItemId: null, occurredAt: context.env.now(), timeZone: zone }, [{ zone: "elbow_right", level: "discomfort" }]);
     write(pains.mutations);
     const itemId = add(id, flash("6A"), pains.reportIds);
     expect(context.db.select().from(painReport).get()?.sessionItemId).toBe(itemId);

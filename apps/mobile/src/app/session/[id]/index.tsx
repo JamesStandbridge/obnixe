@@ -1,9 +1,8 @@
-import { AppBar, Screen } from "@/ui/Layout";
+import { useLocalSearchParams } from "expo-router";
+import type { Id } from "@obnixe/schema";
+import { SessionDetailScreen } from "@/features/training/detail/SessionDetailScreen";
 
 export default function SessionDetail() {
-  return (
-    <Screen>
-      <AppBar title="Séance" />
-    </Screen>
-  );
+  const { id } = useLocalSearchParams<{ id: string }>();
+  return <SessionDetailScreen sessionId={id as Id} />;
 }

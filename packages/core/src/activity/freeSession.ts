@@ -114,6 +114,6 @@ export function planFreeSession(db: ObnixeDatabase, env: Environment, draft: Fre
       },
     },
   ];
-  const pains = sessionPainMutations(db, env, { sessionId, phase: "end", sessionItemId: null, occurredAt: endedAt, timeZone: draft.timeZone }, draft.pains);
+  const pains = sessionPainMutations(db, env, { sessionId, phase: "end", strengthSetId: null, sessionItemId: null, occurredAt: endedAt, timeZone: draft.timeZone }, draft.pains);
   return { sessionId, mutations: [...mutations, ...pains.mutations] };
 }

@@ -250,7 +250,7 @@ describe("session pain mutations", () => {
       },
       { kind: "insert", table: "session_item", row: { id: itemId, sessionId: climbId, position: 0, values: { grade: "fontainebleau:6A", attempts: 1, result: "flash" }, recordedAt: context.env.now() } },
     ]);
-    const plan = sessionPainMutations(context.db, context.env, { sessionId: climbId, phase: "between", sessionItemId: itemId, occurredAt: context.env.now(), timeZone: zone }, [
+    const plan = sessionPainMutations(context.db, context.env, { sessionId: climbId, phase: "between", strengthSetId: null, sessionItemId: itemId, occurredAt: context.env.now(), timeZone: zone }, [
       { zone: "fingers_right", level: "discomfort" },
       { zone: "fingers_right", level: "stop" },
     ]);

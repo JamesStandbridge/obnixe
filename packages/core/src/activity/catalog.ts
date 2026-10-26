@@ -10,7 +10,7 @@ export interface QuantityUnit {
   readonly decimals: number;
 }
 
-const gramsPerPound = 453.59237;
+export const gramsPerPound = 453.59237;
 
 export function sportOf(key: SportKey): SportDefinition {
   return sports[key];
