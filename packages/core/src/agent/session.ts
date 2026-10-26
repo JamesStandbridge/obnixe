@@ -111,15 +111,39 @@ interface LearnedPairing {
   readonly secret: string;
 }
 
+type DerivedSecrets = { readonly kind: "ready"; readonly secrets: PairingSecrets } | { readonly kind: "failed"; readonly error: unknown };
+
+async function settledSecrets(derivation: Promise<PairingSecrets>): Promise<DerivedSecrets> {
+  try {
+    return { kind: "ready", secrets: await derivation };
+  } catch (error) {
+    return { kind: "failed", error };
+  }
+}
+
 type SessionState =
   | { readonly kind: "challenge" }
   | { readonly kind: "proving" }
-  | { readonly kind: "waiting"; readonly secrets: Promise<PairingSecrets>; readonly bridgeId: string; commitment: Uint8Array | null }
+  | { readonly kind: "waiting"; readonly secrets: Promise<DerivedSecrets>; readonly bridgeId: string; commitment: Uint8Array | null }
   | { readonly kind: "resuming"; readonly secrets: HandshakeSecrets }
   | { readonly kind: "open"; readonly channel: SealedChannel }
   | { readonly kind: "closed" };
 
 /** Phone side of the bridge link: pairs with a code or resumes a trusted pairing, then serves sealed JSON-RPC requests from the bridge. */
+/** Surfaces a failed derivation where the secrets are needed, so it is never lost while no commit arrives. */
+function readySecrets(derived: DerivedSecrets): PairingSecrets {
+  switch (derived.kind) {
+    case "ready":
+      return derived.secrets;
+    case "failed":
+      throw derived.error;
+    default: {
+      const unreachable: never = derived;
+      throw new Error(`Unhandled derivation ${JSON.stringify(unreachable)}`);
+    }
+  }
+}
+
 export class PhoneSession {
   private readonly options: PhoneSessionOptions;
   private state: SessionState = { kind: "challenge" };
@@ -264,9 +288,7 @@ export class PhoneSession {
       nonce: toBase64(transcript.phoneNonce),
       key: toBase64(transcript.phoneKey),
     });
-    const secrets = derivePairingSecrets(this.options.code, transcript, shared);
-    // Awaited on commit; this only keeps a failure before the commit from surfacing as an unhandled rejection.
-    secrets.catch(() => undefined);
+    const secrets = settledSecrets(derivePairingSecrets(this.options.code, transcript, shared));
     this.state = { kind: "waiting", secrets, bridgeId: frame.bridge, commitment: null };
     this.options.handlers.onStatus("waiting");
   }
@@ -294,7 +316,7 @@ export class PhoneSession {
     if (state.kind !== "waiting") throw new ProtocolError("Unexpected commit");
     const commitment = decodeBytes(frame.commitment, proofBytes);
     state.commitment = commitment;
-    const secrets = await state.secrets;
+    const secrets = readySecrets(await state.secrets);
     if (this.state !== state) return;
     this.proofSent = true;
     this.send({ type: "proof", proof: toBase64(phoneProof(secrets, commitment)) });
@@ -304,7 +326,7 @@ export class PhoneSession {
     const state = this.state;
     if (state.kind !== "waiting" || state.commitment === null) throw new ProtocolError("Unexpected welcome");
     const commitment = state.commitment;
-    const secrets = await state.secrets;
+    const secrets = readySecrets(await state.secrets);
     if (this.state !== state) return;
     const proof = decodeBytes(frame.proof, proofBytes);
     const opened = sameBytes(commitBridgeProof(decodeBytes(frame.opening, openingBytes), proof), commitment);

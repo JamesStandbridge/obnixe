@@ -494,6 +494,8 @@ describe("merge_exercises", () => {
     ok("create_exercise", { name: "Squat avant", measure: "load_reps", equipment: "barbell" });
     expect(failed("merge_exercises", { duplicate: "Gainage", target: "Squat" })).toContain("measured differently");
     expect(failed("merge_exercises", { duplicate: "Squat", target: "squat" })).toContain("same exercise");
+    ok("create_exercise", { name: "Squat haltères", measure: "load_reps", equipment: "dumbbell" });
+    expect(failed("merge_exercises", { duplicate: "Squat haltères", target: "Squat" })).toContain("Align them first with update_exercise");
     ok("update_exercise", { exercise: "Squat", archived: true });
     expect(failed("merge_exercises", { duplicate: "Squat avant", target: "Squat" })).toContain("archived");
     ok("update_exercise", { exercise: "Squat", archived: false });

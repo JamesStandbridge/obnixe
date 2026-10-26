@@ -6,11 +6,30 @@ import type { ObnixeDatabase } from "../database.ts";
 import { addDays, epochAt } from "../dates.ts";
 import type { Actor } from "../writer.ts";
 import type { ToolInput } from "./contract.ts";
+import type { AgentPermission } from "./contract.ts";
+import { hasPermission } from "./environment.ts";
 import type { AgentEnvironment, ToolResult } from "./environment.ts";
 import { loadRevertIndex, revertState } from "./history.ts";
 
 const defaultLimit = 20;
 const rangeLimit = 100;
+
+interface GuardedTables {
+  readonly permission: AgentPermission;
+  readonly tables: ReadonlySet<string>;
+  readonly summary: string;
+}
+
+const guardedTables: readonly GuardedTables[] = [
+  { permission: "body", tables: new Set(["weigh_in", "measurement", "measurement_kind"]), summary: "Pesée ou mensurations (accès au corps désactivé)" },
+  { permission: "photos", tables: new Set(["photo"]), summary: "Photos (accès aux photos désactivé)" },
+];
+
+/** Summaries quote body values, so a change touching guarded rows only shows a neutral label without the matching permission. */
+function visibleSummary(env: AgentEnvironment, summary: string, tables: readonly string[]): string {
+  const hidden = guardedTables.find((guard) => !hasPermission(env.permissions, guard.permission) && tables.some((table) => guard.tables.has(table)));
+  return hidden?.summary ?? summary;
+}
 
 export function listAgentChanges(db: ObnixeDatabase, env: AgentEnvironment, actor: Actor, input: ToolInput<"list_agent_changes">): ToolResult {
   const conditions: SQL[] = [eq(changeset.author, "agent")];
@@ -36,15 +55,18 @@ export function listAgentChanges(db: ObnixeDatabase, env: AgentEnvironment, acto
     kind: "read",
     summary: "Modifications des agents",
     data: {
-      changes: rows.map((row) => ({
-        changesetId: row.id,
-        createdAt: new Date(row.createdAt).toISOString(),
-        summary: row.summary,
-        tool: tools.get(row.id) ?? null,
-        connection: { id: row.connectionId, client: row.client, host: row.host, current: row.connectionId === actor.connectionId },
-        undoneByUser: revertState(reverts, row.id).reverted,
-        rows: changes.filter((item) => item.changesetId === row.id).map((item) => ({ table: item.tableName, id: item.rowId, operation: item.operation })),
-      })),
+      changes: rows.map((row) => {
+        const touched = changes.filter((item) => item.changesetId === row.id);
+        return {
+          changesetId: row.id,
+          createdAt: new Date(row.createdAt).toISOString(),
+          summary: visibleSummary(env, row.summary, touched.map((item) => item.tableName)),
+          tool: tools.get(row.id) ?? null,
+          connection: { id: row.connectionId, client: row.client, host: row.host, current: row.connectionId === actor.connectionId },
+          undoneByUser: revertState(reverts, row.id).reverted,
+          rows: touched.map((item) => ({ table: item.tableName, id: item.rowId, operation: item.operation })),
+        };
+      }),
     },
   };
 }

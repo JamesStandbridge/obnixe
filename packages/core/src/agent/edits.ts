@@ -313,6 +313,11 @@ export function mergeExercises(db: ObnixeDatabase, env: AgentEnvironment, actor:
   if (duplicate.measure !== target.measure) {
     throw new ToolInputError(`'${duplicate.name}' (${duplicate.measure}) and '${target.name}' (${target.measure}) are measured differently and cannot be merged.`);
   }
+  if (duplicate.loadMode !== target.loadMode || duplicate.baseGrams !== target.baseGrams) {
+    throw new ToolInputError(
+      `'${duplicate.name}' (loadMode ${duplicate.loadMode}, baseGrams ${duplicate.baseGrams ?? "none"}) and '${target.name}' (loadMode ${target.loadMode}, baseGrams ${target.baseGrams ?? "none"}) read their loads differently, so the moved sets would change meaning. Align them first with update_exercise.`,
+    );
+  }
   const entries = db.select({ id: strengthEntry.id }).from(strengthEntry).where(eq(strengthEntry.exerciseId, duplicate.id)).all();
   const folded = db.select({ id: exercise.id }).from(exercise).where(eq(exercise.mergedIntoId, duplicate.id)).all();
   const targetZones = new Set(zonesOf(db, target.id));

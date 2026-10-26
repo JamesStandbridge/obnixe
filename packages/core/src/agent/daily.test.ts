@@ -368,6 +368,16 @@ describe("list_agent_changes", () => {
     expect(ok<AgentChanges>("list_agent_changes", { limit: 1 }).changes).toHaveLength(1);
   });
 
+  it("hides body values from summaries once body access is off", () => {
+    ok("log_weigh_in", { grams: 78_400 });
+    ok("log_check_in", { energy: 4 });
+    allow({ agentCanReadBody: false });
+    expect(ok<AgentChanges>("list_agent_changes", {}).changes.map((change) => change.summary)).toEqual([
+      "Check-in du 24 octobre · énergie 4/5",
+      "Pesée ou mensurations (accès au corps désactivé)",
+    ]);
+  });
+
   it("filters by the local day of the change and validates the range", () => {
     ok("log_check_in", { energy: 4 });
     expect(ok<AgentChanges>("list_agent_changes", { from: "2026-10-24", to: "2026-10-24" }).changes).toHaveLength(1);
