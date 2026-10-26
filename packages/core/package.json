@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./agent/limits": "./src/agent/limits.ts",
     "./agent/wire": "./src/agent/wire.ts",
     "./testing": "./src/testing.ts"
   },

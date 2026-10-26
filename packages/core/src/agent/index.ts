@@ -5,6 +5,7 @@ export * from "./encoding.ts";
 export * from "./environment.ts";
 export * from "./format.ts";
 export * from "./history.ts";
+export * from "./limits.ts";
 export * from "./present.ts";
 export * from "./protocol.ts";
 export * from "./relay.ts";

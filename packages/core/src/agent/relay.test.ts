@@ -1,7 +1,8 @@
 import { hkdfSync, randomBytes } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { Base64Error, fromBase64Url, toBase64, toBase64Url } from "./encoding.ts";
-import { ProtocolError, derivePairingSecrets, generateEphemeralKeyPair, sharedSecret } from "./protocol.ts";
+import { maxFrameBytes } from "./limits.ts";
+import { ProtocolError, SealedChannel, decodeFrame, derivePairingSecrets, encodeFrame, fitsSealedFrame, generateEphemeralKeyPair, sharedSecret } from "./protocol.ts";
 import type { PairingTranscript } from "./protocol.ts";
 import {
   deriveRelayRoom,
@@ -84,5 +85,18 @@ describe("relay messages", () => {
     expect(parseRelayToPhone(relayPeerLeftMessage)).toEqual({ type: "peer_left" });
     expect(() => parseRelayToBridge(JSON.stringify({ type: "peer", room: "short" }))).toThrow(ProtocolError);
     expect(() => parseRelayToPhone("not json")).toThrow(ProtocolError);
+  });
+});
+
+describe("frame size", () => {
+  it("refuses frames above the shared limit and predicts which sealed answers fit", () => {
+    expect(() => decodeFrame(" ".repeat(maxFrameBytes + 1))).toThrow(ProtocolError);
+    const channel = new SealedChannel(bytes(32), bytes(32));
+    const limit = (maxFrameBytes * 3) / 4 - 200;
+    for (const size of [1000, limit - 3000, limit, limit + 3000]) {
+      const message = { jsonrpc: "2.0", id: 1, result: { text: "x".repeat(size), isError: false } };
+      expect(fitsSealedFrame(message)).toBe(encodeFrame(channel.seal(message)).length <= maxFrameBytes);
+    }
+    expect(fitsSealedFrame({ text: "x".repeat(maxFrameBytes) })).toBe(false);
   });
 });
