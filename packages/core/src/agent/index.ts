@@ -7,4 +7,5 @@ export * from "./format.ts";
 export * from "./history.ts";
 export * from "./present.ts";
 export * from "./protocol.ts";
+export * from "./relay.ts";
 export * from "./session.ts";
