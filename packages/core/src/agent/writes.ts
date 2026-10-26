@@ -17,7 +17,11 @@ export function commitExercises(db: ObnixeDatabase, env: AgentEnvironment, actor
   if (plan.created.length === 0) return;
   const names = plan.created.map((row) => row.name).join(", ");
   const summary = plan.created.length === 1 ? `Exercice ajouté · ${names}` : `Exercices ajoutés · ${names}`;
-  commit(db, env, { actor, summary, revertsId: null, mutations: plan.created.map((row) => ({ kind: "insert", table: "exercise", row })) });
+  commit(db, env, { actor, summary, revertsId: null, mutations: createdExerciseInserts(plan) });
+}
+
+export function createdExerciseInserts(plan: ExercisePlan): Mutation[] {
+  return plan.created.map((row): Mutation => ({ kind: "insert", table: "exercise", row }));
 }
 
 export function resolved(plan: ExercisePlan, reference: string): ResolvedExercise {
@@ -277,7 +281,7 @@ export function logStrengthSession(db: ObnixeDatabase, env: AgentEnvironment, ac
   const timing = sessionTiming(env, input.startedAt, input.durationSeconds);
   const plan = planExercises(db, env, input.exercises);
   const row = sessionRow(env, "strength", timing, {}, input);
-  const mutations: Mutation[] = [{ kind: "insert", table: "session", row }];
+  const mutations: Mutation[] = [...createdExerciseInserts(plan), { kind: "insert", table: "session", row }];
   const totalSets = input.exercises.reduce((total, entry) => total + entry.sets.length, 0);
   let setIndex = 0;
   input.exercises.forEach((entry, position) => {
@@ -305,7 +309,6 @@ export function logStrengthSession(db: ObnixeDatabase, env: AgentEnvironment, ac
       setIndex += 1;
     });
   });
-  commitExercises(db, env, actor, plan);
   const summary = `${sports.strength.label} du ${frenchDay(timing.localDate)} · ${plural(input.exercises.length, "exercice", "exercices")}`;
   const changesetId = commit(db, env, { actor, summary, revertsId: null, mutations });
   return { kind: "write", summary, changesetId, data: { sessionId: row.id, localDate: timing.localDate, createdExercises: plan.created.map((created) => ({ id: created.id, name: created.name })) } };

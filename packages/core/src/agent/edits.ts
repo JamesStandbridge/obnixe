@@ -16,7 +16,7 @@ import type { AgentEnvironment, ToolResult } from "./environment.ts";
 import { ToolInputError } from "./environment.ts";
 import { findExercise, planExercises } from "./exercises.ts";
 import { frenchDay, plural } from "./format.ts";
-import { commitExercises, futureToleranceMs, resolved, spread, validateSet } from "./writes.ts";
+import { createdExerciseInserts, futureToleranceMs, resolved, spread, validateSet } from "./writes.ts";
 import type { SessionTiming } from "./writes.ts";
 
 type SessionAction = "editing" | "deleting";
@@ -151,7 +151,10 @@ export function updateStrengthSession(db: ObnixeDatabase, env: AgentEnvironment,
   const previousSetIds = previous.flatMap((owner) => owner.sets.map((set) => set.id));
   const anchored: readonly PainReport[] = previousSetIds.length === 0 ? [] : db.select().from(painReport).where(inArray(painReport.strengthSetId, previousSetIds)).all();
 
-  const mutations: Mutation[] = anchored.map((pain): Mutation => ({ kind: "update", table: "pain_report", key: pain.id, patch: { strengthSetId: null } }));
+  const mutations: Mutation[] = [
+    ...createdExerciseInserts(plan),
+    ...anchored.map((pain): Mutation => ({ kind: "update", table: "pain_report", key: pain.id, patch: { strengthSetId: null } })),
+  ];
   for (const owner of previous) {
     for (const set of owner.sets) mutations.push({ kind: "delete", table: "strength_set", key: set.id });
     mutations.push({ kind: "delete", table: "strength_entry", key: owner.entry.id });
@@ -208,7 +211,6 @@ export function updateStrengthSession(db: ObnixeDatabase, env: AgentEnvironment,
     if (setId !== undefined) mutations.push({ kind: "update", table: "pain_report", key: pain.id, patch: { strengthSetId: setId } });
   }
 
-  commitExercises(db, env, actor, plan);
   const summary = `Séance corrigée · ${sessionLabel(current)} · ${plural(input.exercises.length, "exercice", "exercices")}`;
   const changesetId = commit(db, env, { actor, summary, revertsId: null, mutations });
   return { kind: "write", summary, changesetId, data: { sessionId: current.id, localDate: current.localDate, createdExercises: plan.created.map((row) => ({ id: row.id, name: row.name })) } };
