@@ -1,8 +1,8 @@
 import { activeSeconds, completedSets, gramsToMass, parseGrade } from "@obnixe/core";
 import type { ClimbBreakdown, ExerciseOutcome, ExerciseReport, SessionReport, StrengthSummary } from "@obnixe/core";
 import { sports } from "@obnixe/schema";
-import type { Dimension, EpochMs, FieldDefinition, FieldValue, FieldValues, IndicatorDefinition, LocalDate, MassUnit, Session, SessionItem } from "@obnixe/schema";
-import { formatDuration, formatMass, formatTime } from "@/features/training/format";
+import type { Dimension, EpochMs, FieldDefinition, FieldValue, FieldValues, IndicatorDefinition, LoadMode, LocalDate, MassUnit, Session, SessionItem } from "@obnixe/schema";
+import { formatDuration, formatMass, formatTime, loadContext } from "@/features/training/format";
 import { formatClock, formatLongClock } from "@/format/durations";
 import { formatNumber, formatSigned } from "@/format/numbers";
 import { freeStrengthTitle, plural } from "@/format/labels";
@@ -132,10 +132,11 @@ export function strengthValue(report: ExerciseReport, unit: MassUnit): { readonl
   const top = Math.max(...sets.map((set) => set.loadGrams ?? 0));
   const reps = sets.map((set) => String(set.reps ?? 0)).join(" · ");
   if (measure === "bodyweight_reps" && top === 0) return { value: plural(sets.length, "série", "séries"), detail: reps };
-  return { value: `${sets.length} × ${formatMass(top, unit)}`, detail: reps };
+  const context = loadContext(report.exercise.exercise, unit);
+  return { value: `${sets.length} × ${formatMass(top, unit)}`, detail: context === null ? reps : `${context} · ${reps}` };
 }
 
-export function outcomeText(outcome: ExerciseOutcome, today: LocalDate, unit: MassUnit, withDate: boolean): string {
+export function outcomeText(outcome: ExerciseOutcome, loadMode: LoadMode, today: LocalDate, unit: MassUnit, withDate: boolean): string {
   switch (outcome.kind) {
     case "skipped":
       return "passé";
@@ -147,7 +148,7 @@ export function outcomeText(outcome: ExerciseOutcome, today: LocalDate, unit: Ma
       return "première fois";
     case "load": {
       const delta = Math.round((gramsToMass(Math.abs(outcome.deltaGrams), unit) * Math.sign(outcome.deltaGrams)) * 10) / 10;
-      return `${formatSigned(delta)} ${unit}${withDate ? ` vs ${relativeDay(outcome.previousDate, today)}` : ""}`;
+      return `${formatSigned(delta)} ${unit}${loadMode === "total" ? "" : " au total"}${withDate ? ` vs ${relativeDay(outcome.previousDate, today)}` : ""}`;
     }
     case "reps":
       return `${formatSigned(outcome.delta, 0)} rép.`;

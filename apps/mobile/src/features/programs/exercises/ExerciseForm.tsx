@@ -1,13 +1,15 @@
 import { useState } from "react";
 import { StyleSheet, View } from "react-native";
-import { findExerciseByName, planArchiveExercise, planCreateExercise, planRestoreExercise, planUpdateExercise, usesLoad } from "@obnixe/core";
+import { defaultLoadMode, findExerciseByName, planArchiveExercise, planCreateExercise, planRestoreExercise, planUpdateExercise, usesLoad } from "@obnixe/core";
 import type { ExerciseInput, ExerciseUsage } from "@obnixe/core";
-import { equipments, exerciseMeasures, zoneKeys, zones as zoneCatalog } from "@obnixe/schema";
-import type { Equipment, Exercise, ExerciseMeasure, Id, MassUnit, ZoneKey } from "@obnixe/schema";
+import { equipments, exerciseMeasures, loadModes, zoneKeys, zones as zoneCatalog } from "@obnixe/schema";
+import type { Equipment, Exercise, ExerciseMeasure, Id, LoadMode, MassUnit, ZoneKey } from "@obnixe/schema";
 import { environment } from "@/data/database";
 import { write } from "@/data/write";
 import { Chips } from "@/features/programs/Chips";
 import { equipmentLabels, formatLoadStep, measureLabels } from "@/features/programs/format";
+import { perLoadLabel } from "@/features/training/format";
+import { capitalize } from "@/format/labels";
 import { ControlButton, SheetButton } from "@/ui/Button";
 import { Segmented } from "@/ui/Controls";
 import { Panel, Question, Scale, TextField } from "@/ui/Inputs";
@@ -46,6 +48,35 @@ function defaultEquipment(measure: ExerciseMeasure): Equipment {
   return measure === "load_reps" ? "barbell" : "bodyweight";
 }
 
+const baseWeights: Readonly<Record<MassUnit, readonly number[]>> = {
+  kg: [5000, 7000, 10000, 15000, 20000],
+  lb: [15, 25, 35, 45].map((pounds) => Math.round(pounds * poundGrams)),
+};
+
+function baseOptions(unit: MassUnit, current: number | null): readonly number[] {
+  const presets = baseWeights[unit];
+  return current === null || presets.includes(current) ? presets : [...presets, current].sort((left, right) => left - right);
+}
+
+function loadModeLabel(mode: LoadMode, equipment: Equipment): string {
+  return capitalize(perLoadLabel({ equipment, loadMode: mode, baseGrams: null }) ?? "totale");
+}
+
+function loadModeHint(mode: LoadMode, equipment: Equipment): string {
+  switch (mode) {
+    case "total":
+      return "telle que lue";
+    case "per_hand":
+      return equipment === "dumbbell" ? "un haltère, compté deux fois" : equipment === "kettlebell" ? "une kettlebell, comptée deux fois" : "une main, comptée deux fois";
+    case "per_side":
+      return "un côté, compté deux fois";
+    default: {
+      const unreachable: never = mode;
+      return unreachable;
+    }
+  }
+}
+
 interface ExerciseFormProps {
   readonly exercise: Exercise | null;
   readonly exerciseZones: readonly ZoneKey[];
@@ -61,19 +92,36 @@ export function ExerciseForm({ exercise, exerciseZones, usage, initialName, exer
   const { colors } = useTheme();
   const [input, setInput] = useState<ExerciseInput>(() =>
     exercise === null
-      ? { name: initialName, measure: "load_reps", equipment: "barbell", loadStepGrams: defaultStep("barbell", massUnit), zones: [] }
-      : { name: exercise.name, measure: exercise.measure, equipment: exercise.equipment, loadStepGrams: exercise.loadStepGrams, zones: exerciseZones },
+      ? { name: initialName, measure: "load_reps", equipment: "barbell", loadMode: defaultLoadMode("barbell", "load_reps"), baseGrams: null, loadStepGrams: defaultStep("barbell", massUnit), zones: [] }
+      : {
+          name: exercise.name,
+          measure: exercise.measure,
+          equipment: exercise.equipment,
+          loadMode: exercise.loadMode,
+          baseGrams: exercise.baseGrams,
+          loadStepGrams: exercise.loadStepGrams,
+          zones: exerciseZones,
+        },
   );
   const [stepTouched, setStepTouched] = useState(exercise !== null);
+  const [modeTouched, setModeTouched] = useState(exercise !== null);
   const taken = findExerciseByName(exercises, input.name, exercise?.id ?? null);
   const measureLocked = exercise !== null && usage.inUse;
 
+  const loadFor = (measure: ExerciseMeasure, equipment: Equipment): Pick<ExerciseInput, "loadMode" | "baseGrams"> => {
+    if (measure === "duration") return { loadMode: "total", baseGrams: null };
+    return modeTouched ? { loadMode: input.loadMode, baseGrams: input.baseGrams } : { loadMode: defaultLoadMode(equipment, measure), baseGrams: null };
+  };
   const setMeasure = (measure: ExerciseMeasure): void => {
     const equipment = input.measure === measure ? input.equipment : exercise === null ? defaultEquipment(measure) : input.equipment;
-    setInput({ ...input, measure, equipment, loadStepGrams: usesLoad(measure) ? (input.loadStepGrams ?? defaultStep(equipment, massUnit)) : null });
+    setInput({ ...input, measure, equipment, ...loadFor(measure, equipment), loadStepGrams: usesLoad(measure) ? (input.loadStepGrams ?? defaultStep(equipment, massUnit)) : null });
   };
   const setEquipment = (equipment: Equipment): void => {
-    setInput({ ...input, equipment, loadStepGrams: usesLoad(input.measure) ? (stepTouched ? input.loadStepGrams : defaultStep(equipment, massUnit)) : null });
+    setInput({ ...input, equipment, ...loadFor(input.measure, equipment), loadStepGrams: usesLoad(input.measure) ? (stepTouched ? input.loadStepGrams : defaultStep(equipment, massUnit)) : null });
+  };
+  const setLoadMode = (loadMode: LoadMode): void => {
+    setModeTouched(true);
+    setInput({ ...input, loadMode, baseGrams: loadMode === "per_side" ? input.baseGrams : null });
   };
   const toggleZone = (zone: ZoneKey): void => {
     setInput({ ...input, zones: input.zones.includes(zone) ? input.zones.filter((entry) => entry !== zone) : [...input.zones, zone] });
@@ -141,6 +189,23 @@ export function ExerciseForm({ exercise, exerciseZones, usage, initialName, exer
           onToggle={setEquipment}
         />
       </Question>
+      {input.measure === "duration" ? null : (
+        <Question title="Charge saisie" hint={loadModeHint(input.loadMode, input.equipment)}>
+          <Segmented<LoadMode> options={loadModes.map((mode) => ({ value: mode, label: loadModeLabel(mode, input.equipment) }))} value={input.loadMode} onChange={setLoadMode} />
+        </Question>
+      )}
+      {input.loadMode === "per_side" ? (
+        <Question title={input.equipment === "barbell" ? "Barre" : "Poids à vide"} hint="compté une fois, facultatif">
+          <Scale<number>
+            label={input.equipment === "barbell" ? "Poids de la barre" : "Poids à vide"}
+            words
+            optional
+            options={baseOptions(massUnit, input.baseGrams).map((grams) => ({ value: grams, label: formatLoadStep(grams, massUnit).replace(/ (kg|lb)$/, "") }))}
+            value={input.baseGrams}
+            onChange={(grams) => setInput({ ...input, baseGrams: grams })}
+          />
+        </Question>
+      ) : null}
       {usesLoad(input.measure) ? (
         <Question title="Pas de charge" hint={`écart entre deux charges, en ${massUnit}`}>
           <Scale<number>

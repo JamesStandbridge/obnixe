@@ -131,7 +131,7 @@ function doneRows(report: SessionReport, today: LocalDate, unit: MassUnit): read
       const value = strengthValue(exercise, unit);
       const setIds = new Set(exercise.exercise.sets.map((set) => set.id));
       const mark = exercise.outcome.kind === "stopped" ? (worstLevel(report.data.pains.filter((pain) => pain.strengthSetId !== null && setIds.has(pain.strengthSetId)).map((pain) => pain.level)) ?? "stop") : null;
-      return { key: exercise.exercise.entry.id, title: exercise.exercise.exercise.name, detail: outcomeText(exercise.outcome, today, unit, true), mark, value: value.value, valueDetail: value.detail };
+      return { key: exercise.exercise.entry.id, title: exercise.exercise.exercise.name, detail: outcomeText(exercise.outcome, exercise.exercise.exercise.loadMode, today, unit, true), mark, value: value.value, valueDetail: value.detail };
     });
   }
   if (report.climb !== null) {

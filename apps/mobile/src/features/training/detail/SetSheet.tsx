@@ -3,6 +3,7 @@ import { StyleSheet, View } from "react-native";
 import { durationStepSeconds, gramsToMass, massToGrams } from "@obnixe/core";
 import type { WorkoutExercise } from "@obnixe/core";
 import type { MassUnit, StrengthSet } from "@obnixe/schema";
+import { loadContext } from "@/features/training/format";
 import { formatClock } from "@/format/durations";
 import { formatNumber } from "@/format/numbers";
 import { loadLimits, repsLimit, stepGramsFor } from "@/features/training/workout/liveWorkout";
@@ -53,12 +54,13 @@ export function SetSheet({ target, unit, onClose, onSave, onDelete }: SetSheetPr
   const measure = shown.exercise.exercise.measure;
   const step = gramsToMass(stepGramsFor(shown.exercise.exercise, unit), unit);
   const title = `Série ${shown.index + 1} · ${shown.exercise.exercise.name}`;
+  const context = loadContext(shown.exercise.exercise, unit);
   return (
     <Sheet open={target !== null} title={title} onClose={onClose} {...(shown.set.interrupted ? { context: "Série interrompue" } : {})}>
       {shown.set.interrupted ? null : (
         <View>
           {measure === "load_reps" ? (
-            <Question title="Charge">
+            <Question title="Charge" {...(context === null ? {} : { hint: context })}>
               <Stepper
                 value={gramsToMass(draft.loadGrams ?? 0, unit)}
                 step={step}
