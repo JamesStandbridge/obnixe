@@ -31,7 +31,6 @@ import { useAgentLink } from "@/features/agent/useAgentLink";
 import { useToggleChange } from "@/features/agent/useToggleChange";
 import { Section, Screen } from "@/ui/Layout";
 import { useSnackbar } from "@/ui/SnackbarHost";
-import type { SnackbarAction } from "@/ui/SnackbarHost";
 import { Text } from "@/ui/Text";
 import { goBack } from "@/ui/navigation";
 
@@ -193,8 +192,6 @@ function noticeText(notice: LinkNotice): string {
   }
 }
 
-const dismissNotice: SnackbarAction = { label: "OK", run: () => undefined };
-
 function bottomLabel(view: LinkView, knownMac: string | null): string {
   switch (view.kind) {
     case "pairing":
@@ -220,7 +217,7 @@ export default function Agent() {
   const [sheetMac, setSheetMac] = useState("");
   const onNotice = useCallback(
     (notice: LinkNotice) => {
-      notify({ text: noticeText(notice), aboveTabBar: false, extraOffset: bottomPanelHeight, action: notice === "forgotten" ? dismissNotice : undefined });
+      notify({ text: noticeText(notice), aboveTabBar: false, extraOffset: bottomPanelHeight });
     },
     [notify],
   );
