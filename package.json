@@ -6,7 +6,7 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "mobile": "pnpm --filter @obnixe/mobile start",
-    "bridge": "pnpm --filter @obnixe/bridge start"
+    "bridge": "pnpm --filter obnixe-bridge start"
   },
   "packageManager": "pnpm@11.20.0",
   "devDependencies": {

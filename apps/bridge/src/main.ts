@@ -1,7 +1,6 @@
 #!/usr/bin/env -S node --experimental-strip-types --disable-warning=ExperimentalWarning
 import { randomBytes } from "node:crypto";
 import { networkInterfaces } from "node:os";
-import { fileURLToPath } from "node:url";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { defaultControlPort, defaultPhonePort } from "@obnixe/core/agent/wire";
 import { startControl } from "./control.ts";
@@ -68,13 +67,17 @@ async function serve(): Promise<void> {
   await server.connect(transport);
 }
 
+const serverConfig = { command: "npx", args: ["-y", "obnixe-bridge"] };
+const cursorInstallLink = `cursor://anysphere.cursor-deeplink/mcp/install?name=obnixe&config=${Buffer.from(JSON.stringify(serverConfig)).toString("base64")}`;
+
 const usage = `obnixe-bridge, MCP server relaying an agent to the Obnixe phone app.
 
   obnixe-bridge          MCP server on stdio (started by Cursor or Codex)
   obnixe-bridge pair     Pair the phone with the code shown on its Agent screen
 
-Cursor (~/.cursor/mcp.json):
-  { "mcpServers": { "obnixe": { "command": "node", "args": ["--experimental-strip-types", "--disable-warning=ExperimentalWarning", "${fileURLToPath(import.meta.url)}"] } } }
+Cursor: open ${cursorInstallLink}
+  or add to ~/.cursor/mcp.json: { "mcpServers": { "obnixe": ${JSON.stringify(serverConfig)} } }
+Codex: codex mcp add obnixe -- npx -y obnixe-bridge
 
 The phone dials ws://<Tailscale address of this Mac>:${phonePort}. The listener binds the first Tailscale IPv4 address
 (100.64.0.0/10), or 127.0.0.1 when there is none; OBNIXE_PHONE_HOST overrides the address and OBNIXE_PHONE_PORT the port.

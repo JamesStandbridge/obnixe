@@ -1,26 +1,40 @@
 {
-  "name": "@obnixe/bridge",
-  "version": "0.0.0",
-  "private": true,
+  "name": "obnixe-bridge",
+  "version": "0.1.0",
+  "description": "MCP server that lets Cursor or Codex read and log training data in the Obnixe phone app.",
+  "license": "UNLICENSED",
+  "author": "James Standbridge",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JamesStandbridge/obnixe.git",
+    "directory": "apps/bridge"
+  },
   "type": "module",
   "bin": {
-    "obnixe-bridge": "./src/main.ts"
+    "obnixe-bridge": "./dist/main.mjs"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
   },
   "scripts": {
     "start": "node --experimental-strip-types src/main.ts",
+    "build": "node scripts/build.mjs",
+    "prepublishOnly": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
   "devDependencies": {
-    "@types/node": "^26.6.5",
-    "@types/ws": "^8.18.2",
-    "typescript": "^7.0.2",
-    "vitest": "^5.0.5"
-  },
-  "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",
     "@obnixe/core": "workspace:*",
     "@obnixe/schema": "workspace:*",
+    "@types/node": "^26.6.5",
+    "@types/ws": "^8.18.2",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5",
     "ws": "^8.22.0"
   }
 }
