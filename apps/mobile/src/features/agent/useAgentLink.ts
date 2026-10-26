@@ -9,8 +9,10 @@ import { useKeepAwakeWhile } from "@/ui/useKeepAwakeWhile";
 
 export interface AgentLinkControls {
   readonly view: LinkView;
+  readonly knownMac: string | null;
   readonly end: (reason: ConnectionEndReason) => void;
   readonly restart: () => void;
+  readonly forget: () => void;
 }
 
 export function useAgentLink(host: string | null, onNotice: (notice: LinkNotice) => void): AgentLinkControls {
@@ -18,10 +20,11 @@ export function useAgentLink(host: string | null, onNotice: (notice: LinkNotice)
   noticeRef.current = onNotice;
   const linkRef = useRef<AgentLink | null>(null);
   const [view, setView] = useState<LinkView>(() => {
-    const link = new AgentLink(host, { onView: (next) => setView(next), onNotice: (notice) => noticeRef.current(notice) });
+    const link = new AgentLink(host, { onView: (next) => setView(next), onNotice: (notice) => noticeRef.current(notice), onKnownMac: (mac) => setKnownMac(mac) });
     linkRef.current = link;
     return link.view;
   });
+  const [knownMac, setKnownMac] = useState<string | null>(() => linkRef.current?.knownMac ?? null);
 
   useEffect(() => {
     const link = linkRef.current;
@@ -46,5 +49,6 @@ export function useAgentLink(host: string | null, onNotice: (notice: LinkNotice)
 
   const end = useCallback((reason: ConnectionEndReason) => linkRef.current?.end(reason), []);
   const restart = useCallback(() => linkRef.current?.start(), []);
-  return { view, end, restart };
+  const forget = useCallback(() => linkRef.current?.forget(), []);
+  return { view, knownMac, end, restart, forget };
 }

@@ -11,14 +11,17 @@ import {
   decodeBytes,
   decodeFrame,
   derivePairingSecrets,
+  deriveResumeSecrets,
   encodeFrame,
   generateEphemeralKeyPair,
   heartbeatIntervalMs,
+  identityBytes,
   isPairingCode,
   maxPairingAttempts,
   nonceBytes,
   openingBytes,
   pairingCodeTtlMs,
+  pairingSecretBytes,
   parsePhoneMessage,
   parseSessionOpenResult,
   parseToolOutcome,
@@ -26,11 +29,15 @@ import {
   proofBytes,
   protocolVersion,
   publicKeyBytes,
+  resumeBridgeProof,
+  resumePhoneProof,
+  revocationProof,
   sameBytes,
   sharedSecret,
   toBase64,
 } from "@obnixe/core/agent/wire";
-import type { BridgeMessage, EphemeralKeyPair, Frame, PairingSecrets, PairingTranscript, RandomBytes, RejectionReason, ToolOutcome } from "@obnixe/core/agent/wire";
+import type { BridgeMessage, EphemeralKeyPair, Frame, PairingSecrets, PairingTranscript, RandomBytes, RejectionReason, SessionKeys, ToolOutcome } from "@obnixe/core/agent/wire";
+import type { PairingFile } from "./pairings.ts";
 
 const maxPending = 8;
 const maxPendingPerAddress = 2;
@@ -43,6 +50,7 @@ export interface EndpointOptions {
   readonly port: number;
   readonly listenHost?: string;
   readonly hostLabel: string;
+  readonly pairings: PairingFile;
   readonly randomBytes: RandomBytes;
   readonly log: (line: string) => void;
   readonly now?: () => number;
@@ -90,6 +98,7 @@ interface Active {
   readonly socket: WebSocket;
   readonly channel: SealedChannel;
   readonly device: string;
+  readonly pairingId: string;
   readonly waiters: Map<number, Waiter>;
   nextId: number;
   open: boolean;
@@ -103,6 +112,17 @@ export type PairResult =
   | { readonly kind: "invalid_code" }
   | { readonly kind: "failed"; readonly message: string };
 
+interface Establishing {
+  readonly socket: WebSocket;
+  readonly device: string;
+  readonly pairingId: string;
+  readonly keys: SessionKeys;
+}
+
+export interface ForgetResult {
+  readonly devices: readonly string[];
+}
+
 export interface EndpointStatus {
   readonly phone: "none" | "waiting" | "connected";
   readonly device: string | null;
@@ -110,12 +130,13 @@ export interface EndpointStatus {
 }
 
 export const notConnectedMessage =
-  "The Obnixe phone is not connected. Ask the user to open the Agent screen of the Obnixe app (Aujourd'hui, Connecter un agent) and to run `obnixe-bridge pair` in a terminal with the code shown on the phone, then retry.";
+  "The Obnixe phone is not connected. Ask the user to open the Agent screen of the Obnixe app (Aujourd'hui, Connecter un agent): a phone paired before reconnects by itself, otherwise run `obnixe-bridge pair` in a terminal with the code shown on the phone, then retry.";
 
 /** WebSocket endpoint the phone dials: verifies pairing proofs, then relays sealed JSON-RPC tool calls to the phone. */
 export class PhoneEndpoint {
   private readonly options: EndpointOptions;
   private readonly now: () => number;
+  private readonly bridgeId: string;
   private readonly pendings = new Map<WebSocket, Pending>();
   private http: Server | null = null;
   private sockets: WebSocketServer | null = null;
@@ -127,6 +148,7 @@ export class PhoneEndpoint {
   constructor(options: EndpointOptions) {
     this.options = options;
     this.now = options.now ?? Date.now;
+    this.bridgeId = options.pairings.bridgeId();
   }
 
   async listen(): Promise<number> {
@@ -171,7 +193,7 @@ export class PhoneEndpoint {
     if (candidates.length === 0) return { kind: "no_phone" };
     const verdicts = await Promise.all(candidates.map((candidate) => this.attempt(candidate, code)));
     for (const verdict of verdicts) {
-      if (verdict.kind === "match" && this.pendings.get(verdict.candidate.socket) === verdict.candidate) return this.establish(verdict);
+      if (verdict.kind === "match" && this.pendings.get(verdict.candidate.socket) === verdict.candidate) return this.welcome(verdict);
     }
     let counted = false;
     let remaining = 0;
@@ -183,6 +205,13 @@ export class PhoneEndpoint {
       else remaining = Math.max(remaining, maxPairingAttempts - verdict.candidate.attempts);
     }
     return counted ? { kind: "bad_code", remaining } : { kind: "no_phone" };
+  }
+
+  /** Revokes every trusted phone and ends a session that relied on one of them. */
+  forgetAll(): ForgetResult {
+    const forgotten = this.options.pairings.revokeAll();
+    for (const pairing of forgotten) this.endTrusted(pairing.pairingId, "pairing forgotten");
+    return { devices: forgotten.map((pairing) => pairing.device) };
   }
 
   async callTool(name: string, args: Readonly<Record<string, unknown>>): Promise<ToolOutcome> {
@@ -249,7 +278,7 @@ export class PhoneEndpoint {
     socket.on("pong", () => {
       if (this.active?.socket === socket) this.active.alive = true;
     });
-    this.send(socket, { type: "challenge", version: protocolVersion, nonce: toBase64(pending.bridgeNonce), key: toBase64(pending.keyPair.publicKey) });
+    this.send(socket, { type: "challenge", version: protocolVersion, bridge: this.bridgeId, nonce: toBase64(pending.bridgeNonce), key: toBase64(pending.keyPair.publicKey) });
   }
 
   private receive(socket: WebSocket, data: RawData, isBinary: boolean): void {
@@ -275,6 +304,12 @@ export class PhoneEndpoint {
       case "hello":
         this.receiveHello(pending, frame);
         return;
+      case "resume":
+        this.receiveResume(pending, frame);
+        return;
+      case "revoke":
+        this.receiveRevoke(pending, frame);
+        return;
       case "proof": {
         const attempt = pending.attempt;
         if (attempt === null) throw new ProtocolError("Unexpected proof");
@@ -284,6 +319,7 @@ export class PhoneEndpoint {
       case "challenge":
       case "commit":
       case "welcome":
+      case "resumed":
       case "rejected":
       case "sealed":
         throw new ProtocolError(`Unexpected ${frame.type} before pairing`);
@@ -300,17 +336,82 @@ export class PhoneEndpoint {
       this.reject(pending, "version");
       return;
     }
-    const transcript: PairingTranscript = {
-      bridgeNonce: pending.bridgeNonce,
-      bridgeKey: pending.keyPair.publicKey,
-      phoneNonce: decodeBytes(frame.nonce, nonceBytes),
-      phoneKey: decodeBytes(frame.key, publicKeyBytes),
-      device: frame.device,
-    };
+    const transcript = this.transcriptOf(pending, frame);
     const shared = sharedSecret(pending.keyPair.secretKey, transcript.phoneKey);
     clearTimeout(pending.handshakeTimer);
     pending.hello = { transcript, shared, receivedAt: this.now() };
     this.options.log(`${frame.device} is waiting to pair. Run \`obnixe-bridge pair\` and enter the code shown on the phone.`);
+  }
+
+  private transcriptOf(pending: Pending, frame: Extract<Frame, { type: "hello" | "resume" }>): PairingTranscript {
+    return {
+      bridgeId: decodeBytes(this.bridgeId, identityBytes),
+      bridgeNonce: pending.bridgeNonce,
+      bridgeKey: pending.keyPair.publicKey,
+      deviceId: decodeBytes(frame.deviceId, identityBytes),
+      phoneNonce: decodeBytes(frame.nonce, nonceBytes),
+      phoneKey: decodeBytes(frame.key, publicKeyBytes),
+      device: frame.device,
+    };
+  }
+
+  /** Verifies the proof of a trusted phone in one round trip; the bridge proof only leaves once the phone proof matched. */
+  private receiveResume(pending: Pending, frame: Extract<Frame, { type: "resume" }>): void {
+    if (pending.hello !== null) throw new ProtocolError("Unexpected resume after hello");
+    if (frame.version !== protocolVersion) {
+      this.reject(pending, "version");
+      return;
+    }
+    const lookup = this.options.pairings.lookup(frame.pairing);
+    switch (lookup.kind) {
+      case "unknown":
+        this.options.log(`${frame.device} tried to reconnect with a pairing this Mac does not know; it will show a new code.`);
+        this.reject(pending, "unknown");
+        return;
+      case "revoked":
+        this.options.log(`${frame.device} tried to reconnect with a forgotten pairing; it will show a new code.`);
+        this.reject(pending, "revoked");
+        return;
+      case "known":
+        break;
+      default: {
+        const unreachable: never = lookup;
+        throw new Error(`Unhandled pairing lookup ${JSON.stringify(unreachable)}`);
+      }
+    }
+    const pairing = lookup.pairing;
+    const transcript = this.transcriptOf(pending, frame);
+    const shared = sharedSecret(pending.keyPair.secretKey, transcript.phoneKey);
+    const secrets = deriveResumeSecrets(decodeBytes(pairing.secret, pairingSecretBytes), { ...transcript, pairingId: decodeBytes(frame.pairing, identityBytes) }, shared);
+    const sameDevice = sameBytes(transcript.deviceId, decodeBytes(pairing.deviceId, identityBytes));
+    if (!sameDevice || !sameBytes(decodeBytes(frame.proof, proofBytes), resumePhoneProof(secrets))) {
+      this.options.log(`Refused a reconnection for ${pairing.device}: the proof does not match the stored pairing.`);
+      this.reject(pending, "unknown");
+      return;
+    }
+    this.forget(pending);
+    this.send(pending.socket, { type: "resumed", proof: toBase64(resumeBridgeProof(secrets)) });
+    void this.establish({ socket: pending.socket, device: frame.device, pairingId: pairing.pairingId, keys: secrets.sessionKeys }).then((result) => {
+      if (result.kind === "paired") this.options.log(`Reconnected to ${result.device} without a code.`);
+    });
+  }
+
+  private receiveRevoke(pending: Pending, frame: Extract<Frame, { type: "revoke" }>): void {
+    if (pending.hello !== null) throw new ProtocolError("Unexpected revoke after hello");
+    const lookup = this.options.pairings.lookup(frame.pairing);
+    if (lookup.kind !== "known") return;
+    const expected = revocationProof(decodeBytes(lookup.pairing.secret, pairingSecretBytes), decodeBytes(frame.pairing, identityBytes));
+    if (!sameBytes(decodeBytes(frame.proof, proofBytes), expected)) throw new ProtocolError("Invalid revocation proof");
+    this.options.pairings.revoke(frame.pairing);
+    this.endTrusted(frame.pairing, "pairing revoked by the phone");
+    this.options.log(`${lookup.pairing.device} forgot this Mac; its pairing is revoked.`);
+  }
+
+  private endTrusted(pairingId: string, reason: string): void {
+    const active = this.active;
+    if (active === null || active.pairingId !== pairingId) return;
+    this.drop(active, reason);
+    active.socket.close(1000, "forgotten");
   }
 
   /** Commits to the bridge proof for `code`, then waits for the phone proof; the bridge proof is only revealed on a match. */
@@ -350,18 +451,36 @@ export class PhoneEndpoint {
     waiter.resolve("result" in message ? { ok: true, result: message.result } : { ok: false, message: message.error.message });
   }
 
-  private async establish(match: Extract<Verdict, { kind: "match" }>): Promise<PairResult> {
+  private async welcome(match: Extract<Verdict, { kind: "match" }>): Promise<PairResult> {
     const { candidate, secrets, opening } = match;
     const { socket, hello } = candidate;
     this.forget(candidate);
+    const pairingId = toBase64(secrets.pairingId);
+    const device = hello.transcript.device;
+    this.options.pairings.remember({ pairingId, deviceId: toBase64(hello.transcript.deviceId), device, secret: toBase64(secrets.pairingSecret), pairedAt: this.now() });
+    this.send(socket, { type: "welcome", opening: toBase64(opening), proof: toBase64(bridgeProof(secrets)) });
+    const result = await this.establish({ socket, device, pairingId, keys: secrets.sessionKeys });
+    if (result.kind === "paired") this.options.log(`Connected to ${device}. It will reconnect without a code next time.`);
+    return result;
+  }
+
+  private async establish(establishing: Establishing): Promise<PairResult> {
+    const { socket, keys } = establishing;
     const previous = this.active;
     if (previous !== null) {
-      this.drop(previous, "replaced by a new pairing");
+      this.drop(previous, "replaced by a new session");
       previous.socket.close(1000, "replaced");
     }
-    this.send(socket, { type: "welcome", opening: toBase64(opening), proof: toBase64(bridgeProof(secrets)) });
-    const keys = secrets.sessionKeys;
-    const active: Active = { socket, channel: new SealedChannel(keys.toPhone, keys.toBridge), device: hello.transcript.device, waiters: new Map(), nextId: 1, open: false, alive: true };
+    const active: Active = {
+      socket,
+      channel: new SealedChannel(keys.toPhone, keys.toBridge),
+      device: establishing.device,
+      pairingId: establishing.pairingId,
+      waiters: new Map(),
+      nextId: 1,
+      open: false,
+      alive: true,
+    };
     this.active = active;
     const reply = await this.request(active, { method: "session.open", params: { client: this.client, host: this.options.hostLabel } });
     if (!reply.ok) {
@@ -369,9 +488,15 @@ export class PhoneEndpoint {
       socket.close(1000, "refused");
       return { kind: "failed", message: reply.message };
     }
-    parseSessionOpenResult(reply.result);
+    try {
+      parseSessionOpenResult(reply.result);
+    } catch (error) {
+      if (!(error instanceof ProtocolError)) throw error;
+      this.drop(active, "invalid session.open answer");
+      socket.close(policyViolation, "protocol");
+      return { kind: "failed", message: error.message };
+    }
     active.open = true;
-    this.options.log(`Connected to ${active.device}.`);
     return { kind: "paired", device: active.device, client: this.client };
   }
 

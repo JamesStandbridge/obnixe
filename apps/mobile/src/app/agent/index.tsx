@@ -13,11 +13,14 @@ import {
   AgentPermissions,
   BottomAction,
   CodePanel,
+  ForgetMac,
+  ForgetMacSheet,
   Heading,
   HistoryLink,
   HostSheet,
   NetworkLine,
   PairingSteps,
+  ResumePanel,
   StatusPanel,
   bottomPanelHeight,
 } from "@/features/agent/components";
@@ -73,12 +76,34 @@ function Pairing({ view, settings, onEditHost }: PairingProps) {
   );
 }
 
+interface ResumingProps {
+  readonly view: Extract<LinkView, { kind: "resuming" }>;
+  readonly settings: AgentSettings;
+  readonly onEditHost: () => void;
+  readonly onForget: () => void;
+}
+
+function Resuming({ view, settings, onEditHost, onForget }: ResumingProps) {
+  const photoCount = usePhotoCount();
+  return (
+    <>
+      <ResumePanel mac={view.mac} network={view.network} />
+      <NetworkLine network={view.network} host={settings.bridgeHost} onPress={onEditHost} />
+      <AgentPermissions settings={settings} connected={false} photoCount={photoCount} onChange={setPermission} />
+      <HistoryLink detail="connexions précédentes" onPress={openLog} />
+      <ForgetMac mac={view.mac} onPress={onForget} />
+    </>
+  );
+}
+
 interface ConnectedProps {
   readonly connectionId: Id;
   readonly settings: AgentSettings;
+  readonly knownMac: string | null;
+  readonly onForget: () => void;
 }
 
-function Connected({ connectionId, settings }: ConnectedProps) {
+function Connected({ connectionId, settings, knownMac, onForget }: ConnectedProps) {
   const connection = useConnection(connectionId);
   const calls = useCalls(connectionId);
   const index = useRevertIndex();
@@ -120,6 +145,7 @@ function Connected({ connectionId, settings }: ConnectedProps) {
         )}
       </Section>
       <AgentPermissions settings={settings} connected photoCount={photoCount} onChange={setPermission} />
+      {knownMac === null ? null : <ForgetMac mac={knownMac} onPress={onForget} />}
     </>
   );
 }
@@ -127,9 +153,11 @@ function Connected({ connectionId, settings }: ConnectedProps) {
 interface DisconnectedProps {
   readonly connectionId: Id;
   readonly at: EpochMs;
+  readonly knownMac: string | null;
+  readonly onForget: () => void;
 }
 
-function Disconnected({ connectionId, at }: DisconnectedProps) {
+function Disconnected({ connectionId, at, knownMac, onForget }: DisconnectedProps) {
   const connection = useConnection(connectionId);
   const calls = useCalls(connectionId);
   const endedAt = connection?.endedAt ?? at;
@@ -144,18 +172,36 @@ function Disconnected({ connectionId, at }: DisconnectedProps) {
         </Text>
       )}
       <HistoryLink detail="cette connexion et les précédentes" onPress={openLog} />
+      {knownMac === null ? null : <ForgetMac mac={knownMac} onPress={onForget} />}
     </>
   );
 }
 
-function bottomLabel(view: LinkView): string {
+function noticeText(notice: LinkNotice): string {
+  switch (notice) {
+    case "code_refused":
+      return "Code refusé trop de fois, nouveau code";
+    case "version":
+      return "Mets à jour obnixe-bridge sur le Mac";
+    case "forgotten":
+      return "Le Mac ne reconnaît plus ce téléphone, saisis le nouveau code";
+    default: {
+      const unreachable: never = notice;
+      return unreachable;
+    }
+  }
+}
+
+function bottomLabel(view: LinkView, knownMac: string | null): string {
   switch (view.kind) {
     case "pairing":
       return "Annuler l'appairage";
+    case "resuming":
+      return "Annuler la reconnexion";
     case "connected":
       return "Couper la connexion";
     case "disconnected":
-      return "Générer un nouveau code";
+      return knownMac === null ? "Générer un nouveau code" : "Reconnecter";
     default: {
       const unreachable: never = view;
       return unreachable;
@@ -167,18 +213,25 @@ export default function Agent() {
   const settings = useAgentSettings();
   const notify = useSnackbar();
   const [editingHost, setEditingHost] = useState(false);
+  const [forgetting, setForgetting] = useState(false);
+  const [sheetMac, setSheetMac] = useState("");
   const onNotice = useCallback(
     (notice: LinkNotice) => {
-      const text = notice === "code_refused" ? "Code refusé trop de fois, nouveau code" : "Mets à jour obnixe-bridge sur le Mac";
-      notify({ text, aboveTabBar: false, extraOffset: bottomPanelHeight });
+      notify({ text: noticeText(notice), aboveTabBar: false, extraOffset: bottomPanelHeight });
     },
     [notify],
   );
-  const { view, end, restart } = useAgentLink(settings.bridgeHost, onNotice);
+  const { view, knownMac, end, restart, forget } = useAgentLink(settings.bridgeHost, onNotice);
+  const askForget = (): void => {
+    if (knownMac === null) return;
+    setSheetMac(knownMac);
+    setForgetting(true);
+  };
 
   const bottomAction = (): void => {
     switch (view.kind) {
       case "pairing":
+      case "resuming":
         goBack("/");
         return;
       case "connected":
@@ -199,10 +252,20 @@ export default function Agent() {
       <Screen bottomInset={120}>
         <AgentAppBar onBack={() => goBack("/")} />
         {view.kind === "pairing" ? <Pairing view={view} settings={settings} onEditHost={() => setEditingHost(true)} /> : null}
-        {view.kind === "connected" ? <Connected connectionId={view.connectionId} settings={settings} /> : null}
-        {view.kind === "disconnected" ? <Disconnected connectionId={view.connectionId} at={view.at} /> : null}
+        {view.kind === "resuming" ? <Resuming view={view} settings={settings} onEditHost={() => setEditingHost(true)} onForget={askForget} /> : null}
+        {view.kind === "connected" ? <Connected connectionId={view.connectionId} settings={settings} knownMac={knownMac} onForget={askForget} /> : null}
+        {view.kind === "disconnected" ? <Disconnected connectionId={view.connectionId} at={view.at} knownMac={knownMac} onForget={askForget} /> : null}
       </Screen>
-      <BottomAction label={bottomLabel(view)} onPress={bottomAction} />
+      <BottomAction label={bottomLabel(view, knownMac)} onPress={bottomAction} />
+      <ForgetMacSheet
+        open={forgetting}
+        mac={sheetMac}
+        onClose={() => setForgetting(false)}
+        onConfirm={() => {
+          setForgetting(false);
+          forget();
+        }}
+      />
       <HostSheet
         open={editingHost}
         host={settings.bridgeHost}

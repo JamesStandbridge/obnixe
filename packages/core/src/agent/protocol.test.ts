@@ -11,6 +11,7 @@ import {
   decodeBytes,
   decodeFrame,
   derivePairingSecrets,
+  deriveResumeSecrets,
   encodeFrame,
   generateEphemeralKeyPair,
   generatePairingCode,
@@ -18,11 +19,14 @@ import {
   parsePhoneMessage,
   phoneProof,
   protocolVersion,
+  resumeBridgeProof,
+  resumePhoneProof,
+  revocationProof,
   sharedSecret,
 } from "./protocol.ts";
-import type { EphemeralKeyPair, Frame, PairingSecrets, PairingTranscript } from "./protocol.ts";
-import { PhoneSession } from "./session.ts";
-import type { PhoneLinkStatus } from "./session.ts";
+import type { EphemeralKeyPair, Frame, HandshakeSecrets, PairingSecrets, PairingTranscript, RejectionReason } from "./protocol.ts";
+import { PhoneSession, parsePhonePairing, phoneRevocation } from "./session.ts";
+import type { PhoneLinkStatus, PhonePairing, PhoneRevocation } from "./session.ts";
 
 const bytes = (length: number): Uint8Array => new Uint8Array(randomBytes(length));
 
@@ -69,8 +73,10 @@ const code = "482917";
 
 type ChallengeFrame = Extract<Frame, { type: "challenge" }>;
 type HelloFrame = Extract<Frame, { type: "hello" }>;
+type ResumeFrame = Extract<Frame, { type: "resume" }>;
 
 interface SimulatedBridge {
+  readonly id: Uint8Array;
   readonly nonce: Uint8Array;
   readonly keyPair: EphemeralKeyPair;
 }
@@ -80,16 +86,27 @@ interface Commitment {
   readonly commitment: Uint8Array;
 }
 
-function simulatedBridge(): SimulatedBridge {
-  return { nonce: bytes(32), keyPair: generateEphemeralKeyPair(bytes) };
+const bridgeId = bytes(16);
+const deviceId = toBase64(bytes(16));
+
+function simulatedBridge(id: Uint8Array = bridgeId): SimulatedBridge {
+  return { id, nonce: bytes(32), keyPair: generateEphemeralKeyPair(bytes) };
 }
 
 function challengeOf(bridge: SimulatedBridge): ChallengeFrame {
-  return { type: "challenge", version: protocolVersion, nonce: toBase64(bridge.nonce), key: toBase64(bridge.keyPair.publicKey) };
+  return { type: "challenge", version: protocolVersion, bridge: toBase64(bridge.id), nonce: toBase64(bridge.nonce), key: toBase64(bridge.keyPair.publicKey) };
 }
 
-function transcriptOf(bridge: SimulatedBridge, hello: HelloFrame): PairingTranscript {
-  return { bridgeNonce: bridge.nonce, bridgeKey: bridge.keyPair.publicKey, phoneNonce: decodeBytes(hello.nonce), phoneKey: decodeBytes(hello.key), device: hello.device };
+function transcriptOf(bridge: SimulatedBridge, hello: HelloFrame | ResumeFrame): PairingTranscript {
+  return {
+    bridgeId: bridge.id,
+    bridgeNonce: bridge.nonce,
+    bridgeKey: bridge.keyPair.publicKey,
+    deviceId: decodeBytes(hello.deviceId),
+    phoneNonce: decodeBytes(hello.nonce),
+    phoneKey: decodeBytes(hello.key),
+    device: hello.device,
+  };
 }
 
 function bridgeSecrets(bridge: SimulatedBridge, hello: HelloFrame, typed: string): Promise<PairingSecrets> {
@@ -111,17 +128,31 @@ interface Harness {
   readonly sent: Frame[];
   readonly statuses: PhoneLinkStatus[];
   readonly calls: string[];
+  readonly paired: PhonePairing[];
+  readonly rejections: RejectionReason[];
+  readonly revocationsSent: PhoneRevocation[];
   readonly closed: boolean;
 }
 
-function harness(phoneCode: string): Harness {
+interface Trust {
+  readonly pairing?: PhonePairing;
+  readonly revocation?: PhoneRevocation;
+}
+
+function harness(phoneCode: string, trust: Trust = {}): Harness {
   const sent: Frame[] = [];
   const statuses: PhoneLinkStatus[] = [];
   const calls: string[] = [];
+  const paired: PhonePairing[] = [];
+  const rejections: RejectionReason[] = [];
+  const revocationsSent: PhoneRevocation[] = [];
   const state = { closed: false };
   const session = new PhoneSession({
     code: phoneCode,
     device: "iPhone",
+    deviceId,
+    pairing: trust.pairing ?? null,
+    revocation: trust.revocation ?? null,
     randomBytes: bytes,
     now: () => 0,
     socket: { send: (text) => sent.push(decodeFrame(text)), close: () => (state.closed = true) },
@@ -134,7 +165,9 @@ function harness(phoneCode: string): Harness {
         if (tool === "explode") throw new RangeError("disk full");
         return { text: "{}", isError: false };
       },
-      onRejected: () => undefined,
+      onRejected: (reason) => rejections.push(reason),
+      onPaired: (pairing) => paired.push(pairing),
+      onRevocationSent: (revocation) => revocationsSent.push(revocation),
     },
   });
   return {
@@ -142,6 +175,9 @@ function harness(phoneCode: string): Harness {
     sent,
     statuses,
     calls,
+    paired,
+    rejections,
+    revocationsSent,
     get closed() {
       return state.closed;
     },
@@ -169,6 +205,7 @@ interface Paired {
   readonly bridge: SimulatedBridge;
   readonly hello: HelloFrame;
   readonly proof: Uint8Array;
+  readonly secrets: PairingSecrets;
 }
 
 async function pair(target: Harness): Promise<Paired> {
@@ -179,7 +216,7 @@ async function pair(target: Harness): Promise<Paired> {
   const proof = await proofFrom(target, commitment);
   expect(sameBytes(proof, phoneProof(secrets, commitment.commitment))).toBe(true);
   await target.session.receive(encodeFrame(welcomeFor(secrets, commitment)));
-  return { channel: new SealedChannel(secrets.sessionKeys.toPhone, secrets.sessionKeys.toBridge), bridge, hello, proof };
+  return { channel: new SealedChannel(secrets.sessionKeys.toPhone, secrets.sessionKeys.toBridge), bridge, hello, proof, secrets };
 }
 
 describe("pairing handshake", () => {
@@ -239,7 +276,7 @@ describe("pairing handshake", () => {
     const bridge = simulatedBridge();
     const target = harness(code);
     const intruder = generateEphemeralKeyPair(bytes);
-    const hello = await helloFrom(target, { nonce: bridge.nonce, keyPair: intruder });
+    const hello = await helloFrom(target, { id: bridge.id, nonce: bridge.nonce, keyPair: intruder });
     const secrets = await bridgeSecrets(bridge, hello, code);
     const commitment = commitTo(secrets);
     expect(sameBytes(await proofFrom(target, commitment), phoneProof(secrets, commitment.commitment))).toBe(false);
@@ -256,6 +293,145 @@ describe("pairing handshake", () => {
     const target = harness(code);
     const challenge: Frame = { ...challengeOf(simulatedBridge()), key: toBase64(new Uint8Array(32)) };
     await expect(target.session.receive(encodeFrame(challenge))).rejects.toThrow(ProtocolError);
+  });
+});
+
+const openSession = { jsonrpc: "2.0", id: 1, method: "session.open", params: { client: "Cursor", host: "MacBook Pro" } } as const;
+
+interface TrustedPair {
+  readonly pairing: PhonePairing;
+  readonly secrets: PairingSecrets;
+}
+
+async function trustedPair(): Promise<TrustedPair> {
+  const target = harness(code);
+  const { channel, secrets } = await pair(target);
+  expect(target.paired).toEqual([]);
+  await target.session.receive(encodeFrame(channel.seal(openSession)));
+  const [pairing] = target.paired;
+  if (pairing === undefined) throw new Error("Expected a stored pairing");
+  return { pairing, secrets };
+}
+
+async function resumeFrom(target: Harness, bridge: SimulatedBridge): Promise<ResumeFrame> {
+  await target.session.receive(encodeFrame(challengeOf(bridge)));
+  return lastSent(target, "resume");
+}
+
+function bridgeResumeSecrets(bridge: SimulatedBridge, resume: ResumeFrame, pairingSecret: Uint8Array): HandshakeSecrets {
+  const transcript = transcriptOf(bridge, resume);
+  return deriveResumeSecrets(pairingSecret, { ...transcript, pairingId: decodeBytes(resume.pairing) }, sharedSecret(bridge.keyPair.secretKey, transcript.phoneKey));
+}
+
+describe("trusted resume", () => {
+  it("stores a pairing bound to the bridge and the device once a code pairing opens", async () => {
+    const { pairing, secrets } = await trustedPair();
+    expect(pairing).toEqual({ pairingId: toBase64(secrets.pairingId), bridgeId: toBase64(bridgeId), bridgeName: "MacBook Pro", secret: toBase64(secrets.pairingSecret) });
+    expect(parsePhonePairing(JSON.stringify(pairing))).toEqual(pairing);
+    expect(parsePhonePairing("{")).toBeNull();
+
+    const other = harness(code);
+    const bridge = simulatedBridge();
+    const hello = await helloFrom(other, bridge);
+    const forOtherDevice = await bridgeSecrets(bridge, { ...hello, deviceId: toBase64(bytes(16)) }, code);
+    const forOtherBridge = await bridgeSecrets({ ...bridge, id: bytes(16) }, hello, code);
+    const honest = await bridgeSecrets(bridge, hello, code);
+    for (const tampered of [forOtherDevice, forOtherBridge]) {
+      expect(sameBytes(tampered.pairingSecret, honest.pairingSecret)).toBe(false);
+      expect(sameBytes(tampered.pairingId, honest.pairingId)).toBe(false);
+    }
+  });
+
+  it("resumes without a code, with fresh keys, and opens a new connection", async () => {
+    const { pairing, secrets } = await trustedPair();
+    const target = harness("000000", { pairing });
+    const bridge = simulatedBridge();
+    const resume = await resumeFrom(target, bridge);
+    expect(target.statuses).toEqual(["resuming"]);
+    expect(resume.pairing).toBe(pairing.pairingId);
+    const resumed = bridgeResumeSecrets(bridge, resume, secrets.pairingSecret);
+    expect(sameBytes(decodeBytes(resume.proof), resumePhoneProof(resumed))).toBe(true);
+    expect(sameBytes(resumed.sessionKeys.toPhone, secrets.sessionKeys.toPhone)).toBe(false);
+    await target.session.receive(encodeFrame({ type: "resumed", proof: toBase64(resumeBridgeProof(resumed)) }));
+    const channel = new SealedChannel(resumed.sessionKeys.toPhone, resumed.sessionKeys.toBridge);
+    await target.session.receive(encodeFrame(channel.seal(openSession)));
+    expect(parsePhoneMessage(channel.open(lastSent(target, "sealed")))).toEqual({ jsonrpc: "2.0", id: 1, result: { connectionId: "connection-1" } });
+    expect(target.statuses.at(-1)).toBe("open");
+    expect(target.paired).toEqual([]);
+    expect(target.session.codeExposed).toBe(false);
+  });
+
+  it("fails both proofs when the secrets differ", async () => {
+    const { pairing } = await trustedPair();
+    const target = harness(code, { pairing });
+    const bridge = simulatedBridge();
+    const resume = await resumeFrom(target, bridge);
+    const wrong = bridgeResumeSecrets(bridge, resume, bytes(32));
+    expect(sameBytes(decodeBytes(resume.proof), resumePhoneProof(wrong))).toBe(false);
+    await expect(target.session.receive(encodeFrame({ type: "resumed", proof: toBase64(resumeBridgeProof(wrong)) }))).rejects.toThrow(ProtocolError);
+    expect(target.session.connectionId).toBeNull();
+  });
+
+  it("reports an unknown or revoked pairing so the phone can fall back to a code", async () => {
+    const { pairing } = await trustedPair();
+    for (const reason of ["unknown", "revoked"] as const) {
+      const target = harness(code, { pairing });
+      await resumeFrom(target, simulatedBridge());
+      await target.session.receive(encodeFrame({ type: "rejected", reason }));
+      expect(target.rejections).toEqual([reason]);
+      expect(target.session.isClosed).toBe(true);
+      expect(target.closed).toBe(true);
+    }
+  });
+
+  it("refuses a replayed resume transcript in either direction", async () => {
+    const { pairing, secrets } = await trustedPair();
+    const firstBridge = simulatedBridge();
+    const first = harness(code, { pairing });
+    const recorded = await resumeFrom(first, firstBridge);
+    const recordedResumed: Frame = { type: "resumed", proof: toBase64(resumeBridgeProof(bridgeResumeSecrets(firstBridge, recorded, secrets.pairingSecret))) };
+
+    const laterBridge = simulatedBridge();
+    const replayed = bridgeResumeSecrets(laterBridge, recorded, secrets.pairingSecret);
+    expect(sameBytes(decodeBytes(recorded.proof), resumePhoneProof(replayed))).toBe(false);
+
+    const later = harness(code, { pairing });
+    await resumeFrom(later, laterBridge);
+    await expect(later.session.receive(encodeFrame(recordedResumed))).rejects.toThrow(ProtocolError);
+  });
+
+  it("never sends a resume proof to another bridge and never reflects proofs", async () => {
+    const { pairing, secrets } = await trustedPair();
+    const target = harness(code, { pairing });
+    await helloFrom(target, simulatedBridge(bytes(16)));
+    expect(target.sent.some((frame) => frame.type === "resume")).toBe(false);
+    expect(target.statuses).toEqual(["proving", "waiting"]);
+
+    const honest = harness(code, { pairing });
+    const bridge = simulatedBridge();
+    const resume = await resumeFrom(honest, bridge);
+    const resumed = bridgeResumeSecrets(bridge, resume, secrets.pairingSecret);
+    expect(sameBytes(resumePhoneProof(resumed), resumeBridgeProof(resumed))).toBe(false);
+    await expect(honest.session.receive(encodeFrame({ type: "resumed", proof: resume.proof }))).rejects.toThrow(ProtocolError);
+    const leaked = JSON.stringify(honest.sent);
+    expect(leaked).not.toContain(pairing.secret);
+  });
+
+  it("sends a revocation token to its bridge only, before the hello", async () => {
+    const { pairing, secrets } = await trustedPair();
+    const revocation = phoneRevocation(pairing);
+    expect(sameBytes(decodeBytes(revocation.proof), revocationProof(secrets.pairingSecret, secrets.pairingId))).toBe(true);
+
+    const elsewhere = harness(code, { revocation });
+    await helloFrom(elsewhere, simulatedBridge(bytes(16)));
+    expect(elsewhere.revocationsSent).toEqual([]);
+
+    const target = harness(code, { revocation });
+    await helloFrom(target, simulatedBridge());
+    expect(target.sent.map((frame) => frame.type)).toEqual(["revoke", "hello"]);
+    expect(target.sent[0]).toEqual({ type: "revoke", pairing: pairing.pairingId, proof: revocation.proof });
+    expect(target.revocationsSent).toEqual([revocation]);
+    expect(JSON.stringify(target.sent)).not.toContain(pairing.secret);
   });
 });
 
@@ -287,7 +463,7 @@ describe("sealed channel", () => {
 
 describe("frames", () => {
   it("round-trip and reject garbage", () => {
-    const frame: Frame = { type: "challenge", version: protocolVersion, nonce: toBase64(bytes(32)), key: toBase64(bytes(32)) };
+    const frame: Frame = { type: "challenge", version: protocolVersion, bridge: toBase64(bytes(16)), nonce: toBase64(bytes(32)), key: toBase64(bytes(32)) };
     expect(decodeFrame(encodeFrame(frame))).toEqual(frame);
     expect(() => decodeFrame("{")).toThrow(ProtocolError);
     expect(() => decodeFrame(JSON.stringify({ type: "sealed", seq: -1, box: "" }))).toThrow(ProtocolError);
@@ -335,19 +511,19 @@ describe("PhoneSession", () => {
     expect(target.session.codeExposed).toBe(true);
   });
 
-  it("handles a burst of frames in order while the code secrets are still being derived", async () => {
+  it("handles frames in arrival order while the code secrets are still being derived", async () => {
     const target = harness(code);
     const bridge = simulatedBridge();
-    await target.session.receive(encodeFrame(challengeOf(bridge)));
-    const secrets = await bridgeSecrets(bridge, lastSent(target, "hello"), code);
+    const hello = await helloFrom(target, bridge);
+    const secrets = await bridgeSecrets(bridge, hello, code);
     const commitment = commitTo(secrets);
     const channel = new SealedChannel(secrets.sessionKeys.toPhone, secrets.sessionKeys.toBridge);
     await Promise.all([
       target.session.receive(encodeFrame({ type: "commit", commitment: toBase64(commitment.commitment) })),
       target.session.receive(encodeFrame(welcomeFor(secrets, commitment))),
-      target.session.receive(encodeFrame(channel.seal({ jsonrpc: "2.0", id: 1, method: "session.open", params: { client: "Cursor", host: "MacBook Pro" } }))),
+      target.session.receive(encodeFrame(channel.seal(openSession))),
     ]);
-    expect(target.session.connectionId).toBe("connection-1");
+    expect(parsePhoneMessage(channel.open(lastSent(target, "sealed")))).toEqual({ jsonrpc: "2.0", id: 1, result: { connectionId: "connection-1" } });
   });
 
   it("refuses sealed frames before pairing", async () => {

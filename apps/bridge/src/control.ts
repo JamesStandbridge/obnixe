@@ -65,7 +65,7 @@ function parseJson(text: string): unknown {
   }
 }
 
-/** Localhost-only HTTP port used by `obnixe-bridge pair`. Requires a JSON content type and a loopback Host so browsers cannot post codes. */
+/** Localhost-only HTTP port used by `obnixe-bridge pair` and `forget`. Requires a JSON content type and a loopback Host so browsers cannot post codes. */
 export async function startControl(endpoint: PhoneEndpoint, port: number): Promise<ControlServer> {
   const server = createServer((request, response) => {
     void handle(endpoint, request, response, server.address() as AddressInfo);
@@ -106,6 +106,14 @@ async function handle(endpoint: PhoneEndpoint, request: IncomingMessage, respons
     }
     const result = await endpoint.pair(parsed.code);
     json(response, pairStatus(result), result);
+    return;
+  }
+  if (request.method === "POST" && request.url === "/forget") {
+    if (request.headers["content-type"] !== "application/json") {
+      json(response, 415, { error: "json_required" });
+      return;
+    }
+    json(response, 200, endpoint.forgetAll());
     return;
   }
   json(response, 404, { error: "not_found" });

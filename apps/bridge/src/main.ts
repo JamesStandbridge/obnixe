@@ -5,10 +5,12 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { defaultControlPort, defaultPhonePort } from "@obnixe/core/agent/wire";
 import { startControl } from "./control.ts";
 import type { ControlServer } from "./control.ts";
+import { runForget } from "./forget.ts";
 import { selectPhoneHost } from "./listen.ts";
 import type { PhoneHost } from "./listen.ts";
 import { createMcpServer, hostLabel } from "./mcp.ts";
 import { runPair } from "./pair.ts";
+import { PairingFile, pairingFilePath } from "./pairings.ts";
 import { PhoneEndpoint } from "./phone.ts";
 
 function port(name: string, fallback: number): number {
@@ -21,6 +23,7 @@ function port(name: string, fallback: number): number {
 
 const phonePort = port("OBNIXE_PHONE_PORT", defaultPhonePort);
 const controlPort = port("OBNIXE_CONTROL_PORT", defaultControlPort);
+const pairings = new PairingFile(pairingFilePath(process.env), (length) => new Uint8Array(randomBytes(length)));
 
 function log(line: string): void {
   process.stderr.write(`[obnixe] ${line}\n`);
@@ -47,7 +50,7 @@ function describeListening(host: PhoneHost): string {
 
 async function serve(): Promise<void> {
   const host = selectPhoneHost(networkInterfaces(), process.env.OBNIXE_PHONE_HOST);
-  const endpoint = new PhoneEndpoint({ port: phonePort, listenHost: host.address, hostLabel: hostLabel(), randomBytes: (length) => new Uint8Array(randomBytes(length)), log });
+  const endpoint = new PhoneEndpoint({ port: phonePort, listenHost: host.address, hostLabel: hostLabel(), pairings, randomBytes: (length) => new Uint8Array(randomBytes(length)), log });
   let control: ControlServer | null = null;
   try {
     await endpoint.listen();
@@ -61,10 +64,13 @@ async function serve(): Promise<void> {
   }
   const server = createMcpServer(endpoint);
   const transport = new StdioServerTransport();
-  transport.onclose = () => {
+  const shutdown = (): void => {
     void Promise.all([endpoint.close(), control?.close()]).then(() => process.exit(0));
   };
+  transport.onclose = shutdown;
   await server.connect(transport);
+  // The stdio transport does not report the client closing stdin, which would leave the bridge holding its ports.
+  process.stdin.once("end", shutdown);
 }
 
 const serverConfig = { command: "npx", args: ["-y", "obnixe-bridge"] };
@@ -74,6 +80,7 @@ const usage = `obnixe-bridge, MCP server relaying an agent to the Obnixe phone a
 
   obnixe-bridge          MCP server on stdio (started by Cursor or Codex)
   obnixe-bridge pair     Pair the phone with the code shown on its Agent screen
+  obnixe-bridge forget   Forget the paired phone; it will need a new code
 
 Cursor: open ${cursorInstallLink}
   or add to ~/.cursor/mcp.json: { "mcpServers": { "obnixe": ${JSON.stringify(serverConfig)} } }
@@ -82,6 +89,7 @@ Codex: codex mcp add obnixe -- npx -y obnixe-bridge
 The phone dials ws://<Tailscale address of this Mac>:${phonePort}. The listener binds the first Tailscale IPv4 address
 (100.64.0.0/10), or 127.0.0.1 when there is none; OBNIXE_PHONE_HOST overrides the address and OBNIXE_PHONE_PORT the port.
 Pairing uses http://127.0.0.1:${controlPort} (OBNIXE_CONTROL_PORT).
+A paired phone reconnects without a code using the secret kept in ${pairings.path} (OBNIXE_BRIDGE_CONFIG).
 `;
 
 const [command, argument] = process.argv.slice(2);
@@ -91,6 +99,9 @@ switch (command) {
     break;
   case "pair":
     process.exitCode = await runPair({ controlPort, code: argument, interactive: process.stdin.isTTY, input: process.stdin, output: process.stdout });
+    break;
+  case "forget":
+    process.exitCode = await runForget({ controlPort, pairings, output: process.stdout });
     break;
   case "help":
   case "--help":

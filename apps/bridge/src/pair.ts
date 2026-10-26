@@ -29,7 +29,7 @@ export async function postPairingCode(controlPort: number, code: string): Promis
 function describe(result: PairResult): string {
   switch (result.kind) {
     case "paired":
-      return `Connected to ${result.device}. ${result.client} can use Obnixe while the Agent screen stays open.`;
+      return `Connected to ${result.device}. ${result.client} can use Obnixe while the Agent screen stays open; next time the phone reconnects without a code.`;
     case "no_phone":
       return "No phone is waiting. Open the Agent screen in Obnixe and check the Mac address it dials.";
     case "bad_code":
