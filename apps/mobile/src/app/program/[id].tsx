@@ -1,9 +1,7 @@
-import { AppBar, Screen } from "@/ui/Layout";
+import { useLocalSearchParams } from "expo-router";
+import { ProgramEditor } from "@/features/programs/editor/ProgramEditor";
 
 export default function ProgramEdit() {
-  return (
-    <Screen>
-      <AppBar title="Programme" />
-    </Screen>
-  );
+  const { id } = useLocalSearchParams<{ id: string }>();
+  return <ProgramEditor key={id} id={id} />;
 }
