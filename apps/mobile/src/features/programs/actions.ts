@@ -7,10 +7,10 @@ import {
   exerciseRefs,
   latestVersion,
   loadVersionTree,
-  localDateOf,
   planActivate,
   planArchive,
   planCreateProgram,
+  planSkipNextSlot,
   withFreshLineages,
 } from "@obnixe/core";
 import type { ProgramEntry, VersionEntry } from "@obnixe/core";
@@ -33,7 +33,7 @@ export interface ProgramActions {
   readonly activate: (entry: ProgramEntry) => void;
   readonly archive: (entry: ProgramEntry) => void;
   readonly duplicate: (entry: ProgramEntry) => Id | null;
-  readonly skip: (programId: Id, slot: ProgramSlot) => void;
+  readonly skip: () => void;
   readonly revertVersion: (entry: VersionEntry) => void;
 }
 
@@ -91,17 +91,11 @@ export function useProgramActions(name: ExerciseName): ProgramActions {
     [undoable, notify, name],
   );
 
-  const skip = useCallback(
-    (programId: Id, slot: ProgramSlot) => {
-      const now = environment.now();
-      undoable({
-        summary: `${slot.name} passée`,
-        mutations: [{ kind: "insert", table: "rotation_skip", row: { id: environment.newId(), programId, slotLineageId: slot.lineageId, skippedAt: now, localDate: localDateOf(now, deviceTimeZone()) } }],
-        message: `${slot.name} passée`,
-      });
-    },
-    [undoable],
-  );
+  const skip = useCallback(() => {
+    const plan = planSkipNextSlot(db(), { now: environment.now(), timeZone: deviceTimeZone(), newId: environment.newId });
+    if (plan === null) return;
+    undoable({ summary: `${plan.skipped.name} passée`, mutations: [plan.mutation], message: `${plan.skipped.name} passée · prochaine : ${plan.next.name}` });
+  }, [undoable]);
 
   const revertVersion = useCallback(
     (entry: VersionEntry) => {

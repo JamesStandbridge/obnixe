@@ -1,10 +1,12 @@
 import { asc, eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
-import { agentCall, changeset, checkIn, measurement, measurementKind, painReport, settings, weighIn, zoneTracking } from "@obnixe/schema";
+import { agentCall, changeset, checkIn, measurement, measurementKind, painReport, rotationSkip, settings, weighIn, zoneTracking } from "@obnixe/schema";
 import type { Id } from "@obnixe/schema";
+import { planSkipNextSlot } from "../rotation.ts";
 import { at, Seeder } from "../stats/testing.ts";
 import { createTestContext } from "../testing.ts";
 import type { TestContext } from "../testing.ts";
+import { commit } from "../writer.ts";
 import type { Actor } from "../writer.ts";
 import { openConnection } from "./connection.ts";
 import { runAgentTool } from "./dispatch.ts";
@@ -158,6 +160,28 @@ describe("get_next_session", () => {
     const data = ok<NextSession>("get_next_session", {});
     expect(data.next).toMatchObject({ name: "Footing", sport: "run", lastCompletedOn: null, daysSinceLastCompleted: null, variants: [] });
     expect(data.after?.name).toBe("Séance A");
+  });
+
+  it("follows a skipped slot and returns to it once the skip is undone", () => {
+    const { squat, slotA, slotB } = seedProgram();
+    seed.session({ sport: "run", date: "2026-10-20", slotId: slotB, values: { distance: 6000 } });
+    expect(ok<NextSession>("get_next_session", {}).next?.name).toBe("Séance A");
+
+    const plan = planSkipNextSlot(context.db, { now: context.env.now(), timeZone, newId: context.env.newId });
+    if (plan === null) throw new Error("Nothing to skip");
+    expect(plan.skipped.id).toBe(slotA);
+    const skipId = commit(context.db, context.env, { actor: user, summary: "Séance A passée", revertsId: null, mutations: [plan.mutation] });
+    const skipped = ok<NextSession>("get_next_session", {});
+    expect(skipped.next).toMatchObject({ name: "Footing", sport: "run" });
+    expect(skipped.after?.name).toBe("Séance A");
+    expect(skipped.week).toMatchObject({ sessionsDone: 1 });
+
+    toggleChange(context.db, context.env, user, skipId, "Séance A passée");
+    expect(ok<NextSession>("get_next_session", {}).next?.name).toBe("Séance A");
+    expect(context.db.select().from(rotationSkip).all()).toEqual([]);
+
+    seed.session({ sport: "strength", date: "2026-10-24", slotId: slotA, entries: [{ exerciseId: squat, sets: [{ kg: 80, reps: 8 }] }] });
+    expect(ok<NextSession>("get_next_session", {}).next?.name).toBe("Footing");
   });
 
   it("suspends progression on a painful loaded zone and lists the zone", () => {
