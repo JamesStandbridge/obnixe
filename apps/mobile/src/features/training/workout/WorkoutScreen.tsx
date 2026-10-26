@@ -136,9 +136,13 @@ function WorkoutGate({ sessionId }: WorkoutGateProps) {
   })();
 
   const completedOnOpen = useRef(state === "completed");
+  const resumedFrom = useRef<number | null>(null);
   useEffect(() => {
     if (session === null) return;
-    if (state === "resume") write("Séance reprise", resumeMutations(session, environment.now()));
+    if (state === "resume" && resumedFrom.current !== session.endedAt) {
+      resumedFrom.current = session.endedAt;
+      write("Séance reprise", resumeMutations(session, environment.now()));
+    }
     if (state === "completed" && completedOnOpen.current) router.replace({ pathname: "/session/[id]", params: { id: session.id } });
   }, [state, session]);
 

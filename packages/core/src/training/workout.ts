@@ -60,12 +60,6 @@ export interface WorkoutProgress {
   readonly setsPlanned: number;
 }
 
-export class SessionNotFoundError extends Error {
-  constructor(readonly sessionId: Id) {
-    super(`Session ${sessionId} does not exist`);
-  }
-}
-
 export class EntryNotFoundError extends Error {
   constructor(readonly entryId: Id) {
     super(`Strength entry ${entryId} is not part of this session`);

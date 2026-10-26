@@ -17,7 +17,7 @@ import {
 } from "@obnixe/core";
 import type { ExerciseReport, HistoryEntry, PainAnchor, SessionReport } from "@obnixe/core";
 import { sports } from "@obnixe/schema";
-import type { EpochMs, Id, LocalDate, MassUnit, PainPhase } from "@obnixe/schema";
+import type { Id, LocalDate, MassUnit, PainPhase } from "@obnixe/schema";
 import { db, environment } from "@/data/database";
 import { undo, useUndoableWrite, write } from "@/data/write";
 import { capitalize, effortLabels, formatClock, formatDay, formatLongClock, formatLongDate, formatMass, formatTime, lowerFirst, sensationPhrases, zoneLabel } from "@/features/training/format";
