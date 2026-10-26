@@ -25,7 +25,7 @@ export type SessionStatus = (typeof sessionStatuses)[number];
 export const reviewStatuses = ["skipped", "pending", "done"] as const;
 export type ReviewStatus = (typeof reviewStatuses)[number];
 
-export const strengthEntryStatuses = ["done", "stopped", "skipped"] as const;
+export const strengthEntryStatuses = ["pending", "done", "stopped", "skipped"] as const;
 export type StrengthEntryStatus = (typeof strengthEntryStatuses)[number];
 
 export const exerciseMeasures = ["load_reps", "bodyweight_reps", "duration"] as const;
