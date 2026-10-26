@@ -52,7 +52,7 @@ export interface PhoneSessionOptions {
 type SessionState =
   | { readonly kind: "challenge" }
   | { readonly kind: "proving" }
-  | { readonly kind: "waiting"; readonly secrets: PairingSecrets; commitment: Uint8Array | null }
+  | { readonly kind: "waiting"; readonly secrets: Promise<PairingSecrets>; commitment: Uint8Array | null }
   | { readonly kind: "open"; readonly channel: SealedChannel }
   | { readonly kind: "closed" };
 
@@ -100,10 +100,10 @@ export class PhoneSession {
         await this.answerChallenge(frame);
         return;
       case "commit":
-        this.answerCommit(frame);
+        await this.answerCommit(frame);
         return;
       case "welcome":
-        this.acceptWelcome(frame);
+        await this.acceptWelcome(frame);
         return;
       case "rejected":
         this.state = { kind: "closed" };
@@ -165,24 +165,32 @@ export class PhoneSession {
     const shared = sharedSecret(keyPair.secretKey, transcript.bridgeKey);
     this.state = { kind: "proving" };
     this.options.handlers.onStatus("proving");
-    const secrets = await derivePairingSecrets(this.options.code, transcript, shared);
-    if (this.state.kind !== "proving") return;
     this.send({ type: "hello", version: protocolVersion, device: transcript.device, nonce: toBase64(transcript.phoneNonce), key: toBase64(transcript.phoneKey) });
+    const secrets = derivePairingSecrets(this.options.code, transcript, shared);
+    // Awaited on commit; this only keeps a failure before the commit from surfacing as an unhandled rejection.
+    secrets.catch(() => undefined);
     this.state = { kind: "waiting", secrets, commitment: null };
     this.options.handlers.onStatus("waiting");
   }
 
-  private answerCommit(frame: Extract<Frame, { type: "commit" }>): void {
-    if (this.state.kind !== "waiting") throw new ProtocolError("Unexpected commit");
+  /** Scrypt can take seconds on a phone, so the hello leaves first and the proof waits for the derived secrets. */
+  private async answerCommit(frame: Extract<Frame, { type: "commit" }>): Promise<void> {
+    const state = this.state;
+    if (state.kind !== "waiting") throw new ProtocolError("Unexpected commit");
     const commitment = decodeBytes(frame.commitment, proofBytes);
-    this.state.commitment = commitment;
+    state.commitment = commitment;
+    const secrets = await state.secrets;
+    if (this.state !== state) return;
     this.proofSent = true;
-    this.send({ type: "proof", proof: toBase64(phoneProof(this.state.secrets, commitment)) });
+    this.send({ type: "proof", proof: toBase64(phoneProof(secrets, commitment)) });
   }
 
-  private acceptWelcome(frame: Extract<Frame, { type: "welcome" }>): void {
-    if (this.state.kind !== "waiting" || this.state.commitment === null) throw new ProtocolError("Unexpected welcome");
-    const { secrets, commitment } = this.state;
+  private async acceptWelcome(frame: Extract<Frame, { type: "welcome" }>): Promise<void> {
+    const state = this.state;
+    if (state.kind !== "waiting" || state.commitment === null) throw new ProtocolError("Unexpected welcome");
+    const commitment = state.commitment;
+    const secrets = await state.secrets;
+    if (this.state !== state) return;
     const proof = decodeBytes(frame.proof, proofBytes);
     const opened = sameBytes(commitBridgeProof(decodeBytes(frame.opening, openingBytes), proof), commitment);
     if (!opened || !sameBytes(proof, bridgeProof(secrets))) throw new ProtocolError("The bridge could not prove it knows the code");
