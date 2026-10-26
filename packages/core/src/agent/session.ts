@@ -62,6 +62,7 @@ export class PhoneSession {
   private state: SessionState = { kind: "challenge" };
   private opened: Id | null = null;
   private proofSent = false;
+  private pending: Promise<void> = Promise.resolve();
   private lastReceivedAt: number;
 
   constructor(options: PhoneSessionOptions) {
@@ -91,7 +92,14 @@ export class PhoneSession {
    * Handles one frame from the bridge. Rejects with a ProtocolError when the bridge breaks the protocol; when a tool
    * handler throws, the session replies with an internal error, closes with reason `error` and rejects with that error.
    */
-  async receive(text: string): Promise<void> {
+  receive(text: string): Promise<void> {
+    const handled = this.pending.then(() => this.process(text));
+    this.pending = handled.catch(() => undefined);
+    return handled;
+  }
+
+  /** Frames are handled one at a time: a welcome waiting for scrypt must open the channel before the next sealed frame. */
+  private async process(text: string): Promise<void> {
     if (this.state.kind === "closed") return;
     this.lastReceivedAt = this.options.now();
     const frame = decodeFrame(text);

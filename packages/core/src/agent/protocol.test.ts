@@ -335,6 +335,21 @@ describe("PhoneSession", () => {
     expect(target.session.codeExposed).toBe(true);
   });
 
+  it("handles a burst of frames in order while the code secrets are still being derived", async () => {
+    const target = harness(code);
+    const bridge = simulatedBridge();
+    await target.session.receive(encodeFrame(challengeOf(bridge)));
+    const secrets = await bridgeSecrets(bridge, lastSent(target, "hello"), code);
+    const commitment = commitTo(secrets);
+    const channel = new SealedChannel(secrets.sessionKeys.toPhone, secrets.sessionKeys.toBridge);
+    await Promise.all([
+      target.session.receive(encodeFrame({ type: "commit", commitment: toBase64(commitment.commitment) })),
+      target.session.receive(encodeFrame(welcomeFor(secrets, commitment))),
+      target.session.receive(encodeFrame(channel.seal({ jsonrpc: "2.0", id: 1, method: "session.open", params: { client: "Cursor", host: "MacBook Pro" } }))),
+    ]);
+    expect(target.session.connectionId).toBe("connection-1");
+  });
+
   it("refuses sealed frames before pairing", async () => {
     const target = harness(code);
     const channel = new SealedChannel(bytes(32), bytes(32));
