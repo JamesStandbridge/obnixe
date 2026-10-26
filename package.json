@@ -1,0 +1,18 @@
+{
+  "name": "obnixe",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "mobile": "pnpm --filter @obnixe/mobile start",
+    "bridge": "pnpm --filter @obnixe/bridge start"
+  },
+  "packageManager": "pnpm@11.20.0",
+  "devDependencies": {
+    "turbo": "^2.11.10"
+  },
+  "engines": {
+    "node": ">=22.18"
+  }
+}

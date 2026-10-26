@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="fr" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14171c">
+<title>Obnixe — Modifier le programme</title>
+<link rel="stylesheet" href="system.css">
+<style>
+  .name { margin-top: 14px; width: 100%; height: 56px; padding: 0 14px; border-radius: var(--r-control); background: var(--surface); box-shadow: inset 0 0 0 1.5px var(--control-border); font: 700 22px/1 var(--font-text); }
+  .frequency { margin-top: 20px; display: grid; grid-template-columns: minmax(0, 1fr) 176px; align-items: center; gap: 12px; }
+  .frequency strong { font-weight: 600; display: block; }
+  .frequency small { color: var(--text-2); font-size: 14px; }
+  .frequency .stepper { grid-template-columns: 52px minmax(0, 1fr) 52px; }
+  .frequency .stepper > button:not(.stepper-value), .frequency .stepper-value { height: 52px; }
+  .frequency .stepper-value strong { font-size: 28px; line-height: 52px; }
+
+  .rotation .row { grid-template-columns: 28px 36px minmax(0, 1fr) auto; }
+  .handle { color: var(--text-3); display: grid; place-items: center; height: 44px; }
+  .rotation .row.is-open { border-bottom: 0; }
+  .template { margin: 0 0 10px; padding: 4px 14px 14px; border-radius: var(--r-panel); background: var(--surface); }
+  .template .segmented { margin: 10px 0 6px; --options: 3; }
+  .template .segmented button { min-height: 44px; }
+  .template .row { grid-template-columns: 22px minmax(0, 1fr) auto; border-bottom-color: var(--line); }
+  .template .row > span:first-child { color: var(--text-3); font: 700 15px/1 var(--font-figure); }
+  .template .row-value { font: 600 15px/1.2 var(--font-figure); color: var(--text-2); }
+  .template .control { width: 100%; margin-top: 10px; }
+  .add { width: 100%; margin-top: 10px; }
+  .changes { margin-top: 20px; color: var(--text-2); font-size: 14px; display: flex; gap: 8px; align-items: baseline; }
+  .changes b { color: var(--text); }
+</style>
+</head>
+<body>
+<main class="screen has-bottom-panel">
+  <div class="appbar">
+    <a class="icon-button is-edge-start" href="programs.html" data-ref="close" aria-label="Fermer sans enregistrer">
+      <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="m6 6 10 10M16 6 6 16"/></svg>
+    </a>
+    <span class="appbar-context">Modifier le programme · v7</span>
+  </div>
+
+  <input class="name" value="Base hiver" aria-label="Nom du programme">
+
+  <div class="frequency">
+    <span><strong>Séances par semaine</strong></span>
+    <div class="stepper">
+      <button aria-label="Une de moins">−</button>
+      <div class="stepper-value"><strong>5</strong></div>
+      <button aria-label="Une de plus">+</button>
+    </div>
+  </div>
+
+  <section class="section rotation">
+    <div class="section-head"><span class="section-title">Rotation</span></div>
+    <div class="row">
+      <span class="handle" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M3.5 6h11M3.5 9h11M3.5 12h11"/></svg></span>
+      <span class="sport-icon" data-sport-icon="lift" data-sport-label="Musculation"></span>
+      <span class="row-main"><strong>Séance A · Salle</strong><small>5 exercices · 2 variantes</small></span>
+      <svg class="chevron" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m4 6 4 4 4-4"/></svg>
+    </div>
+    <div class="row is-open">
+      <span class="handle" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M3.5 6h11M3.5 9h11M3.5 12h11"/></svg></span>
+      <span class="sport-icon is-filled" data-sport-icon="lift" data-sport-label="Musculation"></span>
+      <span class="row-main"><strong>Séance B</strong><small>prochaine</small></span>
+      <svg class="chevron" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m4 10 4-4 4 4"/></svg>
+    </div>
+    <div class="template">
+      <div class="segmented" data-choice role="group" aria-label="Variante">
+        <button aria-pressed="true">Salle</button>
+        <button>Sans matériel</button>
+        <button>+ Variante</button>
+      </div>
+      <button class="row"><span>1</span><span class="row-main"><strong>Soulevé de terre roumain</strong><small>repos 2:30 · RIR 2</small></span><span class="row-value">3 × 6–8</span></button>
+      <button class="row"><span>2</span><span class="row-main"><strong>Développé militaire</strong><small>repos 2:00 · RIR 2 · <i class="pain-mark" data-level="stop" role="img" aria-label="Épaule droite, arrêt"></i></small></span><span class="row-value">3 × 6–10</span></button>
+      <button class="row"><span>3</span><span class="row-main"><strong>Tractions</strong><small>repos 2:00 · RIR 1</small></span><span class="row-value">3 × 5–8</span></button>
+      <button class="row"><span>4</span><span class="row-main"><strong>Rowing haltère</strong><small>repos 1:30 · RIR 2 · <span class="tag">Cursor</span></small></span><span class="row-value">3 × 8–12</span></button>
+      <button class="row"><span>5</span><span class="row-main"><strong>Gainage latéral</strong><small>repos 1:00</small></span><span class="row-value">3 × 30–45 s</span></button>
+      <button class="control">Ajouter un exercice</button>
+    </div>
+    <div class="row">
+      <span class="handle" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M3.5 6h11M3.5 9h11M3.5 12h11"/></svg></span>
+      <span class="sport-icon" data-sport-icon="run" data-sport-label="Course"></span>
+      <span class="row-main"><strong>Course · footing</strong><small>40 min · facile</small></span>
+      <svg class="chevron" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m4 6 4 4 4-4"/></svg>
+    </div>
+    <div class="row">
+      <span class="handle" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M3.5 6h11M3.5 9h11M3.5 12h11"/></svg></span>
+      <span class="sport-icon" data-sport-icon="climb" data-sport-label="Escalade"></span>
+      <span class="row-main"><strong>Escalade · bloc libre</strong><small>1 h 30</small></span>
+      <svg class="chevron" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m4 6 4 4 4-4"/></svg>
+    </div>
+    <button class="control add">Ajouter à la rotation</button>
+  </section>
+
+  <p class="changes"><b data-ref="change-count">Aucune modification</b></p>
+</main>
+
+<div class="bottom">
+  <div class="bottom-panel">
+    <a class="primary" href="programs.html" data-ref="save" aria-disabled="true">Enregistrer comme v8</a>
+  </div>
+</div>
+
+<div class="sheet-root" data-sheet="discard" data-open="false">
+  <div class="scrim" data-sheet-close="discard"></div>
+  <section class="sheet" role="dialog" aria-label="Abandonner les modifications">
+    <div class="grabber"></div>
+    <h2>Abandonner les modifications ?</h2>
+    <p class="sheet-context" data-ref="discard-context"></p>
+    <div class="choices">
+      <button data-sheet-close="discard">Continuer à modifier</button>
+      <a class="control" href="programs.html">Abandonner</a>
+    </div>
+  </section>
+</div>
+
+<script src="system.js"></script>
+<script>
+  let changes = 0;
+  function markChanged() {
+    changes += 1;
+    const label = `${changes} modification${changes > 1 ? "s" : ""}`;
+    ref("change-count").textContent = label;
+    ref("discard-context").textContent = `${label} perdue${changes > 1 ? "s" : ""}`;
+    ref("save").setAttribute("aria-disabled", "false");
+  }
+  document.querySelectorAll(".stepper button:not(.stepper-value), .template .control, .add").forEach((button) => button.addEventListener("click", markChanged));
+  document.querySelector(".name").addEventListener("input", markChanged, { once: true });
+  ref("save").addEventListener("click", (event) => {
+    if (changes === 0) event.preventDefault();
+  });
+  ref("close").addEventListener("click", (event) => {
+    if (changes === 0) return;
+    event.preventDefault();
+    setSheet("discard", true);
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="fr" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14171c">
+<title>Obnixe — Bilan de séance</title>
+<link rel="stylesheet" href="system.css">
+<style>
+  .head { margin-top: 14px; display: grid; gap: 6px; }
+  .head h1 { font: 700 30px/1.08 var(--font-text); letter-spacing: -0.02em; }
+  .facts { margin-top: 4px; font: 700 19px/1.3 var(--font-figure); }
+  .facts span { color: var(--text-2); font-weight: 600; }
+  .done .row { grid-template-columns: minmax(0, 1fr) auto; }
+  .done .row-value { font-size: 16px; }
+  .zone { padding: 10px 0; }
+  .zone:first-of-type { border-top: 0; }
+  .note-field { margin-top: 10px; }
+  .program-row { width: 100%; display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 10px 0; text-align: left; }
+  .program-row > span { flex: 1; display: grid; gap: 3px; }
+  .program-row strong { font-weight: 600; }
+  .program-row small { color: var(--text-2); font-size: 14px; }
+</style>
+</head>
+<body>
+<main class="screen has-bottom-panel">
+  <div class="appbar">
+    <span class="appbar-context" data-ref="when"></span>
+    <a class="link-button" href="today.html" aria-label="Plus tard, le bilan reste à compléter">Plus tard</a>
+  </div>
+
+  <section class="head">
+    <span class="eyebrow">Bilan</span>
+    <h1 data-ref="title"></h1>
+    <p class="facts" data-ref="facts"></p>
+  </section>
+
+  <section class="section">
+    <div class="section-head"><span class="section-title">Ressenti</span><small class="muted">facultatif</small></div>
+    <div class="question">
+      <header><strong>Effort</strong></header>
+      <div class="scale is-words" data-choice="optional" role="group" aria-label="Effort">
+        <button><span>Facile</span></button>
+        <button><span>Modéré</span></button>
+        <button><span>Dur</span></button>
+        <button><span>Très dur</span></button>
+        <button><span>Max</span></button>
+      </div>
+    </div>
+    <div class="question">
+      <header><strong>Sensation</strong></header>
+      <div class="scale is-words" style="--options: 3" data-choice="optional" role="group" aria-label="Sensation physique">
+        <button><span>Lourd</span></button>
+        <button><span>Normal</span></button>
+        <button><span>Léger</span></button>
+      </div>
+    </div>
+    <div class="question">
+      <header><strong>Plaisir</strong></header>
+      <div class="scale" data-choice="optional" role="group" aria-label="Plaisir, de 1 (corvée) à 5 (excellent)">
+        <button><span>1</span><small>corvée</small></button>
+        <button><span>2</span></button>
+        <button><span>3</span></button>
+        <button><span>4</span></button>
+        <button><span>5</span><small>excellent</small></button>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="section-head"><span class="section-title">Douleurs maintenant</span></div>
+    <div data-ref="zones"></div>
+  </section>
+
+  <section class="section done">
+    <div class="section-head"><span class="section-title">Réalisé</span><a class="link-button" href="session.html">Corriger</a></div>
+    <div data-ref="done"></div>
+  </section>
+
+  <section class="section">
+    <div class="section-head"><span class="section-title">Note</span></div>
+    <textarea class="text-field note-field" rows="3" placeholder="Note libre"></textarea>
+    <button class="program-row" role="switch" aria-checked="true">
+      <span><strong data-ref="rotation-title"></strong><small data-ref="rotation-next"></small></span>
+      <i class="switch" aria-hidden="true"></i>
+    </button>
+  </section>
+</main>
+
+<div class="bottom">
+  <div class="bottom-panel">
+    <a class="primary" href="today.html">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 10.5 4 4 8-9"/></svg>
+      <span>Enregistrer le bilan</span>
+    </a>
+  </div>
+</div>
+
+<script src="system.js"></script>
+<script>
+  const sessions = {
+    strength: {
+      when: "Samedi 24 · 15:42",
+      title: "Séance A · Salle",
+      facts: "58 min <span>·</span> 13 séries sur 15 <span>·</span> repos 2:21",
+      zones: [["Épaule droite", "arrêt, série 3"], ["Genou droit", ""]],
+      done: [
+        ["Squat barre", "+2,5 kg vs mardi", "3 × 82,5", "8 · 7 · 7", null],
+        ["Développé couché", "arrêté à la série 3", "2 × 60", "9 · 8", "stop"],
+        ["Tirage horizontal poulie", "suspendue", "3 × 50", "12 · 12 · 11", null],
+        ["Fentes bulgares", "comme mardi", "3 × 14", "8 · 8 · 8", null],
+        ["Curl haltères", "+1 rép.", "2 × 12", "12 · 12", null],
+      ],
+      rotationTitle: "Compte comme séance A",
+      rotationNext: "puis séance B",
+    },
+    climb: {
+      when: "Lundi 19 · 20:40",
+      title: "Bloc · Arkose Nation",
+      facts: "1 h 20 <span>·</span> 9 blocs <span>·</span> max enchaîné 6B <span>·</span> 3 flash",
+      zones: [["Doigts, main droite", ""], ["Épaule droite", "gêne il y a 6 j"], ["Genou droit", ""]],
+      done: [
+        ["6B", "2 blocs", "1 enchaîné", "3 essais", null],
+        ["6A+", "1 bloc", "pas encore", "4 essais", null],
+        ["6A", "2 blocs", "2 enchaînés", "1 flash", null],
+        ["5C et moins", "2 blocs", "2 flash", "", null],
+      ],
+      rotationTitle: "Compte comme bloc libre",
+      rotationNext: "puis séance A",
+    },
+  };
+
+  const session = sessions[new URLSearchParams(location.search).get("sport") === "climb" ? "climb" : "strength"];
+  ref("when").textContent = session.when;
+  ref("title").textContent = session.title;
+  ref("facts").innerHTML = session.facts;
+  ref("rotation-title").textContent = session.rotationTitle;
+  ref("rotation-next").textContent = session.rotationNext;
+  ref("zones").innerHTML = session.zones
+    .map(([zone, context]) => `<div class="zone"><span class="zone-name">${zone}${context ? `<small>${context}</small>` : ""}</span><div class="levels" style="--levels: 3" data-choice="optional"><button data-level="none" aria-pressed="false">Calme</button><button data-level="discomfort" aria-pressed="false">Gêne</button><button data-level="stop" aria-pressed="false">Arrêt</button></div></div>`)
+    .join("");
+  ref("done").innerHTML = session.done
+    .map(([name, detail, value, sub, level]) => `<div class="row"><span class="row-main"><strong>${name}</strong><small>${level ? `<i class="pain-mark" data-level="${level}"></i>` : ""}${detail}</small></span><span class="row-value">${value}${sub ? `<small>${sub}</small>` : ""}</span></div>`)
+    .join("");
+
+  ref("zones").querySelectorAll(".levels").forEach((group) => {
+    group.querySelectorAll("button").forEach((button) => {
+      button.addEventListener("click", () => {
+        const wasPressed = button.getAttribute("aria-pressed") === "true";
+        group.querySelectorAll("button").forEach((item) => item.setAttribute("aria-pressed", "false"));
+        button.setAttribute("aria-pressed", String(!wasPressed));
+      });
+    });
+  });
+</script>
+</body>
+</html>

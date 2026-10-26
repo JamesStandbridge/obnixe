@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="fr" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14171c">
+<title>Obnixe — Calendrier</title>
+<link rel="stylesheet" href="system.css">
+<style>
+  .filters { margin-top: 12px; }
+  .month { margin-top: 18px; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 4px; }
+  .month h2 { font: 800 30px/1 var(--font-figure); letter-spacing: -0.01em; }
+  .month-facts { margin-top: 6px; font: 700 17px/1.3 var(--font-figure); }
+  .month-facts span { color: var(--text-2); font-weight: 600; }
+
+  .weekdays, .grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; }
+  .weekdays { margin-top: 14px; }
+  .weekdays span { text-align: center; font: 600 12px/1 var(--font-text); color: var(--text-3); padding-bottom: 6px; }
+  .grid { margin-top: 2px; }
+  .day { position: relative; height: 60px; border-radius: var(--r-control); padding: 5px 4px 4px; display: grid; grid-template-rows: auto 1fr; justify-items: center; background: var(--surface); text-align: center; }
+  .day > b { font: 700 15px/1 var(--font-figure); }
+  .day .icons { align-self: end; display: flex; gap: 1px; justify-content: center; }
+  .day .icons .sport-icon { width: 20px; height: 20px; }
+  .day .icons .sport-icon svg { width: 18px; height: 18px; }
+  .day .more { font: 700 12px/20px var(--font-figure); color: var(--text-2); }
+  .day .pain-mark { position: absolute; top: 6px; right: 5px; }
+  .day.is-empty { background: transparent; box-shadow: inset 0 0 0 1px var(--line); }
+  .day.is-empty > b { color: var(--text-2); font-weight: 600; }
+  .day.is-outside { background: transparent; box-shadow: none; pointer-events: none; }
+  .day.is-outside > b { color: var(--text-3); opacity: 0.5; font-weight: 500; }
+  .day.is-future { box-shadow: none; }
+  .day.is-future > b { color: var(--text-3); font-weight: 500; }
+  .day.is-today { box-shadow: inset 0 0 0 2px var(--text); }
+  .day[aria-pressed="true"] { background: var(--text); color: var(--bg); box-shadow: none; }
+  .day[aria-pressed="true"] .sport-icon { color: var(--bg); }
+  .day[aria-pressed="true"] > b { color: var(--bg); }
+  .day.is-dimmed .icons { opacity: 0.25; }
+  .checkin-dot { display: block; width: 4px; height: 4px; border-radius: 50%; background: var(--text-2); }
+  .day .checkin-dot { position: absolute; left: 50%; top: 26px; margin-left: -2px; }
+  .day[aria-pressed="true"] .checkin-dot { background: var(--bg); }
+  .day[aria-pressed="true"] .pain-mark { outline: 2px solid var(--bg); background-color: var(--bg); }
+  .day[aria-pressed="true"] .pain-mark[data-level="stop"] { background-color: var(--stop); }
+  .legend .checkin-dot { margin: 0 5px; }
+
+  .legend { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: var(--text-2); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i.cell { width: 14px; height: 14px; border-radius: 4px; background: var(--surface); }
+  .legend i.cell.is-empty { background: transparent; box-shadow: inset 0 0 0 1px var(--control-border); }
+
+  .detail { margin-top: 22px; }
+  .detail .row { grid-template-columns: 36px minmax(0, 1fr) auto; }
+  .detail .body-line { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 14px; color: var(--text-2); }
+  .detail .body-line b { color: var(--text); font-weight: 600; }
+  .detail .body-line span { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+  .detail .rest { padding: 14px 0 4px; color: var(--text-2); }
+  .detail .week-line { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); font: 700 15px/1.3 var(--font-figure); color: var(--text-2); }
+  .reminders { margin-top: 22px; border-top: 1px solid var(--line); }
+  .reminders .row { grid-template-columns: minmax(0, 1fr) auto; }
+
+  .days-choice { margin-top: 14px; --options: 7; }
+  .days-choice button { padding: 6px 0; }
+  .time { margin-top: 14px; display: grid; grid-template-columns: minmax(0, 1fr) 176px; align-items: center; gap: 12px; }
+  .time .stepper { grid-template-columns: 52px minmax(0, 1fr) 52px; }
+  .time .stepper > button:not(.stepper-value), .time .stepper-value { height: 52px; }
+  .time .stepper-value strong { font-size: 28px; line-height: 52px; }
+</style>
+</head>
+<body>
+<main class="screen">
+  <div class="appbar">
+    <h1>Journal</h1>
+  </div>
+  <nav class="view-switch" data-journal-view="calendar" aria-label="Vue du journal"></nav>
+
+  <div class="filters">
+    <div class="segmented is-scroll" data-ref="filter" role="group" aria-label="Filtrer par sport">
+      <button data-value="all" aria-pressed="true">Tout</button>
+      <button data-value="lift">Musculation</button>
+      <button data-value="run">Course</button>
+      <button data-value="climb">Escalade</button>
+      <button data-value="hike">Rando</button>
+      <button data-value="swim">Natation</button>
+    </div>
+  </div>
+
+  <div class="month">
+    <h2 data-ref="month-title"></h2>
+    <button class="icon-button" data-month="-1" aria-label="Mois précédent">
+      <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 5 7.5 11l6 6"/></svg>
+    </button>
+    <button class="icon-button is-edge-end" data-month="1" aria-label="Mois suivant">
+      <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m8.5 5 6 6-6 6"/></svg>
+    </button>
+  </div>
+  <p class="month-facts" data-ref="month-facts"></p>
+
+  <div class="weekdays" aria-hidden="true"><span>L</span><span>M</span><span>M</span><span>J</span><span>V</span><span>S</span><span>D</span></div>
+  <div class="grid" data-ref="grid" aria-label="Jours du mois"></div>
+  <div class="legend">
+    <span><i class="cell"></i>séance</span>
+    <span><i class="cell is-empty"></i>repos</span>
+    <span><i class="checkin-dot"></i>check-in seul</span>
+    <span><i class="pain-mark" data-level="discomfort"></i>gêne</span>
+    <span><i class="pain-mark" data-level="stop"></i>arrêt</span>
+  </div>
+
+  <section class="detail" aria-live="polite">
+    <div class="section-head"><span class="section-title" data-ref="detail-title"></span><span class="muted" data-ref="detail-count"></span></div>
+    <div data-ref="detail"></div>
+  </section>
+
+  <section class="reminders">
+    <button class="row" data-sheet-open="reminders"><span class="row-main"><strong>Rappels dans l'agenda</strong><small data-ref="reminders-summary">aucun</small></span><svg class="chevron" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m6 4 4 4-4 4"/></svg></button>
+  </section>
+</main>
+
+<div class="bottom">
+  <div class="snackbar" data-ref="snackbar" data-open="false" role="status">
+    <span data-ref="snackbar-text"></span>
+    <button data-ref="snackbar-action">Annuler</button>
+  </div>
+  <nav class="tabbar" data-tabbar="journal" aria-label="Navigation principale"></nav>
+</div>
+
+<div class="sheet-root" data-sheet="reminders" data-open="false">
+  <div class="scrim" data-sheet-close="reminders"></div>
+  <section class="sheet" role="dialog" aria-label="Rappels dans l'agenda">
+    <div class="grabber"></div>
+    <h2>Rappels dans l'agenda</h2>
+    <p class="sheet-context">Un fichier .ics pour ton agenda</p>
+    <div class="segmented days-choice" data-ref="reminder-days" data-choice="multi" role="group" aria-label="Jours des rappels">
+      <button data-value="1" aria-label="Lundi">L</button>
+      <button data-value="2" aria-label="Mardi">M</button>
+      <button data-value="3" aria-label="Mercredi">M</button>
+      <button data-value="4" aria-label="Jeudi">J</button>
+      <button data-value="5" aria-label="Vendredi">V</button>
+      <button data-value="6" aria-label="Samedi">S</button>
+      <button data-value="7" aria-label="Dimanche">D</button>
+    </div>
+    <div class="time">
+      <strong>Heure du rappel</strong>
+      <div class="stepper">
+        <button data-time="-30" aria-label="30 minutes plus tôt">−</button>
+        <div class="stepper-value"><strong data-ref="reminder-time">18:30</strong></div>
+        <button data-time="30" aria-label="30 minutes plus tard">+</button>
+      </div>
+    </div>
+    <button class="sheet-primary" data-ref="reminder-export" aria-disabled="true">Choisis au moins un jour</button>
+  </section>
+</div>
+
+<script src="system.js"></script>
+<script src="fixtures.js"></script>
+<script>
+  const sportLabels = { lift: "Musculation", run: "Course", climb: "Escalade", hike: "Rando", swim: "Natation", bike: "Vélo" };
+  const weekdayNames = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"];
+  const monthNames = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
+  const levelWords = { discomfort: "gêne", stop: "arrêt", none: "calme" };
+  const today = fixtureToday;
+  const todayIso = fixtureIso(today);
+  const firstMonth = { year: 2025, month: 10 };
+  const state = { year: today.getFullYear(), month: today.getMonth(), selected: todayIso, filter: "all" };
+
+  const sessionsByDay = new Map();
+  fixtureSessions.forEach((session) => sessionsByDay.set(session.iso, [...(sessionsByDay.get(session.iso) ?? []), session]));
+  const checkinByDay = new Map(fixtureCheckins.map((checkin) => [checkin.iso, checkin]));
+  const weighinByDay = new Map(fixtureWeighins.map((weighin) => [weighin.iso, weighin]));
+
+  const formatDuration = (minutes) => (minutes >= 60 ? `${Math.floor(minutes / 60)} h ${String(minutes % 60).padStart(2, "0")}` : `${minutes} min`);
+  const formatKm = (km) => km.toLocaleString("fr-FR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+
+  function sessionFigure(session) {
+    switch (session.sport) {
+      case "lift": return { value: String(session.minutes), unit: "min", detail: session.detail };
+      case "run": return { value: formatKm(session.km), unit: "km", detail: [`${formatClock(session.pace)} /km`, session.detail].filter(Boolean).join(" · ") };
+      case "hike": return { value: formatKm(session.km), unit: "km", detail: session.detail };
+      case "bike": return { value: String(session.km), unit: "km", detail: session.detail };
+      case "swim": return { value: session.meters.toLocaleString("fr-FR"), unit: "m", detail: session.detail };
+      case "climb": return { value: formatDuration(session.minutes).replace(" min", ""), unit: session.minutes >= 60 ? "" : "min", detail: session.detail };
+      default: throw new Error(`Unknown sport ${session.sport}`);
+    }
+  }
+
+  const visibleSessions = (iso) => (sessionsByDay.get(iso) ?? []).filter((session) => state.filter === "all" || session.sport === state.filter);
+  function dayPains(iso) {
+    const fromSessions = visibleSessions(iso).filter((session) => session.pain).map((session) => ({ zone: session.pain.zone, level: session.pain.level }));
+    const checkin = checkinByDay.get(iso);
+    const fromCheckin = checkin ? Object.entries(checkin.zones).filter(([, level]) => level !== "none").map(([zone, level]) => ({ zone, level })) : [];
+    return [...fromSessions, ...fromCheckin];
+  }
+  const worstPain = (pains) => (pains.some((pain) => pain.level === "stop") ? "stop" : pains.length > 0 ? "discomfort" : null);
+
+  function renderMonth() {
+    const first = new Date(state.year, state.month, 1);
+    const daysInMonth = new Date(state.year, state.month + 1, 0).getDate();
+    const offset = (first.getDay() + 6) % 7;
+    ref("month-title").textContent = `${monthNames[state.month].charAt(0).toUpperCase()}${monthNames[state.month].slice(1)} ${state.year}`;
+
+    const monthSessions = [];
+    let painDays = 0;
+    const cells = [];
+    for (let index = 0; index < offset; index += 1) {
+      const date = new Date(state.year, state.month, index - offset + 1);
+      cells.push(`<div class="day is-outside" aria-hidden="true"><b>${date.getDate()}</b></div>`);
+    }
+    for (let day = 1; day <= daysInMonth; day += 1) {
+      const date = new Date(state.year, state.month, day);
+      const iso = fixtureIso(date);
+      const all = sessionsByDay.get(iso) ?? [];
+      const items = visibleSessions(iso);
+      const checkin = checkinByDay.get(iso);
+      monthSessions.push(...items);
+      const pain = worstPain(dayPains(iso));
+      if (pain) painDays += 1;
+      const isFuture = date > today;
+      const isToday = iso === todayIso;
+      const classes = ["day"];
+      if (all.length === 0) classes.push("is-empty");
+      if (all.length > 0 && items.length === 0) classes.push("is-dimmed");
+      if (isFuture) classes.push("is-future");
+      if (isToday) classes.push("is-today");
+      const icons = all.slice(0, 2).map((item) => `<span class="sport-icon">${sportIcon(item.sport)}</span>`).join("") + (all.length > 2 ? `<span class="more">+${all.length - 2}</span>` : "");
+      const parts = [`${weekdayNames[date.getDay()]} ${day} ${monthNames[state.month]}`];
+      if (all.length > 0) parts.push(all.map((item) => sportLabels[item.sport]).join(", "));
+      if (all.length === 0 && checkin) parts.push("check-in seul");
+      if (all.length === 0 && !checkin && !isFuture) parts.push(isToday ? "rien de noté" : "repos");
+      if (pain) parts.push(pain === "stop" ? "arrêt signalé" : "gêne signalée");
+      if (isToday) parts.push("aujourd'hui");
+      const dot = all.length === 0 && checkin ? `<i class="checkin-dot"></i>` : "";
+      cells.push(`<button class="${classes.join(" ")}" data-date="${iso}" aria-pressed="${iso === state.selected}" aria-label="${parts.join(", ")}"${isFuture ? " disabled" : ""}><b>${day}</b>${pain ? `<i class="pain-mark" data-level="${pain}"></i>` : ""}${dot}<span class="icons">${icons}</span></button>`);
+    }
+    ref("grid").innerHTML = cells.join("");
+    ref("grid").querySelectorAll("[data-date]").forEach((button) => {
+      button.addEventListener("click", () => {
+        state.selected = button.dataset.date;
+        renderMonth();
+        document.querySelector(".detail").scrollIntoView({ block: "nearest", behavior: "smooth" });
+      });
+    });
+
+    const minutes = monthSessions.reduce((sum, item) => sum + item.minutes, 0);
+    const isCurrent = state.year === today.getFullYear() && state.month === today.getMonth();
+    ref("month-facts").innerHTML = `${monthSessions.length} séance${monthSessions.length > 1 ? "s" : ""} <span>·</span> ${formatDuration(minutes)} <span>·</span> ${painDays} jour${painDays > 1 ? "s" : ""} avec douleur`;
+    document.querySelector("[data-month='1']").setAttribute("aria-disabled", String(isCurrent));
+    document.querySelector("[data-month='-1']").setAttribute("aria-disabled", String(state.year === firstMonth.year && state.month === firstMonth.month));
+    renderDetail();
+  }
+
+  function renderDetail() {
+    const date = fixtureDate(state.selected);
+    const items = visibleSessions(state.selected);
+    const hidden = (sessionsByDay.get(state.selected) ?? []).length - items.length;
+    const isToday = state.selected === todayIso;
+    ref("detail-title").textContent = `${isToday ? "Aujourd'hui, " : ""}${weekdayNames[date.getDay()]} ${date.getDate()} ${monthNames[date.getMonth()]}`;
+    ref("detail-count").textContent = items.length > 0 ? `${items.length} séance${items.length > 1 ? "s" : ""}` : "";
+    const rows = items.map((item) => {
+      const figure = sessionFigure(item);
+      return `<a class="row" href="${withTheme(item.href)}"><span class="sport-icon" role="img" aria-label="${sportLabels[item.sport]}">${sportIcon(item.sport)}</span><span class="row-main"><strong>${item.title}</strong><small>${figure.detail}${item.pain ? ` · <i class="pain-mark" data-level="${item.pain.level}"></i>${item.pain.zone.toLowerCase()}` : ""}</small></span><span class="row-value">${figure.value}<small>${figure.unit || "&nbsp;"}</small></span></a>`;
+    });
+    if (isToday && items.length === 0) rows.push(`<a class="row" href="${withTheme("today.html")}"><span class="sport-icon is-filled" role="img" aria-label="Musculation">${sportIcon("lift")}</span><span class="row-main"><strong>Séance B · Salle</strong><small>prochaine</small></span><svg class="chevron" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m6 4 4 4-4 4"/></svg></a>`);
+    const checkin = checkinByDay.get(state.selected);
+    const weighin = weighinByDay.get(state.selected);
+    if (!isToday && items.length === 0) rows.push(`<p class="rest">${hidden > 0 ? `${hidden} séance${hidden > 1 ? "s" : ""} masquée${hidden > 1 ? "s" : ""} par le filtre` : checkin ? "Pas de séance" : "Repos"}</p>`);
+
+    const lines = [];
+    if (checkin) {
+      const zones = Object.entries(checkin.zones).map(([zone, level]) => `${level === "none" ? "" : `<i class="pain-mark" data-level="${level}"></i>`}${zone.toLowerCase()} ${levelWords[level]}`);
+      lines.push(`<span><b>Check-in</b> énergie ${checkin.energy} · sommeil ${checkin.sleep < 6 ? "&lt; 6" : formatNumber(checkin.sleep)} h${zones.length ? ` · ${zones.join(" · ")}` : ""}</span>`);
+    } else if (isToday) {
+      lines.push(`<span><b>Check-in</b> à faire</span>`);
+    }
+    if (weighin) lines.push(`<span><b>Pesée</b> ${formatNumber(weighin.kg)} kg</span>`);
+
+    const monday = fixtureMonday(date);
+    const week = Array.from({ length: 7 }, (_, index) => visibleSessions(fixtureIso(fixtureAddDays(monday, index)))).flat();
+    const weekMinutes = week.reduce((sum, item) => sum + item.minutes, 0);
+    const weekLine = `<p class="week-line">Semaine du ${monday.getDate()} ${monthNames[monday.getMonth()]} · ${week.length} séance${week.length > 1 ? "s" : ""}${week.length ? ` · ${formatDuration(weekMinutes)}` : ""}</p>`;
+    ref("detail").innerHTML = rows.join("") + (lines.length ? `<p class="body-line">${lines.join("")}</p>` : "") + weekLine;
+  }
+
+  document.querySelectorAll("[data-month]").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (button.getAttribute("aria-disabled") === "true") return;
+      const date = new Date(state.year, state.month + Number(button.dataset.month), 1);
+      state.year = date.getFullYear();
+      state.month = date.getMonth();
+      const prefix = fixtureIso(date).slice(0, 7);
+      const lastSession = [...sessionsByDay.keys()].filter((iso) => iso.startsWith(prefix)).sort().pop();
+      state.selected = state.year === today.getFullYear() && state.month === today.getMonth() ? todayIso : lastSession ?? fixtureIso(new Date(state.year, state.month + 1, 0));
+      renderMonth();
+    });
+  });
+
+  ref("filter").querySelectorAll("button").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.filter = button.dataset.value;
+      ref("filter").querySelectorAll("button").forEach((item) => item.setAttribute("aria-pressed", String(item === button)));
+      renderMonth();
+    });
+  });
+
+  let reminderMinutes = 18 * 60 + 30;
+  const dayShort = ["", "lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim."];
+  function selectedReminderDays() {
+    return [...ref("reminder-days").querySelectorAll("[aria-pressed='true']")].map((button) => Number(button.dataset.value));
+  }
+  function renderReminder() {
+    const time = `${String(Math.floor(reminderMinutes / 60)).padStart(2, "0")}:${String(reminderMinutes % 60).padStart(2, "0")}`;
+    ref("reminder-time").textContent = time;
+    const days = selectedReminderDays();
+    ref("reminder-export").setAttribute("aria-disabled", String(days.length === 0));
+    ref("reminder-export").textContent = days.length === 0 ? "Choisis au moins un jour" : `Exporter ${days.length} rappel${days.length > 1 ? "s" : ""} par semaine`;
+  }
+  ref("reminder-days").addEventListener("choice", renderReminder);
+  document.querySelectorAll("[data-time]").forEach((button) => {
+    button.addEventListener("click", () => {
+      reminderMinutes = Math.min(22 * 60, Math.max(5 * 60, reminderMinutes + Number(button.dataset.time)));
+      renderReminder();
+    });
+  });
+  ref("reminder-export").addEventListener("click", () => {
+    const days = selectedReminderDays();
+    if (days.length === 0) return;
+    setSheet("reminders", false);
+    ref("reminders-summary").textContent = `${days.map((day) => dayShort[day]).join(", ")} à ${ref("reminder-time").textContent} · exporté aujourd'hui`;
+    showSnackbar("obnixe-rappels.ics enregistré · ouvre-le avec ton agenda", null);
+  });
+
+  renderMonth();
+  renderReminder();
+</script>
+</body>
+</html>

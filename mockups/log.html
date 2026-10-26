@@ -1,0 +1,444 @@
+<!doctype html>
+<html lang="fr" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14171c">
+<title>Obnixe — Nouvelle activité</title>
+<link rel="stylesheet" href="system.css">
+<style>
+  .sports { margin-top: 12px; }
+  .kind { margin-top: 16px; }
+  .kind .segmented button { min-height: 44px; }
+  .readout { margin-top: 20px; display: grid; gap: 14px; }
+  .figure-row { grid-template-columns: minmax(0, 1fr) 20px minmax(0, 1.25fr); }
+  .figure strong { font-size: 84px; }
+  .figure-row.is-long .figure strong { font-size: 60px; }
+  .comparison { padding: 0 4px; font-size: 14px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .comparison b { color: var(--text); font-size: 15px; }
+  .extra .row { grid-template-columns: minmax(0, 1fr) auto auto; }
+  .extra .row-value.is-empty { color: var(--text-3); font: 600 15px/1 var(--font-text); }
+  .zone { padding: 10px 0; }
+  .zone:first-of-type { border-top: 0; }
+  .note-field { margin-top: 10px; }
+  .program-row { width: 100%; display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 10px 0; text-align: left; }
+  .program-row > span { flex: 1; display: grid; gap: 3px; }
+  .program-row strong { font-weight: 600; }
+  .program-row small { color: var(--text-2); font-size: 14px; }
+  .primary[aria-disabled="true"] { opacity: 1; background: var(--surface); color: var(--text-2); box-shadow: inset 0 0 0 1.5px var(--control-border); }
+  .time-row { margin-top: 14px; }
+</style>
+</head>
+<body>
+<main class="screen has-bottom-panel">
+  <div class="appbar">
+    <a class="icon-button is-edge-start" href="today.html" aria-label="Fermer sans enregistrer">
+      <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="m6 6 10 10M16 6 6 16"/></svg>
+    </a>
+    <span class="appbar-context">Nouvelle activité</span>
+    <button class="link-button" data-sheet-open="when" data-ref="when-label">Aujourd'hui, 14:30</button>
+  </div>
+
+  <div class="sports">
+    <div class="segmented is-scroll" data-ref="sport" role="group" aria-label="Sport"></div>
+  </div>
+
+  <div class="question kind">
+    <span class="section-title" data-ref="kind-title"></span>
+    <div class="segmented" data-ref="kind" role="group"></div>
+  </div>
+
+  <section class="readout">
+    <div class="figure-row" data-ref="figures">
+      <button class="figure" data-pad="distance" data-ref="distance-figure"><strong data-ref="distance"></strong><span data-ref="distance-unit"></span></button>
+      <span class="times" aria-hidden="true" data-ref="figure-separator">·</span>
+      <button class="figure" data-pad="duration"><strong data-ref="duration"></strong><span>Durée</span></button>
+    </div>
+    <p class="comparison" data-ref="pace"></p>
+  </section>
+
+  <section class="section extra">
+    <div class="section-head"><span class="section-title">Détails</span><small class="muted">facultatif</small></div>
+    <div data-ref="extra"></div>
+  </section>
+
+  <section class="section">
+    <div class="section-head"><span class="section-title">Ressenti</span><small class="muted">facultatif</small></div>
+    <div class="question">
+      <header><strong>Effort</strong></header>
+      <div class="scale is-words" data-choice="optional" role="group" aria-label="Effort">
+        <button><span>Facile</span></button>
+        <button><span>Modéré</span></button>
+        <button><span>Dur</span></button>
+        <button><span>Très dur</span></button>
+        <button><span>Max</span></button>
+      </div>
+    </div>
+    <div class="question">
+      <header><strong>Sensation</strong></header>
+      <div class="scale is-words" style="--options: 3" data-choice="optional" role="group" aria-label="Sensation physique">
+        <button><span>Lourd</span></button>
+        <button><span>Normal</span></button>
+        <button><span>Léger</span></button>
+      </div>
+    </div>
+    <div class="question">
+      <header><strong>Plaisir</strong></header>
+      <div class="scale" data-choice="optional" role="group" aria-label="Plaisir, de 1 (corvée) à 5 (excellent)">
+        <button><span>1</span><small>corvée</small></button>
+        <button><span>2</span></button>
+        <button><span>3</span></button>
+        <button><span>4</span></button>
+        <button><span>5</span><small>excellent</small></button>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="section-head"><span class="section-title">Douleurs</span></div>
+    <div class="zone">
+      <span class="zone-name">Épaule droite<small>arrêt hier</small></span>
+      <div class="levels" style="--levels: 3" data-choice="optional">
+        <button data-level="none">Calme</button>
+        <button data-level="discomfort">Gêne</button>
+        <button data-level="stop">Arrêt</button>
+      </div>
+    </div>
+    <div class="zone">
+      <span class="zone-name">Genou droit</span>
+      <div class="levels" style="--levels: 3" data-choice="optional">
+        <button data-level="none">Calme</button>
+        <button data-level="discomfort">Gêne</button>
+        <button data-level="stop">Arrêt</button>
+      </div>
+    </div>
+    <button class="other-zone">Autre zone…</button>
+  </section>
+
+  <section class="section">
+    <div class="section-head"><span class="section-title">Note</span></div>
+    <textarea class="text-field note-field" rows="2" placeholder="Note libre"></textarea>
+    <button class="program-row" role="switch" aria-checked="false" data-ref="rotation">
+      <span><strong data-ref="rotation-title"></strong></span>
+      <i class="switch" aria-hidden="true"></i>
+    </button>
+  </section>
+</main>
+
+<div class="bottom">
+  <div class="snackbar" data-ref="snackbar" data-open="false" role="status">
+    <span data-ref="snackbar-text"></span>
+    <button data-ref="snackbar-action">Annuler</button>
+  </div>
+  <div class="bottom-panel">
+    <a class="primary" href="today.html" data-ref="primary">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 10.5 4 4 8-9"/></svg>
+      <span data-ref="primary-label"></span>
+    </a>
+  </div>
+</div>
+
+<div class="sheet-root" data-sheet="pad" data-open="false">
+  <div class="scrim" data-sheet-close="pad"></div>
+  <section class="sheet" role="dialog" aria-label="Saisir une valeur">
+    <div class="grabber"></div>
+    <h2 data-ref="pad-title"></h2>
+    <div class="pad-display"><strong data-ref="pad-value">0</strong><span data-ref="pad-unit"></span></div>
+    <div class="pad">
+      <button data-pad-key="1">1</button><button data-pad-key="2">2</button><button data-pad-key="3">3</button>
+      <button data-pad-key="4">4</button><button data-pad-key="5">5</button><button data-pad-key="6">6</button>
+      <button data-pad-key="7">7</button><button data-pad-key="8">8</button><button data-pad-key="9">9</button>
+      <button data-pad-key="," data-ref="pad-comma">,</button><button data-pad-key="0">0</button>
+      <button data-pad-key="back" aria-label="Effacer">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5h10a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H9l-6-7z"/><path d="m12 9.5 5 5M17 9.5l-5 5"/></svg>
+      </button>
+    </div>
+    <button class="sheet-primary" data-ref="pad-confirm">Utiliser</button>
+  </section>
+</div>
+
+<div class="sheet-root" data-sheet="when" data-open="false">
+  <div class="scrim" data-sheet-close="when"></div>
+  <section class="sheet" role="dialog" aria-label="Date et heure">
+    <div class="grabber"></div>
+    <h2>Quand ?</h2>
+    <div class="segmented" style="--options: 3" data-ref="day" role="group" aria-label="Jour">
+      <button data-value="Aujourd'hui" aria-pressed="true">Aujourd'hui</button>
+      <button data-value="Hier">Hier</button>
+      <button data-value="Autre jour">Autre jour…</button>
+    </div>
+    <div class="stepper time-row">
+      <button data-time="-15" aria-label="15 minutes plus tôt">−15</button>
+      <div class="stepper-value"><strong data-ref="time">14:30</strong></div>
+      <button data-time="15" aria-label="15 minutes plus tard">+15</button>
+    </div>
+    <button class="sheet-primary" data-ref="when-confirm">Valider</button>
+  </section>
+</div>
+
+<div class="sheet-root" data-sheet="catalogue" data-open="false">
+  <div class="scrim" data-sheet-close="catalogue"></div>
+  <section class="sheet" role="dialog" aria-label="Autre sport">
+    <div class="grabber"></div>
+    <h2>Autre sport</h2>
+    <div class="menu" data-ref="catalogue"></div>
+  </section>
+</div>
+
+<script src="system.js"></script>
+<script>
+  const sports = {
+    run: {
+      icon: "run",
+      name: "Course",
+      article: "la course",
+      kindTitle: "Type de sortie",
+      kinds: ["Footing", "Fractionné", "Trail", "Longue"],
+      unit: "km",
+      suggestion: { distance: 8, duration: 2496, source: "comme jeudi" },
+      pace: (distance, seconds) => `<b>Allure ${formatClock(Math.round(seconds / distance))} /km</b> · jeudi 5:12 /km`,
+      extra: [["Dénivelé positif", null, "m"], ["Fréquence cardiaque moyenne", null, "bpm"], ["Chaussures", "Pegasus 40 · 412 km", ""]],
+      rotation: "Compte comme footing",
+    },
+    hike: {
+      icon: "hike",
+      name: "Rando",
+      article: "la rando",
+      kindTitle: "Terrain",
+      kinds: ["Sentier", "Montagne", "Hors sentier", "Neige"],
+      unit: "km",
+      suggestion: { distance: 21.4, duration: 21600, source: "comme le 18 octobre" },
+      pace: (distance, seconds) => `<b>${formatNumber(Math.round((distance / (seconds / 3600)) * 10) / 10)} km/h</b> en moyenne`,
+      extra: [["Dénivelé positif", null, "m"], ["Poids du sac", null, "kg"], ["Itinéraire", null, ""]],
+      rotation: null,
+    },
+    swim: {
+      icon: "swim",
+      name: "Natation",
+      article: "la natation",
+      kindTitle: "Nage principale",
+      kinds: ["Crawl", "Brasse", "Mixte", "Éducatifs"],
+      unit: "m",
+      suggestion: { distance: 1500, duration: 1920, source: "comme le 16 octobre" },
+      pace: (distance, seconds) => `<b>Allure ${formatClock(Math.round((seconds / distance) * 100))} /100 m</b> · le 16 : 2:08 /100 m`,
+      extra: [["Bassin", "25 m", ""], ["Longueurs", null, ""], ["Matériel", null, ""]],
+      rotation: null,
+    },
+    bike: {
+      icon: "bike",
+      name: "Vélo",
+      article: "la sortie vélo",
+      kindTitle: "Type",
+      kinds: ["Route", "VTT", "Trajet", "Home trainer"],
+      unit: "km",
+      suggestion: { distance: 32, duration: 5400, source: "comme le 5 octobre" },
+      pace: (distance, seconds) => `<b>${formatNumber(Math.round((distance / (seconds / 3600)) * 10) / 10)} km/h</b> en moyenne`,
+      extra: [["Dénivelé positif", null, "m"], ["Puissance moyenne", null, "W"]],
+      rotation: null,
+    },
+    yoga: {
+      icon: "yoga",
+      name: "Yoga",
+      article: "le yoga",
+      kindTitle: "Style",
+      kinds: ["Vinyasa", "Hatha", "Yin", "Mobilité"],
+      unit: null,
+      suggestion: { distance: null, duration: 3600, source: "comme le 11 octobre" },
+      pace: () => "<b>Durée seule</b>",
+      extra: [["Lieu", null, ""]],
+      rotation: null,
+    },
+  };
+  const recent = ["run", "hike", "swim"];
+  const catalogue = [["Escalade", "climb.html", "climb"], ["Musculation, séance libre", "instrument.html", "lift"], ["Vélo", "log.html?sport=bike", "bike"], ["Yoga", "log.html?sport=yoga", "yoga"]];
+
+  const params = new URLSearchParams(location.search);
+  const state = {
+    sport: sports[params.get("sport")] ? params.get("sport") : "run",
+    distance: null,
+    duration: null,
+    day: "Aujourd'hui",
+    minutes: 14 * 60 + 30,
+  };
+
+  const formatDuration = (seconds) => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const rest = String(seconds % 60).padStart(2, "0");
+    return hours > 0 ? `${hours}:${String(minutes).padStart(2, "0")}:${rest}` : `${minutes}:${rest}`;
+  };
+  const formatTime = (minutes) => `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+
+  function renderFigures() {
+    const sport = sports[state.sport];
+    const hasDistance = sport.unit !== null;
+    ref("distance-figure").hidden = !hasDistance;
+    ref("figure-separator").hidden = !hasDistance;
+    const distance = state.distance ?? sport.suggestion.distance ?? 0;
+    const duration = state.duration ?? sport.suggestion.duration;
+    const value = formatNumber(distance);
+    const [integer, decimal] = value.split(",");
+    ref("distance").innerHTML = decimal ? `${integer}<span class="decimal">,${decimal}</span>` : integer;
+    ref("distance").classList.toggle("is-suggested", state.distance === null);
+    ref("distance-unit").textContent = `Distance · ${sport.unit}`;
+    ref("duration").textContent = formatDuration(duration);
+    ref("duration").classList.toggle("is-suggested", state.duration === null);
+    ref("figures").classList.toggle("is-long", duration >= 3600 || value.length > 4);
+
+    const confirmed = (!hasDistance || state.distance !== null) && state.duration !== null;
+    ref("pace").innerHTML = confirmed ? sport.pace(state.distance, state.duration) : `<b>Proposé</b> · ${sport.suggestion.source}`;
+    const primary = ref("primary");
+    primary.setAttribute("aria-disabled", String(!confirmed));
+    ref("primary-label").textContent = confirmed ? `Enregistrer ${sport.article}` : hasDistance ? "Saisis distance et durée" : "Saisis la durée";
+  }
+
+  function renderSport() {
+    const sport = sports[state.sport];
+    ref("sport").innerHTML = recent.map((id) => `<button data-value="${id}" aria-pressed="${id === state.sport}"><span class="sport-icon is-inline">${sportIcon(sports[id].icon)}</span>${sports[id].name}</button>`).join("") + `<button data-value="catalogue" aria-pressed="false"><span class="sport-icon is-inline">${sportIcon("other")}</span>Autre…</button>`;
+    ref("sport").querySelectorAll("button").forEach((button) => button.addEventListener("click", () => switchSport(button.dataset.value)));
+    ref("kind-title").textContent = sport.kindTitle;
+    ref("kind").style.setProperty("--options", String(sport.kinds.length));
+    ref("kind").innerHTML = sport.kinds.map((kind) => `<button aria-pressed="false">${kind}</button>`).join("");
+    ref("kind").querySelectorAll("button").forEach((button) => {
+      button.addEventListener("click", () => {
+        const wasPressed = button.getAttribute("aria-pressed") === "true";
+        ref("kind").querySelectorAll("button").forEach((item) => item.setAttribute("aria-pressed", "false"));
+        button.setAttribute("aria-pressed", String(!wasPressed));
+      });
+    });
+    ref("extra").innerHTML = sport.extra
+      .map(([label, value, unit]) => `<button class="row"><span class="row-main"><strong>${label}</strong></span><span class="row-value${value === null ? " is-empty" : ""}">${value === null ? "Ajouter" : `${value}${unit ? ` <small>${unit}</small>` : ""}`}</span><svg class="chevron" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m6 4 4 4-4 4"/></svg></button>`)
+      .join("");
+    ref("rotation").hidden = sport.rotation === null;
+    if (sport.rotation) ref("rotation-title").textContent = sport.rotation;
+    renderFigures();
+  }
+
+  function switchSport(id) {
+    if (id === "catalogue") {
+      setSheet("catalogue", true);
+      return;
+    }
+    if (id === state.sport) return;
+    if (!sports[id].unit || !sports[state.sport].unit) {
+      state.sport = id;
+      state.distance = null;
+      renderSport();
+      return;
+    }
+    const previous = { sport: state.sport, distance: state.distance, duration: state.duration };
+    const sameUnit = sports[id].unit === sports[state.sport].unit;
+    state.sport = id;
+    if (!sameUnit) state.distance = null;
+    renderSport();
+    if (!sameUnit && previous.distance !== null) {
+      showSnackbar(`Distance effacée · ${sports[id].name.toLowerCase()} en ${sports[id].unit}`, {
+        label: "Annuler",
+        run: () => {
+          Object.assign(state, previous);
+          renderSport();
+        },
+      });
+    }
+  }
+
+  ref("catalogue").innerHTML =
+    catalogue.map(([name, href, icon]) => `<button data-href="${href}"><span class="sport-icon">${sportIcon(icon)}</span><span>${name}</span><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m6 4 4 4-4 4"/></svg></button>`).join("");
+  ref("catalogue").querySelectorAll("button").forEach((button) => {
+    button.addEventListener("click", () => {
+      const target = new URL(button.dataset.href, location.href);
+      new URLSearchParams(location.search).forEach((value, key) => {
+        if (key !== "sport") target.searchParams.set(key, value);
+      });
+      location.href = target.href;
+    });
+  });
+
+  let padField = "distance";
+  let padBuffer = "";
+
+  function padDisplay() {
+    if (padField === "duration") {
+      const digits = padBuffer.padStart(4, "0");
+      const hours = digits.slice(0, -4);
+      return hours ? `${Number(hours)}:${digits.slice(-4, -2)}:${digits.slice(-2)}` : `${Number(digits.slice(-4, -2))}:${digits.slice(-2)}`;
+    }
+    return padBuffer;
+  }
+
+  function currentValue() {
+    const sport = sports[state.sport];
+    return padField === "duration" ? formatDuration(state.duration ?? sport.suggestion.duration) : formatNumber(state.distance ?? sport.suggestion.distance);
+  }
+
+  function renderPad() {
+    ref("pad-title").textContent = padField === "duration" ? "Durée" : "Distance";
+    ref("pad-unit").textContent = padField === "duration" ? "h:min:s" : sports[state.sport].unit;
+    ref("pad-value").textContent = padBuffer === "" ? currentValue() : padDisplay();
+    ref("pad-value").classList.toggle("is-placeholder", padBuffer === "");
+    ref("pad-comma").setAttribute("aria-disabled", String(padField === "duration" || padBuffer.includes(",")));
+    ref("pad-confirm").textContent = padBuffer === "" ? `Garder ${currentValue()}` : `Utiliser ${padDisplay()}`;
+  }
+
+  document.querySelectorAll("[data-pad]").forEach((button) => {
+    button.addEventListener("click", () => {
+      padField = button.dataset.pad;
+      padBuffer = "";
+      renderPad();
+      setSheet("pad", true);
+    });
+  });
+
+  document.querySelectorAll("[data-pad-key]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const key = button.dataset.padKey;
+      if (key === "back") padBuffer = padBuffer.slice(0, -1);
+      else if (key === ",") padBuffer = `${padBuffer || "0"},`;
+      else if (padBuffer.replace(",", "").length < 6) padBuffer = padBuffer === "0" ? key : padBuffer + key;
+      vibrate(8);
+      renderPad();
+    });
+  });
+
+  ref("pad-confirm").addEventListener("click", () => {
+    const sport = sports[state.sport];
+    if (padField === "duration") {
+      if (padBuffer === "") {
+        state.duration = state.duration ?? sport.suggestion.duration;
+      } else {
+        const parts = padDisplay().split(":").map(Number);
+        state.duration = parts.length === 3 ? parts[0] * 3600 + parts[1] * 60 + parts[2] : parts[0] * 60 + parts[1];
+      }
+    } else {
+      state.distance = padBuffer === "" ? state.distance ?? sport.suggestion.distance : Number(padBuffer.replace(",", "."));
+    }
+    setSheet("pad", false);
+    renderFigures();
+  });
+
+  ref("primary").addEventListener("click", (event) => {
+    if (ref("primary").getAttribute("aria-disabled") === "true") event.preventDefault();
+  });
+
+  ref("day").querySelectorAll("button").forEach((button) => {
+    button.addEventListener("click", () => {
+      ref("day").querySelectorAll("button").forEach((item) => item.setAttribute("aria-pressed", String(item === button)));
+      state.day = button.dataset.value;
+    });
+  });
+  document.querySelectorAll("[data-time]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.minutes = (state.minutes + Number(button.dataset.time) + 1440) % 1440;
+      ref("time").textContent = formatTime(state.minutes);
+    });
+  });
+  ref("when-confirm").addEventListener("click", () => {
+    ref("when-label").textContent = `${state.day}, ${formatTime(state.minutes)}`;
+    setSheet("when", false);
+  });
+
+  renderSport();
+  if (params.get("sport") === "catalogue") setSheet("catalogue", true);
+</script>
+</body>
+</html>

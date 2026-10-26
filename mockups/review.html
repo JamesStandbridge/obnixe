@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Obnixe — Revue des écrans</title>
+<style>
+  * { box-sizing: border-box; margin: 0; }
+  body { background: oklch(0.6 0.005 250); padding: 24px; font: 500 14px/1.4 ui-sans-serif, sans-serif; color: white; }
+  nav { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 20px; }
+  nav a { padding: 6px 10px; border-radius: 6px; color: white; text-decoration: none; background: oklch(0.45 0.005 250); }
+  nav a[aria-current="page"] { background: oklch(0.2 0.01 250); }
+  .frames { display: flex; gap: 24px; flex-wrap: wrap; }
+  figure { display: grid; gap: 8px; }
+  iframe { width: 390px; height: 844px; border: 0; border-radius: 24px; }
+</style>
+</head>
+<body>
+  <nav data-ref="nav"></nav>
+  <div class="frames">
+    <figure><iframe data-theme="dark" title="Sombre"></iframe><figcaption>Sombre</figcaption></figure>
+    <figure><iframe data-theme="light" title="Plein soleil"></iframe><figcaption>Plein soleil</figcaption></figure>
+  </div>
+<script>
+  const screens = [
+    ["icons", "Icônes de sport"],
+    ["welcome", "Premier lancement"],
+    ["import", "Importer"],
+    ["today:empty", "Aujourd'hui · vide"],
+    ["today", "Aujourd'hui"],
+    ["today:resume", "Aujourd'hui · reprise"],
+    ["instrument", "Séance muscu"],
+    ["bilan", "Bilan muscu"],
+    ["climb", "Séance escalade"],
+    ["bilan:sport=climb", "Bilan escalade"],
+    ["log", "Activité rapide"],
+    ["log:sport=yoga", "Activité durée seule"],
+    ["journal", "Journal"],
+    ["calendar", "Calendrier"],
+    ["progress", "Progression muscu"],
+    ["progress:sport=run", "Progression course"],
+    ["progress:sport=climb", "Progression escalade"],
+    ["progress:subject=pain-shoulder", "Douleur et charge"],
+    ["progress:subject=weight", "Progression poids"],
+    ["progress:subject=checkin", "Progression check-in"],
+    ["session", "Séance passée muscu"],
+    ["session:sport=climb", "Séance passée escalade"],
+    ["session:sport=run", "Séance passée course"],
+    ["body", "Corps"],
+    ["programs", "Programmes"],
+    ["program-edit", "Modifier un programme"],
+    ["agent", "Agent · appairage"],
+    ["agent:connected", "Agent · connecté"],
+    ["agent:disconnected", "Agent · coupé"],
+    ["agent-log", "Activité des agents"],
+    ["data", "Données"],
+  ];
+  const params = new URLSearchParams(location.search);
+  const current = params.get("screen") ?? "today";
+  if (params.has("zoom")) {
+    const frames = document.querySelector(".frames");
+    frames.style.flexWrap = "nowrap";
+    frames.style.transform = `scale(${params.get("zoom")})`;
+    frames.style.transformOrigin = "top left";
+    document.querySelector("nav").hidden = true;
+    document.body.style.padding = "8px";
+  }
+  document.querySelector("[data-ref=nav]").innerHTML = screens
+    .map(([id, label]) => `<a href="?screen=${id}" ${id === current ? 'aria-current="page"' : ""}>${label}</a>`)
+    .join("");
+  document.querySelectorAll("iframe").forEach((frame) => {
+    const [file, state] = current.split(":");
+    const extra = state ? `&${state.includes("=") ? state : `state=${state}`}` : "";
+    frame.src = `${file}.html?theme=${frame.dataset.theme}${extra}`;
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="fr" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14171c">
+<title>Obnixe — Activité des agents</title>
+<link rel="stylesheet" href="system.css">
+<style>
+  .head { margin-top: 14px; display: grid; gap: 6px; }
+  .head h1 { font: 700 30px/1.08 var(--font-text); letter-spacing: -0.02em; }
+  .head p { color: var(--text-2); line-height: 1.45; }
+  .activity .row { grid-template-columns: 48px minmax(0, 1fr) auto; align-items: start; padding: 12px 0; }
+  .activity time { font: 600 15px/22px var(--font-figure); color: var(--text-2); }
+  .activity .row-main { gap: 4px; }
+  .activity .row-main > .tag { justify-self: start; }
+  .activity .row-main strong { white-space: normal; line-height: 1.3; }
+  .activity .row.is-reverted .row-main strong { text-decoration: line-through; color: var(--text-2); }
+  .activity .reads { color: var(--text-2); font-size: 14px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+</style>
+</head>
+<body>
+<main class="screen">
+  <div class="appbar">
+    <a class="icon-button is-edge-start" href="agent.html" aria-label="Retour">
+      <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 5 7.5 11l6 6"/></svg>
+    </a>
+    <span class="appbar-context">Agent</span>
+  </div>
+
+  <section class="head">
+    <h1>Activité des agents</h1>
+  </section>
+
+  <section class="section activity">
+    <div class="section-head"><span class="section-title">Vendredi 23 octobre</span><small class="muted">Cursor · 21:02 – 21:31</small></div>
+    <p class="reads">Lu : journal 8 semaines, Base hiver, épaule droite</p>
+    <div class="row"><time>21:14</time><span class="row-main"><span class="tag">Modification</span><strong>v7 · rowing haltère au lieu du tirage menton</strong></span><button class="link-button" data-revert aria-label="Annuler la modification de 21:14">Revenir</button></div>
+    <div class="row"><time>21:15</time><span class="row-main"><span class="tag">Ajout</span><strong>Course du 12 octobre · 9,2 km</strong></span><button class="link-button" data-revert aria-label="Annuler l'ajout de 21:15">Revenir</button></div>
+  </section>
+
+  <section class="section activity">
+    <div class="section-head"><span class="section-title">Vendredi 9 octobre</span><small class="muted">Cursor · 21:10 – 21:24</small></div>
+    <p class="reads">Lu : course, genou droit</p>
+    <div class="row"><time>21:18</time><span class="row-main"><span class="tag">Modification</span><strong>v5 · footing de 35 à 40 min</strong></span><button class="link-button" data-revert aria-label="Annuler la modification de 21:18">Revenir</button></div>
+  </section>
+
+  <section class="section activity">
+    <div class="section-head"><span class="section-title">Samedi 3 octobre</span><small class="muted">Codex · 10:40 – 10:52</small></div>
+    <p class="reads">Lu : journal complet</p>
+  </section>
+</main>
+
+<div class="bottom">
+  <div class="snackbar" data-ref="snackbar" data-open="false" role="status">
+    <span data-ref="snackbar-text"></span>
+    <button data-ref="snackbar-action">Annuler</button>
+  </div>
+</div>
+
+<script src="system.js"></script>
+<script>
+  document.querySelectorAll("[data-revert]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const row = button.closest(".row");
+      row.classList.add("is-reverted");
+      button.hidden = true;
+      showSnackbar("Modification annulée · nouvelle version enregistrée", {
+        label: "Rétablir",
+        run: () => {
+          row.classList.remove("is-reverted");
+          button.hidden = false;
+        },
+      });
+    });
+  });
+</script>
+</body>
+</html>

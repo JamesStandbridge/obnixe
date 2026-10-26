@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="fr" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14171c">
+<title>Obnixe — Journal</title>
+<link rel="stylesheet" href="system.css">
+<style>
+  .filters { margin-top: 12px; }
+
+  .regularity { margin-top: 20px; display: grid; gap: 10px; }
+  .regularity header { display: flex; align-items: baseline; justify-content: space-between; }
+  .regularity header strong { font: 800 34px/1 var(--font-figure); letter-spacing: -0.01em; }
+  .regularity header strong span { font: 600 15px/1 var(--font-text); color: var(--text-2); margin-left: 6px; letter-spacing: 0; }
+  .weeks { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px; align-items: end; height: 104px; }
+  .weeks > div { display: grid; gap: 6px; justify-items: center; }
+  .weeks .stack { display: flex; flex-direction: column-reverse; gap: 3px; width: 100%; max-width: 28px; }
+  .weeks .stack i { display: block; height: 10px; border-radius: 2px; background: var(--step-done); }
+  .weeks .stack i.is-planned { background: transparent; box-shadow: inset 0 0 0 1.5px var(--control-border); }
+  .weeks .is-current .stack i:not(.is-planned) { background: var(--hv-mark); }
+  .weeks small { font: 600 12px/1 var(--font-figure); color: var(--text-2); }
+  .weeks .is-current small { color: var(--text); font-weight: 700; }
+
+  .entries .row { grid-template-columns: 36px minmax(0, 1fr) auto; }
+  .entries .row-main small { flex-wrap: wrap; row-gap: 2px; }
+</style>
+</head>
+<body>
+<main class="screen">
+  <div class="appbar">
+    <h1>Journal</h1>
+    <button class="icon-button is-edge-end" aria-label="Rechercher">
+      <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="10" cy="10" r="6"/><path d="m14.5 14.5 4 4"/></svg>
+    </button>
+  </div>
+
+  <nav class="view-switch" data-journal-view="list" aria-label="Vue du journal"></nav>
+
+  <div class="filters">
+    <div class="segmented is-scroll" data-choice role="group" aria-label="Filtrer par sport">
+      <button aria-pressed="true">Tout</button>
+      <button>Musculation</button>
+      <button>Course</button>
+      <button>Escalade</button>
+      <button>Rando</button>
+      <button>Natation</button>
+    </div>
+  </div>
+
+  <section class="regularity" aria-label="Régularité sur 8 semaines">
+    <header>
+      <strong>3,6<span>séances par semaine</span></strong>
+      <small class="muted">8 dernières semaines</small>
+    </header>
+    <div class="weeks">
+      <div><span class="stack"><i></i><i></i><i></i></span><small>31 août</small></div>
+      <div><span class="stack"><i></i><i></i><i></i><i></i></span><small>7 sept.</small></div>
+      <div><span class="stack"><i></i><i></i></span><small>14</small></div>
+      <div><span class="stack"><i></i><i></i><i></i><i></i></span><small>21</small></div>
+      <div><span class="stack"><i></i><i></i><i></i><i></i><i></i></span><small>28</small></div>
+      <div><span class="stack"><i></i><i></i><i></i></span><small>5 oct.</small></div>
+      <div><span class="stack"><i></i><i></i><i></i><i></i></span><small>12</small></div>
+      <div class="is-current"><span class="stack"><i></i><i></i><i></i><i></i><i class="is-planned"></i></span><small>19</small></div>
+    </div>
+  </section>
+
+  <section class="section entries">
+    <div class="section-head"><span class="section-title">Cette semaine</span><small class="muted">4 séances · 3 h 52</small></div>
+    <a class="row" href="session.html">
+      <span class="sport-icon" data-sport-icon="lift" data-sport-label="Musculation"></span>
+      <span class="row-main"><strong>Séance A · Salle</strong><small>Sam. 24 · 13 séries · dur · <i class="pain-mark" data-level="stop"></i>épaule droite</small></span>
+      <span class="row-value">58<small>min</small></span>
+    </a>
+    <a class="row" href="session.html?sport=run">
+      <span class="sport-icon" data-sport-icon="run" data-sport-label="Course"></span>
+      <span class="row-main"><strong>Course · footing</strong><small>Jeu. 22 · 5:12 /km</small></span>
+      <span class="row-value">8,0<small>km</small></span>
+    </a>
+    <a class="row" href="session.html">
+      <span class="sport-icon" data-sport-icon="lift" data-sport-label="Musculation"></span>
+      <span class="row-main"><strong>Séance B · Salle</strong><small>Mar. 20 · 15 séries · modéré · <i class="pain-mark" data-level="discomfort"></i>épaule droite</small></span>
+      <span class="row-value">54<small>min</small></span>
+    </a>
+    <a class="row" href="session.html?sport=climb">
+      <span class="sport-icon" data-sport-icon="climb" data-sport-label="Escalade"></span>
+      <span class="row-main"><strong>Bloc · Arkose Nation</strong><small>Lun. 19 · 9 blocs · max 6B · 3 flash</small></span>
+      <span class="row-value">1 h 20<small>&nbsp;</small></span>
+    </a>
+  </section>
+
+  <section class="section entries">
+    <div class="section-head"><span class="section-title">12 – 18 octobre</span><small class="muted">4 séances · 7 h 05</small></div>
+    <a class="row" href="session.html?sport=run">
+      <span class="sport-icon" data-sport-icon="hike" data-sport-label="Rando"></span>
+      <span class="row-main"><strong>Rando · vallée de Chevreuse</strong><small>Dim. 18 · D+ 640 m · sac 7 kg</small></span>
+      <span class="row-value">21,4<small>km</small></span>
+    </a>
+    <a class="row" href="session.html?sport=run">
+      <span class="sport-icon" data-sport-icon="swim" data-sport-label="Natation"></span>
+      <span class="row-main"><strong>Natation · crawl</strong><small>Ven. 16 · 2:08 /100 m</small></span>
+      <span class="row-value">1 500<small>m</small></span>
+    </a>
+    <a class="row" href="session.html">
+      <span class="sport-icon" data-sport-icon="lift" data-sport-label="Musculation"></span>
+      <span class="row-main"><strong>Séance A · Salle</strong><small>Mer. 14 · 15 séries · dur</small></span>
+      <span class="row-value">61<small>min</small></span>
+    </a>
+    <a class="row" href="session.html?sport=run">
+      <span class="sport-icon" data-sport-icon="run" data-sport-label="Course"></span>
+      <span class="row-main"><strong>Course · fractionné</strong><small>Lun. 12 · 6 × 800 m · <span class="tag">Ajoutée par Cursor</span></small></span>
+      <span class="row-value">9,2<small>km</small></span>
+    </a>
+  </section>
+</main>
+
+<div class="bottom">
+  <nav class="tabbar" data-tabbar="journal" aria-label="Navigation principale"></nav>
+</div>
+
+<script src="system.js"></script>
+</body>
+</html>

@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="fr" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14171c">
+<title>Obnixe — Premier lancement</title>
+<link rel="stylesheet" href="system.css">
+<style>
+  .wordmark { margin-top: 28px; font: 800 34px/1 var(--font-figure); letter-spacing: 0.02em; }
+  .wordmark b { color: var(--hv-mark); font-weight: 800; }
+  .intro { margin-top: 28px; display: grid; gap: 10px; }
+  .intro h1 { font: 700 34px/1.05 var(--font-text); letter-spacing: -0.02em; }
+  .intro p { color: var(--text-2); font-size: 16px; line-height: 1.45; }
+  .facts { margin-top: 8px; }
+  .facts .row { grid-template-columns: 28px minmax(0, 1fr); align-items: start; }
+  .facts .row > span:first-child { font: 700 15px/22px var(--font-figure); color: var(--text-3); }
+  .facts .row-main strong { white-space: normal; }
+  .sports { margin-top: 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .sports button { min-height: 52px; justify-content: flex-start; display: flex; align-items: center; gap: 10px; padding: 0 12px; text-align: left; }
+  .storage { width: 100%; margin-top: 10px; }
+  .storage[data-granted="true"] { box-shadow: none; color: var(--text-2); }
+  .storage-note { margin-top: 8px; font-size: 14px; color: var(--text-2); line-height: 1.4; }
+  .screen.has-bottom-panel { padding-bottom: calc(env(safe-area-inset-bottom) + 172px); }
+  .bottom-panel .stack { display: grid; gap: 4px; }
+  .bottom-panel .restore { height: 44px; color: var(--text-2); font-weight: 600; text-align: center; line-height: 44px; text-decoration: none; }
+</style>
+</head>
+<body>
+<main class="screen has-bottom-panel">
+  <div class="wordmark" aria-label="Obnixe">OBNI<b>X</b>E</div>
+
+  <section class="intro">
+    <h1>Ton suivi sportif, sans compte</h1>
+  </section>
+
+  <section class="section facts">
+    <div class="section-head"><span class="section-title">À savoir</span></div>
+    <div class="row"><span>1</span><span class="row-main"><strong>Tout reste sur ce téléphone</strong></span></div>
+    <div class="row"><span>2</span><span class="row-main"><strong>Sauvegarde par fichier, à exporter</strong></span></div>
+    <div class="row"><span>3</span><span class="row-main"><strong>Un agent n'entre qu'avec ton code</strong></span></div>
+  </section>
+
+  <section class="section">
+    <div class="section-head"><span class="section-title">Tes sports</span></div>
+    <div class="segmented sports" data-choice="multi" role="group" aria-label="Sports pratiqués">
+      <button aria-pressed="true"><span class="sport-icon is-inline" data-sport-icon="lift"></span>Musculation</button>
+      <button aria-pressed="true"><span class="sport-icon is-inline" data-sport-icon="run"></span>Course</button>
+      <button aria-pressed="true"><span class="sport-icon is-inline" data-sport-icon="climb"></span>Escalade</button>
+      <button aria-pressed="true"><span class="sport-icon is-inline" data-sport-icon="hike"></span>Rando</button>
+      <button aria-pressed="true"><span class="sport-icon is-inline" data-sport-icon="swim"></span>Natation</button>
+      <button><span class="sport-icon is-inline" data-sport-icon="bike"></span>Vélo</button>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="section-head"><span class="section-title">Protéger les données</span></div>
+    <button class="control storage" data-ref="storage">Installer sur l'écran d'accueil</button>
+    <p class="storage-note" data-ref="storage-note">Empêche Chrome d'effacer tes données.</p>
+  </section>
+</main>
+
+<div class="bottom">
+  <div class="bottom-panel">
+    <div class="stack">
+      <a class="primary" href="today.html?state=empty">Commencer</a>
+      <a class="restore" href="import.html">J'ai déjà une sauvegarde</a>
+    </div>
+  </div>
+</div>
+
+<script src="system.js"></script>
+<script>
+  ref("storage").addEventListener("click", () => {
+    ref("storage").dataset.granted = "true";
+    ref("storage").textContent = "Installée";
+    ref("storage-note").textContent = "Stockage protégé.";
+  });
+</script>
+</body>
+</html>

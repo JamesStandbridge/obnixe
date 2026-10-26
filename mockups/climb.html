@@ -1,0 +1,437 @@
+<!doctype html>
+<html lang="fr" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14171c">
+<title>Obnixe — Séance d'escalade</title>
+<link rel="stylesheet" href="system.css">
+<style>
+  .context, .editing { display: flex; align-items: center; gap: 12px; min-height: 24px; }
+  .context { color: var(--text-2); font-weight: 600; font-size: 15px; }
+  .context .where { flex: 1; }
+  .context .elapsed { font: 600 17px/1 var(--font-figure); }
+  .context .link-button { margin: -10px -10px -10px 0; color: var(--text); }
+  .editing span { flex: 1; font-weight: 700; font-size: 15px; }
+  .editing .link-button { margin: -10px -10px -10px 0; }
+  .title { margin-top: 14px; font: 700 26px/1.1 var(--font-text); letter-spacing: -0.015em; }
+  .summary { color: var(--text-2); font-size: 15px; }
+
+  .track { margin-top: 16px; display: grid; grid-auto-flow: column; grid-auto-columns: 92px; gap: 2px; border-radius: var(--r-panel); overflow-x: auto; scrollbar-width: none; }
+  .attempt { background: var(--surface); padding: 10px 12px; display: grid; align-content: start; gap: 5px; height: 76px; text-align: left; }
+  button.attempt { transition: background-color var(--dur-press) var(--ease-out); }
+  button.attempt:active { background: var(--surface-press); }
+  .attempt-label { display: flex; align-items: center; gap: 6px; font: 700 12px/1 var(--font-text); letter-spacing: 0.04em; color: var(--text-2); }
+  .attempt strong { font: 700 21px/1 var(--font-figure); }
+  .attempt small { color: var(--text-2); font-size: 13px; line-height: 1; white-space: nowrap; }
+  .attempt.is-current { background: var(--surface-2); box-shadow: inset 0 -3px 0 var(--hv-mark); }
+  .attempt.is-current .attempt-label { color: var(--text); }
+  .attempt.is-current strong { font: 700 17px/21px var(--font-text); }
+  .attempt.is-editing { background: var(--surface-2); box-shadow: inset 0 0 0 2px var(--text); }
+
+  .readout { margin-top: 20px; display: grid; gap: 16px; }
+  .figure.is-static:active { background: none; }
+  .comparison { padding: 0 4px; font-size: 14px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .comparison b { color: var(--text); font-size: 15px; }
+  .adjust-group button.grade-step { font-size: 19px; }
+  .result .segmented { --options: 3; }
+  .style-tags .segmented { --options: 4; }
+  .style-tags .segmented button { min-height: 44px; }
+
+  .actions { display: grid; grid-template-columns: 72px 1fr; gap: 10px; }
+  .pain-button { position: relative; height: 64px; border-radius: var(--r-panel); background: var(--surface); box-shadow: inset 0 0 0 1.5px var(--control-border); text-align: center; font: 700 14px/1 var(--font-text); transition: background-color var(--dur-press) var(--ease-out); }
+  .pain-button:active { background: var(--surface-press); }
+  .pain-button [data-ref="pain-indicator"] { position: absolute; top: 9px; right: 9px; display: flex; }
+  .primary[aria-disabled="true"] { opacity: 1; background: var(--surface); color: var(--text-2); box-shadow: inset 0 0 0 1.5px var(--control-border); }
+  .primary[data-mode="edit"] { background: var(--surface-2); color: var(--text); box-shadow: inset 0 0 0 2px var(--text); }
+
+  .grades { margin-top: 12px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .grades button { height: 52px; border-radius: var(--r-control); box-shadow: inset 0 0 0 1.5px var(--control-border); text-align: center; font: 700 20px/1 var(--font-figure); }
+  .grades button[aria-pressed="true"] { background: var(--text); color: var(--bg); box-shadow: none; }
+  .end-facts { font: 700 19px/1.3 var(--font-figure); margin: 6px 0 4px; }
+</style>
+</head>
+<body>
+<main class="screen has-bottom-panel">
+  <div class="context" data-ref="context">
+    <span class="where">Escalade · Arkose Nation</span>
+    <span class="elapsed" data-ref="elapsed">1:12:04</span>
+    <button class="link-button" data-sheet-open="end">Terminer</button>
+  </div>
+  <div class="editing" data-ref="editing" hidden>
+    <span data-ref="editing-label"></span>
+    <button class="link-button" data-ref="editing-leave">Quitter la correction</button>
+  </div>
+  <h1 class="title">Bloc</h1>
+  <p class="summary" data-ref="summary"></p>
+
+  <div class="track" data-ref="track" aria-label="Blocs de la séance"></div>
+
+  <section class="readout">
+    <div class="figure-row">
+      <button class="figure" data-sheet-open="grades" aria-label="Choisir la cotation">
+        <strong data-ref="grade"></strong>
+        <span>Cotation · Font</span>
+      </button>
+      <span class="times" aria-hidden="true">·</span>
+      <div class="figure is-static">
+        <strong data-ref="tries"></strong>
+        <span data-ref="tries-unit">essai</span>
+      </div>
+    </div>
+    <p class="comparison" data-ref="comparison"></p>
+    <div class="adjust">
+      <div class="adjust-group">
+        <button class="grade-step" data-grade="-1"></button>
+        <button class="grade-step" data-grade="1"></button>
+      </div>
+      <div class="adjust-group">
+        <button data-tries="-1" aria-label="Un essai de moins">−1</button>
+        <button data-tries="1" aria-label="Un essai de plus">+1</button>
+      </div>
+    </div>
+    <div class="question result">
+      <span class="section-title">Résultat</span>
+      <div class="segmented" data-ref="result" role="group" aria-label="Résultat">
+        <button data-value="flash">Flash</button>
+        <button data-value="sent">Enchaîné</button>
+        <button data-value="project">Pas encore</button>
+      </div>
+    </div>
+    <div class="question style-tags">
+      <span class="section-title">Style</span>
+      <div class="segmented" data-ref="tags" role="group" aria-label="Style du bloc">
+        <button data-value="Dévers">Dévers</button>
+        <button data-value="Dalle">Dalle</button>
+        <button data-value="Réglettes">Réglettes</button>
+        <button data-value="Jeté">Jeté</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div class="bottom">
+  <div class="snackbar" data-ref="snackbar" data-open="false" role="status">
+    <span data-ref="snackbar-text"></span>
+    <button data-ref="snackbar-action">Annuler</button>
+  </div>
+  <div class="bottom-panel">
+    <div class="actions">
+      <button class="pain-button" data-sheet-open="pain">Douleur<span data-ref="pain-indicator"></span></button>
+      <button class="primary" data-ref="primary">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 10.5 4 4 8-9"/></svg>
+        <span data-ref="primary-label"></span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="sheet-root" data-sheet="grades" data-open="false">
+  <div class="scrim" data-sheet-close="grades"></div>
+  <section class="sheet" role="dialog" aria-label="Cotation">
+    <div class="grabber"></div>
+    <h2>Cotation</h2>
+    <div class="grades" data-ref="grades"></div>
+  </section>
+</div>
+
+<div class="sheet-root" data-sheet="pain" data-open="false">
+  <div class="scrim" data-sheet-close="pain"></div>
+  <section class="sheet" role="dialog" aria-label="Signaler une douleur">
+    <div class="grabber"></div>
+    <h2>Signaler une douleur</h2>
+    <p class="sheet-context" data-ref="pain-context"></p>
+    <div data-ref="pain-zones"></div>
+    <button class="other-zone">Autre zone…</button>
+    <button class="sheet-primary" data-ref="pain-save">Enregistrer</button>
+  </section>
+</div>
+
+<div class="sheet-root" data-sheet="end" data-open="false">
+  <div class="scrim" data-sheet-close="end"></div>
+  <section class="sheet" role="dialog" aria-label="Terminer la séance">
+    <div class="grabber"></div>
+    <h2>Terminer la séance ?</h2>
+    <p class="end-facts" data-ref="end-facts"></p>
+    <p class="sheet-context" data-ref="end-context"></p>
+    <div class="choices">
+      <button class="primary" data-ref="end-save" hidden>Enregistrer et terminer</button>
+      <a class="primary" href="bilan.html?sport=climb" data-ref="end-finish">Terminer et faire le bilan</a>
+      <button data-sheet-close="end">Continuer à grimper</button>
+    </div>
+  </section>
+</div>
+
+<div class="sheet-root" data-sheet="stop" data-open="false">
+  <div class="scrim" data-sheet-close="stop"></div>
+  <section class="sheet" role="dialog" aria-label="Arrêt signalé">
+    <div class="grabber"></div>
+    <h2 data-ref="stop-title"></h2>
+    <p class="sheet-context">Douleur enregistrée</p>
+    <div class="choices">
+      <button class="primary" data-ref="stop-end">Terminer la séance</button>
+      <button data-sheet-close="stop">Continuer quand même</button>
+    </div>
+  </section>
+</div>
+
+<script src="system.js"></script>
+<script>
+  const grades = ["4", "5A", "5B", "5C", "6A", "6A+", "6B", "6B+", "6C", "6C+", "7A", "7A+", "7B"];
+  const resultLabels = { flash: "flash", sent: "enchaîné", project: "pas encore" };
+  const zones = [
+    { id: "fingers_right", label: "Doigts, main droite", context: "zone de l'escalade", tracked: false },
+    { id: "elbow_right", label: "Coude droit", context: "zone de l'escalade", tracked: false },
+    { id: "shoulder_right", label: "Épaule droite", context: "arrêt hier", tracked: true },
+    { id: "knee_right", label: "Genou droit", context: "suivi en cours", tracked: true },
+  ];
+  const routes = [
+    { grade: "5B", tries: 1, result: "flash", tags: [] },
+    { grade: "5C", tries: 1, result: "flash", tags: ["Dalle"] },
+    { grade: "6A", tries: 2, result: "sent", tags: ["Réglettes"] },
+    { grade: "6A+", tries: 4, result: "project", tags: ["Dévers"] },
+    { grade: "6A", tries: 1, result: "flash", tags: [] },
+    { grade: "6B", tries: 3, result: "sent", tags: ["Dévers", "Jeté"] },
+  ];
+  const pains = [];
+  const state = { draft: { gradeIndex: grades.indexOf("6B"), tries: 1, result: null, tags: [] }, editing: null };
+  const activeDraft = () => state.editing?.draft ?? state.draft;
+
+  function cellText(route) {
+    if (route.result === "flash") return "flash";
+    return route.result === "project" ? `pas encore · ${route.tries}` : `${route.tries} essais`;
+  }
+
+  function summaryText() {
+    const sent = routes.filter((route) => route.result !== "project");
+    const best = sent.reduce((max, route) => Math.max(max, grades.indexOf(route.grade)), -1);
+    const flashes = routes.filter((route) => route.result === "flash").length;
+    return `${routes.length} blocs · max enchaîné ${best >= 0 ? grades[best] : "–"} · ${flashes} flash`;
+  }
+
+  function renderTrack() {
+    const track = ref("track");
+    const cells = routes.map((route, index) => {
+      const level = pains.filter((pain) => pain.routeIndex === index).some((pain) => pain.level === "stop") ? "stop" : pains.some((pain) => pain.routeIndex === index && pain.level === "discomfort") ? "discomfort" : null;
+      const mark = level ? `<i class="pain-mark" data-level="${level}"></i>` : "";
+      return `<button class="attempt${state.editing?.index === index ? " is-editing" : ""}" data-edit="${index}" aria-label="Corriger le bloc ${index + 1}"><span class="attempt-label">Bloc ${index + 1}${mark}</span><strong>${route.grade}</strong><small>${cellText(route)}</small></button>`;
+    });
+    cells.push(`<div class="attempt is-current"><span class="attempt-label">Bloc ${routes.length + 1}</span><strong>en cours</strong><small>&nbsp;</small></div>`);
+    track.innerHTML = cells.join("");
+    track.querySelectorAll("[data-edit]").forEach((button) => button.addEventListener("click", () => startEditing(Number(button.dataset.edit))));
+    if (!state.editing) track.scrollLeft = track.scrollWidth;
+  }
+
+  function renderDraft() {
+    const draft = activeDraft();
+    const grade = grades[draft.gradeIndex];
+    ref("grade").textContent = grade;
+    ref("tries").textContent = String(draft.tries);
+    ref("tries-unit").textContent = draft.tries > 1 ? "essais" : "essai";
+    const sameGrade = routes.filter((route, index) => route.grade === grade && index !== state.editing?.index);
+    const sentSame = sameGrade.filter((route) => route.result !== "project").length;
+    ref("comparison").innerHTML = sameGrade.length === 0 ? "<b>Premier essai à ce niveau</b>" : `<b>${sentSame} enchaîné${sentSame > 1 ? "s" : ""} sur ${sameGrade.length}</b> en ${grade} aujourd'hui`;
+
+    const lower = document.querySelector("[data-grade='-1']");
+    const higher = document.querySelector("[data-grade='1']");
+    lower.textContent = draft.gradeIndex === 0 ? "–" : grades[draft.gradeIndex - 1];
+    higher.textContent = draft.gradeIndex === grades.length - 1 ? "–" : grades[draft.gradeIndex + 1];
+    lower.setAttribute("aria-label", draft.gradeIndex === 0 ? "Aucune cotation inférieure" : `Passer en ${grades[draft.gradeIndex - 1]}`);
+    higher.setAttribute("aria-label", draft.gradeIndex === grades.length - 1 ? "Aucune cotation supérieure" : `Passer en ${grades[draft.gradeIndex + 1]}`);
+    lower.setAttribute("aria-disabled", String(draft.gradeIndex === 0));
+    higher.setAttribute("aria-disabled", String(draft.gradeIndex === grades.length - 1));
+    document.querySelector("[data-tries='-1']").setAttribute("aria-disabled", String(draft.tries === 1));
+
+    ref("result").querySelectorAll("button").forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.value === draft.result)));
+    ref("result").querySelector("[data-value='flash']").setAttribute("aria-disabled", String(draft.tries > 1));
+    ref("tags").querySelectorAll("button").forEach((button) => button.setAttribute("aria-pressed", String(draft.tags.includes(button.dataset.value))));
+
+    const primary = ref("primary");
+    primary.dataset.mode = state.editing ? "edit" : "validate";
+    primary.setAttribute("aria-disabled", String(draft.result === null));
+    if (state.editing) ref("primary-label").textContent = `Corriger le bloc ${state.editing.index + 1}`;
+    else ref("primary-label").textContent = draft.result === null ? "Choisis un résultat" : `Enregistrer le bloc ${routes.length + 1}`;
+  }
+
+  function renderPainIndicator() {
+    const latest = new Map(pains.map((pain) => [pain.zoneId, pain.level]));
+    const levels = [...latest.values()];
+    const level = levels.includes("stop") ? "stop" : levels.includes("discomfort") ? "discomfort" : null;
+    ref("pain-indicator").innerHTML = level ? `<i class="pain-mark" data-level="${level}"></i>` : "";
+  }
+
+  function render() {
+    ref("summary").textContent = summaryText();
+    ref("context").hidden = state.editing !== null;
+    ref("editing").hidden = state.editing === null;
+    if (state.editing) ref("editing-label").textContent = `Correction du bloc ${state.editing.index + 1}`;
+    renderTrack();
+    renderDraft();
+    renderPainIndicator();
+  }
+
+  function startEditing(index) {
+    const route = routes[index];
+    state.editing = { index, draft: { gradeIndex: grades.indexOf(route.grade), tries: route.tries, result: route.result, tags: [...route.tags] } };
+    render();
+  }
+
+  ref("editing-leave").addEventListener("click", () => {
+    state.editing = null;
+    render();
+  });
+
+  document.querySelectorAll("[data-grade]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const draft = activeDraft();
+      draft.gradeIndex = Math.min(grades.length - 1, Math.max(0, draft.gradeIndex + Number(button.dataset.grade)));
+      vibrate(10);
+      renderDraft();
+    });
+  });
+  document.querySelectorAll("[data-tries]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const draft = activeDraft();
+      draft.tries = Math.max(1, draft.tries + Number(button.dataset.tries));
+      if (draft.tries > 1 && draft.result === "flash") draft.result = "sent";
+      vibrate(10);
+      renderDraft();
+    });
+  });
+  ref("result").querySelectorAll("button").forEach((button) => {
+    button.addEventListener("click", () => {
+      const draft = activeDraft();
+      draft.result = draft.result === button.dataset.value ? null : button.dataset.value;
+      renderDraft();
+    });
+  });
+  ref("tags").querySelectorAll("button").forEach((button) => {
+    button.addEventListener("click", () => {
+      const draft = activeDraft();
+      const tag = button.dataset.value;
+      draft.tags = draft.tags.includes(tag) ? draft.tags.filter((item) => item !== tag) : [...draft.tags, tag];
+      renderDraft();
+    });
+  });
+
+  ref("grades").innerHTML = grades.map((grade, index) => `<button data-index="${index}">${grade}</button>`).join("");
+  document.querySelector("[data-sheet-open='grades']").addEventListener("click", () => {
+    ref("grades").querySelectorAll("button").forEach((button) => button.setAttribute("aria-pressed", String(Number(button.dataset.index) === activeDraft().gradeIndex)));
+  });
+  ref("grades").querySelectorAll("button").forEach((button) => {
+    button.addEventListener("click", () => {
+      activeDraft().gradeIndex = Number(button.dataset.index);
+      setSheet("grades", false);
+      renderDraft();
+    });
+  });
+
+  ref("primary").addEventListener("click", () => {
+    const draft = activeDraft();
+    if (draft.result === null) return;
+    const saved = { grade: grades[draft.gradeIndex], tries: draft.tries, result: draft.result, tags: [...draft.tags] };
+    if (state.editing) {
+      const index = state.editing.index;
+      routes[index] = saved;
+      state.editing = null;
+      render();
+      showSnackbar(`Bloc ${index + 1} corrigé · ${saved.grade} ${resultLabels[saved.result]}`, null);
+      return;
+    }
+    routes.push(saved);
+    state.draft = { gradeIndex: draft.gradeIndex, tries: 1, result: null, tags: [] };
+    vibrate(30);
+    render();
+    showSnackbar(`Bloc ${routes.length} enregistré · ${saved.grade} ${resultLabels[saved.result]}`, {
+      label: "Annuler",
+      run: () => {
+        routes.pop();
+        state.draft = { gradeIndex: grades.indexOf(saved.grade), tries: saved.tries, result: saved.result, tags: saved.tags };
+        render();
+      },
+    });
+  });
+
+  const pendingPain = new Map();
+  function painTarget() {
+    if (state.editing) return { routeIndex: state.editing.index, label: `sur le bloc ${state.editing.index + 1}, en correction` };
+    if (state.draft.result !== null) return { routeIndex: routes.length, label: `pendant le bloc ${routes.length + 1}, en cours` };
+    if (routes.length > 0) return { routeIndex: routes.length - 1, label: `après le bloc ${routes.length}` };
+    return { routeIndex: null, label: "avant le premier bloc" };
+  }
+  function renderPainSheet() {
+    const target = painTarget();
+    ref("pain-context").textContent = target.label.charAt(0).toUpperCase() + target.label.slice(1);
+    ref("pain-zones").innerHTML = zones
+      .map((zone) => {
+        const levels = zone.tracked ? [["none", "Calme"], ["discomfort", "Gêne"], ["stop", "Arrêt"]] : [["discomfort", "Gêne"], ["stop", "Arrêt"]];
+        return `<div class="zone" data-zone="${zone.id}"><span class="zone-name">${zone.label}<small>${zone.context}</small></span><div class="levels" style="--levels:${levels.length}">${levels.map(([level, label]) => `<button data-level="${level}" aria-pressed="${pendingPain.get(zone.id) === level}">${label}</button>`).join("")}</div></div>`;
+      })
+      .join("");
+    ref("pain-zones").querySelectorAll("[data-zone]").forEach((row) => {
+      row.querySelectorAll("[data-level]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const id = row.dataset.zone;
+          if (pendingPain.get(id) === button.dataset.level) pendingPain.delete(id);
+          else pendingPain.set(id, button.dataset.level);
+          renderPainSheet();
+        });
+      });
+    });
+    ref("pain-save").setAttribute("aria-disabled", String(pendingPain.size === 0));
+  }
+  document.querySelector("[data-sheet-open='pain']").addEventListener("click", () => {
+    pendingPain.clear();
+    renderPainSheet();
+  });
+  ref("pain-save").addEventListener("click", () => {
+    if (pendingPain.size === 0) return;
+    const target = painTarget();
+    pendingPain.forEach((level, zoneId) => pains.push({ zoneId, level, routeIndex: target.routeIndex }));
+    const stopped = zones.filter((zone) => pendingPain.get(zone.id) === "stop");
+    setSheet("pain", false);
+    render();
+    if (stopped.length > 0) {
+      ref("stop-title").textContent = `${stopped.map((zone) => zone.label).join(", ")} : arrêt`;
+      setSheet("stop", true);
+    } else {
+      showSnackbar(`Douleur enregistrée · ${target.label}`, null);
+    }
+  });
+
+  function hasPendingRoute() {
+    return state.editing === null && state.draft.result !== null;
+  }
+  function openEnd() {
+    const pending = hasPendingRoute();
+    ref("end-facts").textContent = `1 h 12 · ${summaryText()}`;
+    ref("end-context").textContent = pending
+      ? `Bloc ${routes.length + 1} non enregistré`
+      : "";
+    ref("end-context").hidden = !pending;
+    ref("end-save").hidden = !pending;
+    ref("end-finish").className = pending ? "control" : "primary";
+    ref("end-finish").textContent = pending ? "Terminer sans ce bloc" : "Terminer et faire le bilan";
+  }
+  document.querySelector("[data-sheet-open='end']").addEventListener("click", openEnd);
+  ref("end-save").addEventListener("click", () => {
+    const draft = state.draft;
+    routes.push({ grade: grades[draft.gradeIndex], tries: draft.tries, result: draft.result, tags: [...draft.tags] });
+    location.href = ref("end-finish").href;
+  });
+  ref("end-finish").addEventListener("click", () => {
+    if (!hasPendingRoute()) return;
+    pains.forEach((pain) => {
+      if (pain.routeIndex === routes.length) pain.routeIndex = routes.length > 0 ? routes.length - 1 : null;
+    });
+  });
+  ref("stop-end").addEventListener("click", () => {
+    setSheet("stop", false);
+    openEnd();
+    setSheet("end", true);
+  });
+
+  render();
+</script>
+</body>
+</html>

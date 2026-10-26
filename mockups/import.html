@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="fr" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14171c">
+<title>Obnixe — Importer une sauvegarde</title>
+<link rel="stylesheet" href="system.css">
+<style>
+  .head { margin-top: 14px; display: grid; gap: 6px; }
+  .head h1 { font: 700 30px/1.08 var(--font-text); letter-spacing: -0.02em; }
+  .file { font: 700 19px/1.3 var(--font-figure); }
+  .file span { color: var(--text-2); font-weight: 600; }
+  .contents .row { grid-template-columns: minmax(0, 1fr) auto; }
+  .contents .row-value { font: 700 20px/1 var(--font-figure); }
+  .mode .segmented { margin-top: 10px; --options: 2; }
+  .mode p { margin-top: 10px; color: var(--text-2); line-height: 1.45; min-height: 44px; }
+  .passphrase { margin-top: 10px; width: 100%; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main class="screen has-bottom-panel">
+  <div class="appbar">
+    <a class="icon-button is-edge-start" href="welcome.html" data-ref="back" aria-label="Retour">
+      <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 5 7.5 11l6 6"/></svg>
+    </a>
+    <span class="appbar-context">Importer une sauvegarde</span>
+  </div>
+
+  <section class="head">
+    <span class="eyebrow">Fichier choisi</span>
+    <h1>obnixe-2026-10-16</h1>
+    <p class="file">38 Mo <span>· créé vendredi 16 octobre, 21:40</span></p>
+  </section>
+
+  <section class="section contents">
+    <div class="section-head"><span class="section-title">Contenu</span><small class="muted">du 14 février au 16 octobre</small></div>
+    <div class="row"><span class="row-main"><strong>Séances</strong><small>7 sports</small></span><span class="row-value">214</span></div>
+    <div class="row"><span class="row-main"><strong>Programmes</strong></span><span class="row-value">3</span></div>
+    <div class="row"><span class="row-main"><strong>Pesées et mensurations</strong></span><span class="row-value">61</span></div>
+    <div class="row"><span class="row-main"><strong>Photos</strong><small>chiffrées</small></span><span class="row-value">9</span></div>
+    <input class="text-field passphrase" type="password" placeholder="Phrase de passe des photos" aria-label="Phrase de passe des photos">
+  </section>
+
+  <section class="section mode" data-ref="mode-section">
+    <div class="section-head"><span class="section-title">Ce téléphone a déjà des données</span></div>
+    <div class="segmented" data-choice data-ref="mode" role="group" aria-label="Mode d'import">
+      <button data-value="merge">Fusionner</button>
+      <button data-value="replace">Remplacer</button>
+    </div>
+    <p data-ref="mode-detail">12 séances déjà ici</p>
+  </section>
+</main>
+
+<div class="bottom">
+  <div class="bottom-panel">
+    <a class="primary" href="today.html" data-ref="import">Importer 214 séances</a>
+  </div>
+</div>
+
+<script src="system.js"></script>
+<script>
+  const hasData = new URLSearchParams(location.search).get("state") === "merge";
+  const details = {
+    merge: "Tout est gardé, sans doublon",
+    replace: "Les 12 séances d'ici vont à la corbeille (30 jours)",
+  };
+  ref("mode-section").hidden = !hasData;
+  if (hasData) {
+    ref("back").href = "data.html";
+    ref("import").setAttribute("aria-disabled", "true");
+    ref("import").textContent = "Fusionner ou remplacer ?";
+  }
+  ref("mode").addEventListener("choice", (event) => {
+    const mode = event.detail;
+    ref("mode-detail").textContent = mode ? details[mode] : "12 séances déjà ici";
+    ref("import").setAttribute("aria-disabled", String(mode === null));
+    ref("import").textContent = mode === "replace" ? "Remplacer par la sauvegarde" : mode === "merge" ? "Fusionner 214 séances" : "Fusionner ou remplacer ?";
+  });
+  ref("import").addEventListener("click", (event) => {
+    if (ref("import").getAttribute("aria-disabled") === "true") event.preventDefault();
+  });
+</script>
+</body>
+</html>

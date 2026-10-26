@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="fr" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14171c">
+<title>Obnixe — Corps</title>
+<link rel="stylesheet" href="system.css">
+<style>
+  .weight { margin-top: 18px; display: grid; gap: 10px; }
+  .weight .stepper-value strong { font-size: 64px; line-height: 72px; }
+  .weight .stepper { grid-template-columns: 64px minmax(0, 1fr) 64px; }
+  .weight .stepper > button:not(.stepper-value), .weight .stepper-value { height: 72px; }
+  .weight .comparison { text-align: center; color: var(--text-2); font-size: 14px; }
+  .weight .comparison b { color: var(--text); font-size: 15px; }
+  .weight .control { width: 100%; }
+  .weight .control[data-saved="true"] { box-shadow: none; background: var(--surface); color: var(--text-2); }
+  .weight .stepper-value strong.is-suggested { color: var(--text-3); }
+
+  .days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; border-radius: var(--r-panel); overflow: hidden; margin-top: 10px; }
+  .days > div { background: var(--surface); padding: 10px 0; display: grid; justify-items: center; gap: 6px; }
+  .days small { font: 700 12px/1 var(--font-text); color: var(--text-2); }
+  .days span { font: 700 16px/1 var(--font-figure); }
+  .days span.is-empty { color: var(--text-3); }
+  .days > div.is-today { background: var(--surface-2); box-shadow: inset 0 -3px 0 var(--hv-mark); }
+
+  .measures .row { grid-template-columns: minmax(0, 1fr) auto; }
+  .photos { margin-top: 10px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+  .photo { aspect-ratio: 3 / 4; border-radius: var(--r-control); background: var(--surface); display: grid; align-content: end; padding: 8px; position: relative; overflow: hidden; }
+  .photo::before { content: ""; position: absolute; left: 50%; top: 18%; width: 34%; height: 64%; transform: translateX(-50%); border-radius: 40% 40% 12% 12%; background: var(--surface-2); }
+  .photo small { position: relative; font: 600 12px/1.2 var(--font-text); color: var(--text-2); }
+  .privacy { margin-top: 10px; display: flex; gap: 10px; align-items: flex-start; color: var(--text-2); font-size: 14px; line-height: 1.4; }
+  .privacy svg { flex: none; margin-top: 1px; color: var(--text); }
+  .checkins .row { grid-template-columns: 58px 50px 56px minmax(0, 1fr) minmax(0, 1fr); min-height: 44px; padding: 6px 0; font: 600 15px/1 var(--font-figure); }
+  .checkins .row > span:first-child { font: 600 14px/1 var(--font-text); color: var(--text-2); }
+  .checkins .row > span { display: flex; align-items: center; gap: 6px; }
+  .checkins .row.is-header > span { font: 700 12px/1 var(--font-text); color: var(--text-2); }
+</style>
+</head>
+<body>
+<main class="screen">
+  <div class="appbar"><h1>Corps</h1></div>
+
+  <section class="weight">
+    <span class="eyebrow">Pesée du jour</span>
+    <div class="stepper">
+      <button data-weight="-1" aria-label="Retirer 100 g">−</button>
+      <button class="stepper-value" aria-label="Saisir le poids"><strong data-ref="weight">74,8</strong><span>kg</span></button>
+      <button data-weight="1" aria-label="Ajouter 100 g">+</button>
+    </div>
+    <p class="comparison" data-ref="weight-context"></p>
+    <button class="control" data-ref="save-weight"></button>
+    <div class="days" aria-label="7 derniers jours">
+      <div><small>L</small><span>74,9</span></div>
+      <div><small>M</small><span>75,1</span></div>
+      <div><small>M</small><span class="is-empty">–</span></div>
+      <div><small>J</small><span>74,7</span></div>
+      <div><small>V</small><span>74,8</span></div>
+      <div><small>S</small><span class="is-empty">–</span></div>
+      <div class="is-today"><small>D</small><span data-ref="today-weight" class="is-empty">–</span></div>
+    </div>
+  </section>
+
+  <section class="section measures">
+    <div class="section-head"><span class="section-title">Mensurations · 12 octobre</span><button class="link-button">Mesurer</button></div>
+    <div class="row"><span class="row-main"><strong>Tour de taille</strong><small>−1 cm</small></span><span class="row-value">82<small>cm</small></span></div>
+    <div class="row"><span class="row-main"><strong>Hanches</strong><small>stable</small></span><span class="row-value">96<small>cm</small></span></div>
+    <div class="row"><span class="row-main"><strong>Poitrine</strong><small>+1 cm</small></span><span class="row-value">99<small>cm</small></span></div>
+    <div class="row"><span class="row-main"><strong>Bras droit, contracté</strong><small>+0,5 cm</small></span><span class="row-value">33,5<small>cm</small></span></div>
+    <div class="row"><span class="row-main"><strong>Cuisse droite</strong><small>stable</small></span><span class="row-value">56<small>cm</small></span></div>
+  </section>
+
+  <section class="section">
+    <div class="section-head"><span class="section-title">Photos · 12 octobre</span><button class="link-button">Prendre</button></div>
+    <div class="photos">
+      <div class="photo"><small>Face</small></div>
+      <div class="photo"><small>Profil</small></div>
+      <div class="photo"><small>Dos</small></div>
+    </div>
+    <p class="privacy">
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="8" width="11" height="7.5" rx="1.5"/><path d="M6 8V5.8a3 3 0 0 1 6 0V8"/></svg>
+      Visibles par un agent seulement avec ton accord
+    </p>
+  </section>
+
+  <section class="section checkins">
+    <div class="section-head"><span class="section-title">Check-ins</span><a class="link-button" href="today.html">Aujourd'hui</a></div>
+    <div class="row is-header"><span></span><span>Énergie</span><span>Sommeil</span><span>Épaule dr.</span><span>Genou dr.</span></div>
+    <div class="row"><span>Sam. 24</span><span>4</span><span>7 h</span><span><i class="pain-mark" data-level="stop"></i>arrêt</span><span>calme</span></div>
+    <div class="row"><span>Ven. 23</span><span>3</span><span>6 h</span><span>–</span><span><i class="pain-mark" data-level="discomfort"></i>gêne</span></div>
+    <div class="row"><span>Jeu. 22</span><span>4</span><span>8 h</span><span>–</span><span>calme</span></div>
+    <div class="row"><span>Mer. 21</span><span>2</span><span>&lt; 6 h</span><span><i class="pain-mark" data-level="discomfort"></i>gêne</span><span>calme</span></div>
+  </section>
+</main>
+
+<div class="bottom">
+  <div class="snackbar" data-ref="snackbar" data-open="false" role="status">
+    <span data-ref="snackbar-text"></span>
+    <button data-ref="snackbar-action">Annuler</button>
+  </div>
+  <nav class="tabbar" data-tabbar="body" aria-label="Navigation principale"></nav>
+</div>
+
+<script src="system.js"></script>
+<script>
+  const lastWeight = 74.8;
+  const state = { weight: lastWeight, touched: false, saved: null };
+
+  function render() {
+    const value = formatNumber(state.weight);
+    ref("weight").textContent = value;
+    ref("weight").classList.toggle("is-suggested", !state.touched && state.saved === null);
+    ref("weight-context").innerHTML = state.touched || state.saved !== null ? "<b>Moyenne 7 jours 74,9 kg</b> · −0,6 kg en 30 jours" : "Vendredi <b>74,8 kg</b>";
+    const button = ref("save-weight");
+    const isSaved = state.saved === state.weight;
+    button.dataset.saved = String(isSaved);
+    button.textContent = isSaved ? `Pesée enregistrée · ${value} kg` : state.saved !== null ? `Remplacer par ${value} kg` : `Enregistrer ${value} kg`;
+    ref("today-weight").textContent = state.saved === null ? "–" : formatNumber(state.saved);
+    ref("today-weight").classList.toggle("is-empty", state.saved === null);
+  }
+
+  document.querySelectorAll("[data-weight]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.weight = Math.round((state.weight + Number(button.dataset.weight) / 10) * 10) / 10;
+      state.touched = true;
+      vibrate(10);
+      render();
+    });
+  });
+
+  ref("save-weight").addEventListener("click", () => {
+    if (state.saved === state.weight) return;
+    const previous = state.saved;
+    state.saved = state.weight;
+    render();
+    showSnackbar(`Pesée du jour enregistrée · ${formatNumber(state.weight)} kg`, {
+      label: "Annuler",
+      run: () => {
+        state.saved = previous;
+        render();
+      },
+    });
+  });
+
+  render();
+</script>
+</body>
+</html>

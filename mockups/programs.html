@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="fr" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14171c">
+<title>Obnixe — Programmes</title>
+<link rel="stylesheet" href="system.css">
+<style>
+  .active { margin-top: 18px; display: grid; gap: 6px; }
+  .active h2 { font: 700 30px/1.08 var(--font-text); letter-spacing: -0.02em; }
+  .rotation { margin-top: 14px; border-radius: var(--r-panel); background: var(--surface); overflow: hidden; }
+  .rotation .row { grid-template-columns: 22px 36px minmax(0, 1fr) auto; padding: 10px 14px; border-bottom-color: var(--line); }
+  .rotation .row > span:first-child { color: var(--text-3); font: 700 15px/1 var(--font-figure); }
+  .rotation .row.is-next { background: var(--surface-2); box-shadow: inset 3px 0 0 var(--hv-mark); }
+  .rotation .row.is-next > span:first-child { color: var(--text); }
+  .next-label { font: 700 13px/1 var(--font-text); color: var(--text); }
+  .rotation .row-value { font-size: 14px; color: var(--text-2); font-family: var(--font-text); font-weight: 600; }
+  .program-actions { margin-top: 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+
+  .versions .row { grid-template-columns: 40px minmax(0, 1fr) auto; align-items: start; }
+  .version-number { font: 700 17px/22px var(--font-figure); color: var(--text-2); }
+  .versions .row.is-current .version-number { color: var(--text); }
+  .versions .row-main strong { white-space: normal; line-height: 1.3; }
+
+  .others .row { grid-template-columns: minmax(0, 1fr) auto; }
+
+  .diff { margin-top: 14px; display: grid; gap: 2px; border-radius: var(--r-panel); overflow: hidden; }
+  .diff > div { background: var(--surface-2); padding: 12px 14px; display: grid; gap: 4px; }
+  [data-theme="light"] .diff > div { background: var(--surface); }
+  .diff small { font: 600 13px/1 var(--font-text); color: var(--text-2); }
+  .diff .before strong { text-decoration: line-through; text-decoration-thickness: 1.5px; color: var(--text-2); font-weight: 600; }
+  .diff .after strong { font-weight: 700; }
+  .reason { margin-top: 14px; padding-left: 12px; box-shadow: inset 2px 0 0 var(--control-border); color: var(--text-2); font-size: 15px; line-height: 1.45; }
+  .reason b { color: var(--text); font-weight: 600; }
+  .notice-line { margin-top: 12px; display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--text-2); }
+</style>
+</head>
+<body>
+<main class="screen">
+  <div class="appbar">
+    <h1>Programmes</h1>
+    <button class="link-button">Nouveau</button>
+  </div>
+
+  <section class="active">
+    <span class="eyebrow">Actif</span>
+    <h2>Base hiver</h2>
+    <p class="muted"><span data-ref="active-version">v7</span> · rotation de 4 séances · 5 par semaine</p>
+    <div class="rotation">
+      <div class="row"><span>1</span><span class="sport-icon" data-sport-icon="lift" data-sport-label="Musculation"></span><span class="row-main"><strong>Séance A · Salle</strong><small>5 exercices · 2 variantes</small></span><span class="row-value">sam.</span></div>
+      <div class="row is-next"><span>2</span><span class="sport-icon is-filled" data-sport-icon="lift" data-sport-label="Musculation"></span><span class="row-main"><strong>Séance B · Salle</strong><small>5 exercices · 2 variantes</small></span><span class="next-label">Prochaine</span></div>
+      <div class="row"><span>3</span><span class="sport-icon" data-sport-icon="run" data-sport-label="Course"></span><span class="row-main"><strong>Course · footing</strong><small>40 min · facile</small></span><span class="row-value">jeu.</span></div>
+      <div class="row"><span>4</span><span class="sport-icon" data-sport-icon="climb" data-sport-label="Escalade"></span><span class="row-main"><strong>Escalade · bloc libre</strong><small>1 h 30</small></span><span class="row-value">lun.</span></div>
+    </div>
+    <div class="program-actions">
+      <a class="control" href="program-edit.html">Modifier</a>
+      <button class="control">Passer la B</button>
+    </div>
+  </section>
+
+  <section class="section versions">
+    <div class="section-head"><span class="section-title">Versions</span></div>
+    <div data-ref="new-version"></div>
+    <button class="row is-current" data-sheet-open="diff">
+      <span class="version-number">v7</span>
+      <span class="row-main"><strong>Rowing haltère au lieu du tirage menton</strong><small><span class="tag">Cursor</span>il y a 2 jours</small></span>
+      <svg class="chevron" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m6 4 4 4-4 4"/></svg>
+    </button>
+    <button class="row">
+      <span class="version-number">v6</span>
+      <span class="row-main"><strong>Séance B sans matériel</strong><small><span class="tag is-plain">Toi</span>14 octobre</small></span>
+      <svg class="chevron" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m6 4 4 4-4 4"/></svg>
+    </button>
+    <button class="row">
+      <span class="version-number">v5</span>
+      <span class="row-main"><strong>Footing de 35 à 40 min</strong><small><span class="tag">Cursor</span>9 octobre</small></span>
+      <svg class="chevron" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m6 4 4 4-4 4"/></svg>
+    </button>
+    <button class="row">
+      <span class="version-number">v4</span>
+      <span class="row-main"><strong>Copie de Base automne</strong><small><span class="tag is-plain">Toi</span>2 octobre</small></span>
+      <svg class="chevron" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m6 4 4 4-4 4"/></svg>
+    </button>
+  </section>
+
+  <section class="section others">
+    <div class="section-head"><span class="section-title">Autres programmes</span></div>
+    <button class="row"><span class="row-main"><strong>Prépa alpinisme</strong><small><span class="tag">Cursor</span>brouillon · 3 séances</small></span><svg class="chevron" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m6 4 4 4-4 4"/></svg></button>
+    <button class="row"><span class="row-main"><strong>Base automne</strong><small>archivé · 6 semaines · 27 séances</small></span><svg class="chevron" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m6 4 4 4-4 4"/></svg></button>
+  </section>
+</main>
+
+<div class="bottom">
+  <div class="snackbar" data-ref="snackbar" data-open="false" role="status">
+    <span data-ref="snackbar-text"></span>
+    <button data-ref="snackbar-action">Annuler</button>
+  </div>
+  <nav class="tabbar" data-tabbar="programs" aria-label="Navigation principale"></nav>
+</div>
+
+<div class="sheet-root" data-sheet="diff" data-open="false">
+  <div class="scrim" data-sheet-close="diff"></div>
+  <section class="sheet" role="dialog" aria-label="Version 7">
+    <div class="grabber"></div>
+    <h2>v7 · par Cursor</h2>
+    <p class="sheet-context">23 octobre, 21:14 · MacBook</p>
+    <div class="diff">
+      <div class="before"><small>Avant · séance B</small><strong>Tirage menton · 3 × 10–12</strong></div>
+      <div class="after"><small>Après</small><strong>Rowing haltère · 3 × 8–12</strong></div>
+    </div>
+    <p class="reason"><b>Raison :</b> gêne à l'épaule le 20 octobre</p>
+    <p class="notice-line"><i class="pain-mark" data-level="stop" aria-hidden="true"></i>Remet le tirage menton · épaule droite arrêtée hier</p>
+    <div class="choices">
+      <button data-ref="revert">Annuler ce changement</button>
+      <button data-sheet-close="diff">Garder</button>
+    </div>
+  </section>
+</div>
+
+<script src="system.js"></script>
+<script>
+  ref("revert").addEventListener("click", () => {
+    setSheet("diff", false);
+    ref("new-version").innerHTML = `<div class="row is-current"><span class="version-number">v8</span><span class="row-main"><strong>Tirage menton rétabli</strong><small><span class="tag is-plain">Toi</span>à l'instant</small></span><span></span></div>`;
+    ref("active-version").textContent = "v8";
+    showSnackbar("Changement annulé · enregistré comme v8", {
+      label: "Annuler",
+      run: () => {
+        ref("new-version").innerHTML = "";
+        ref("active-version").textContent = "v7";
+      },
+    });
+  });
+</script>
+</body>
+</html>

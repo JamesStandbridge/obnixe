@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="fr" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14171c">
+<title>Obnixe — Agent</title>
+<link rel="stylesheet" href="system.css">
+<style>
+  .head { margin-top: 14px; display: grid; gap: 6px; }
+  .head h1 { font: 700 30px/1.08 var(--font-text); letter-spacing: -0.02em; }
+  .history-link { margin-top: 20px; border-top: 1px solid var(--line); }
+  .summary { margin-top: 8px; color: var(--text-2); line-height: 1.45; }
+
+  .code { margin-top: 18px; padding: 20px 16px 16px; border-radius: var(--r-panel); background: var(--surface); display: grid; justify-items: center; gap: 10px; }
+  .code strong { font: 800 76px/0.9 var(--font-figure); letter-spacing: 0.02em; }
+  .code strong span { margin-left: 0.18em; }
+  .code p { color: var(--text-2); font-size: 15px; }
+  .code p b { color: var(--text); font: 700 17px/1 var(--font-figure); }
+  .steps { margin-top: 16px; display: grid; gap: 0; counter-reset: step; }
+  .steps li { list-style: none; display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); line-height: 1.4; }
+  .steps li:last-child { border-bottom: 0; }
+  .steps li::before { counter-increment: step; content: counter(step); color: var(--text-3); font: 700 15px/22px var(--font-figure); }
+  .steps code { font: 600 14px/1 ui-monospace, "SF Mono", Menlo, monospace; padding: 3px 6px; border-radius: 4px; background: var(--surface); }
+  .network { margin-top: 6px; display: flex; align-items: center; gap: 8px; color: var(--text-2); font-size: 14px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--hv-mark); flex: none; }
+
+  .status { margin-top: 18px; padding: 14px 16px; border-radius: var(--r-panel); background: var(--surface); display: grid; gap: 4px; box-shadow: inset 3px 0 0 var(--hv-mark); }
+  .status header { display: flex; align-items: center; gap: 8px; font: 700 12px/1 var(--font-text); letter-spacing: 0.06em; text-transform: uppercase; }
+  .status strong { font: 700 20px/1.2 var(--font-text); }
+  .status p { color: var(--text-2); font-size: 14px; }
+
+  .permission { width: 100%; display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 10px 0; border-bottom: 1px solid var(--line); text-align: left; }
+  .permission:last-child { border-bottom: 0; }
+  .permission > span { flex: 1; display: grid; gap: 3px; }
+  .permission strong { font-weight: 600; }
+  .permission small { color: var(--text-2); font-size: 14px; line-height: 1.3; }
+
+  .activity .row { grid-template-columns: 44px minmax(0, 1fr) auto; align-items: start; }
+  .activity time { font: 600 15px/22px var(--font-figure); color: var(--text-2); }
+  .activity .row-main strong { white-space: normal; line-height: 1.3; }
+  .activity .row-main > .tag { justify-self: start; }
+  .activity .row.is-reverted .row-main strong { text-decoration: line-through; color: var(--text-2); }
+  .activity .link-button { margin: -8px -10px 0 0; }
+  .tool { font: 500 12px/1 ui-monospace, "SF Mono", Menlo, monospace; color: var(--text-3); }
+</style>
+</head>
+<body>
+<main class="screen has-bottom-panel" data-ref="screen">
+  <div class="appbar">
+    <a class="icon-button is-edge-start" href="today.html" aria-label="Retour">
+      <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 5 7.5 11l6 6"/></svg>
+    </a>
+    <span class="appbar-context">Agent</span>
+  </div>
+
+  <div data-view="pairing">
+    <section class="head">
+      <h1>Relie Cursor à ton suivi</h1>
+    </section>
+    <div class="code">
+      <strong data-ref="code">482<span>917</span></strong>
+      <p>Expire dans <b data-ref="expiry">4:32</b></p>
+    </div>
+    <ol class="steps">
+      <li><span>Sur le Mac, lance <code>obnixe-bridge pair</code></span></li>
+      <li><span>Saisis ce code dans le terminal</span></li>
+      <li><span>Garde cet écran ouvert pendant la connexion</span></li>
+    </ol>
+    <p class="network"><i class="dot"></i>Tailscale actif · macbook-james.tail3c2.ts.net</p>
+
+    <section class="section">
+      <div class="section-head"><span class="section-title">Autorisations</span></div>
+      <div class="permission"><span><strong>Lire séances et programmes</strong></span><span class="tag is-plain">Toujours</span></div>
+      <button class="permission" role="switch" aria-checked="true"><span><strong>Lire le corps</strong><small>poids et mensurations</small></span><i class="switch" aria-hidden="true"></i></button>
+      <button class="permission" role="switch" aria-checked="true"><span><strong>Modifier directement</strong><small>toujours réversible</small></span><i class="switch" aria-hidden="true"></i></button>
+      <button class="permission" role="switch" aria-checked="false"><span><strong>Voir les photos</strong></span><i class="switch" aria-hidden="true"></i></button>
+    </section>
+    <a class="row history-link" href="agent-log.html"><span class="row-main"><strong>Activité des agents</strong><small>3 connexions · 3 modifications</small></span><svg class="chevron" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m6 4 4 4-4 4"/></svg></a>
+  </div>
+
+  <div data-view="disconnected">
+    <section class="head">
+      <span class="eyebrow">Connexion coupée à 14:31</span>
+      <h1>Plus aucun accès réseau</h1>
+    </section>
+    <p class="summary">Cursor · 3 lectures, 2 modifications en 29 min</p>
+    <a class="row history-link" href="agent-log.html"><span class="row-main"><strong>Activité des agents</strong><small>cette connexion et les précédentes</small></span><svg class="chevron" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m6 4 4 4-4 4"/></svg></a>
+  </div>
+
+  <div data-view="connected">
+    <div class="status">
+      <header><i class="dot"></i>Connecté</header>
+      <strong>Cursor · MacBook Pro</strong>
+      <p>Depuis 14:02</p>
+    </div>
+
+    <section class="section activity">
+      <div class="section-head"><span class="section-title">Activité</span><small class="muted" data-ref="activity-count">2 modifications</small></div>
+      <div class="row"><time>14:02</time><span class="row-main"><span class="tag is-plain">Lecture</span><strong>Historique des 90 derniers jours</strong><span class="tool">get_history</span></span><span></span></div>
+      <div class="row"><time>14:03</time><span class="row-main"><span class="tag is-plain">Lecture</span><strong>Progression au développé couché</strong><span class="tool">get_exercise_progress</span></span><span></span></div>
+      <div class="row"><time>14:05</time><span class="row-main"><span class="tag is-plain">Lecture</span><strong>Douleurs et check-ins, 30 jours</strong><span class="tool">get_body_signals</span></span><span></span></div>
+      <div class="row is-write"><time>14:07</time><span class="row-main"><span class="tag">Modification</span><strong>Développé haltères au lieu du couché</strong><span class="tool">upsert_program</span></span><button class="link-button" data-revert aria-label="Annuler la modification de 14:07">Revenir</button></div>
+      <div class="row is-write"><time>14:08</time><span class="row-main"><span class="tag">Ajout</span><strong>Vélo du 10 octobre · 32 km</strong><span class="tool">log_activity</span></span><button class="link-button" data-revert aria-label="Annuler l'ajout de 14:08">Revenir</button></div>
+    </section>
+
+    <section class="section">
+      <div class="section-head"><span class="section-title">Autorisations</span></div>
+      <button class="permission" role="switch" aria-checked="true"><span><strong>Lire le corps</strong><small>poids et mensurations</small></span><i class="switch" aria-hidden="true"></i></button>
+      <button class="permission" role="switch" aria-checked="true"><span><strong>Modifier directement</strong></span><i class="switch" aria-hidden="true"></i></button>
+      <button class="permission" role="switch" aria-checked="false"><span><strong>Voir les photos</strong><small>3 photos</small></span><i class="switch" aria-hidden="true"></i></button>
+    </section>
+  </div>
+</main>
+
+<div class="bottom">
+  <div class="snackbar" data-ref="snackbar" data-open="false" role="status">
+    <span data-ref="snackbar-text"></span>
+    <button data-ref="snackbar-action">Annuler</button>
+  </div>
+  <div class="bottom-panel">
+    <button class="control" data-ref="bottom-action"></button>
+  </div>
+</div>
+
+<script src="system.js"></script>
+<script>
+  let view = new URLSearchParams(location.search).get("state") ?? "pairing";
+  let expiry = 272;
+
+  function render() {
+    document.querySelectorAll("[data-view]").forEach((section) => {
+      section.hidden = section.dataset.view !== view;
+    });
+    ref("bottom-action").textContent = { pairing: "Annuler l'appairage", connected: "Couper la connexion", disconnected: "Générer un nouveau code" }[view];
+  }
+
+  function renderCount() {
+    const active = document.querySelectorAll(".activity .row.is-write:not(.is-reverted)").length;
+    ref("activity-count").textContent = `${active} modification${active > 1 ? "s" : ""}`;
+  }
+
+  ref("bottom-action").addEventListener("click", () => {
+    if (view === "connected") {
+      view = "disconnected";
+      render();
+    } else if (view === "disconnected") {
+      view = "pairing";
+      expiry = 300;
+      ref("code").innerHTML = "731<span>064</span>";
+      ref("expiry").textContent = formatClock(expiry);
+      render();
+    } else {
+      location.href = document.querySelector(".appbar a").href;
+    }
+  });
+
+  document.querySelectorAll("[data-revert]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const row = button.closest(".row");
+      row.classList.add("is-reverted");
+      button.hidden = true;
+      renderCount();
+      showSnackbar("Modification annulée · nouvelle version enregistrée", {
+        label: "Rétablir",
+        run: () => {
+          row.classList.remove("is-reverted");
+          button.hidden = false;
+          renderCount();
+        },
+      });
+    });
+  });
+
+  setInterval(() => {
+    if (view !== "pairing" || expiry === 0) return;
+    expiry -= 1;
+    ref("expiry").textContent = formatClock(expiry);
+  }, 1000);
+
+  render();
+</script>
+</body>
+</html>

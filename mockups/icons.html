@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="fr" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14171c">
+<title>Obnixe — Icônes de sport</title>
+<link rel="stylesheet" href="system.css">
+<style>
+  .head { margin-top: 14px; display: grid; gap: 8px; }
+  .head h1 { font: 700 30px/1.08 var(--font-text); letter-spacing: -0.02em; }
+  .head p { color: var(--text-2); line-height: 1.45; }
+  .hero { margin-top: 18px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .hero figure { border-radius: var(--r-panel); background: var(--surface); padding: 14px; display: grid; gap: 10px; justify-items: start; }
+  .hero .sport-icon { width: 96px; height: 96px; }
+  .hero .sport-icon svg { width: 96px; height: 96px; }
+  .hero figcaption { font-size: 13px; color: var(--text-2); line-height: 1.35; }
+  .hero figcaption b { color: var(--text); font-weight: 700; }
+  .rules { margin-top: 6px; }
+  .rules .row { grid-template-columns: 28px minmax(0, 1fr); align-items: start; }
+  .rules .row > span:first-child { font: 700 15px/22px var(--font-figure); color: var(--text-3); }
+  .rules .row-main strong { white-space: normal; }
+  .set { margin-top: 10px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+  .set div { min-height: 84px; border-radius: var(--r-control); display: grid; justify-items: center; align-content: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text-2); }
+  .set .sport-icon svg { width: 32px; height: 32px; }
+  .sizes { margin-top: 10px; display: flex; align-items: center; gap: 18px; }
+  .sizes small { color: var(--text-3); font: 600 12px/1 var(--font-figure); }
+  .sizes span { display: grid; justify-items: center; gap: 6px; }
+  .sizes .s32 svg { width: 32px; height: 32px; }
+  .sizes .s24 svg { width: 24px; height: 24px; }
+  .sizes .s20 svg { width: 20px; height: 20px; }
+  .sizes .s16 svg { width: 16px; height: 16px; }
+  .context .row { grid-template-columns: 36px minmax(0, 1fr) auto; }
+  .context .row-value { font: 700 20px/1 var(--font-figure); }
+</style>
+</head>
+<body>
+<main class="screen">
+  <div class="appbar">
+    <a class="icon-button is-edge-start" href="data.html" aria-label="Retour">
+      <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 5 7.5 11l6 6"/></svg>
+    </a>
+    <span class="appbar-context">Système Instrument</span>
+  </div>
+
+  <section class="head">
+    <span class="eyebrow">Icônes de sport</span>
+    <h1>Le repère marque l'effort</h1>
+    <p>Un seul carré, là où le corps appuie.</p>
+  </section>
+
+  <div class="hero">
+    <figure><span class="sport-icon is-accent" data-sport-icon="climb"></span><figcaption><b>Bloc</b> · la main sur la prise</figcaption></figure>
+    <figure><span class="sport-icon is-accent" data-sport-icon="bike"></span><figcaption><b>Vélo</b> · le pied sur la pédale</figcaption></figure>
+  </div>
+
+  <section class="section rules">
+    <div class="section-head"><span class="section-title">Règles de dessin</span></div>
+    <div class="row"><span>1</span><span class="row-main"><strong>Grille de 24, trait de 2</strong><small>bouts carrés, angles arrondis</small></span></div>
+    <div class="row"><span>2</span><span class="row-main"><strong>Une silhouette ou un objet</strong><small>selon le geste ou le matériel</small></span></div>
+    <div class="row"><span>3</span><span class="row-main"><strong>Pleins réservés</strong><small>tête et repère seulement</small></span></div>
+    <div class="row"><span>4</span><span class="row-main"><strong>Un repère de 4 × 4, jamais deux</strong><small>pied, main ou point d'impact</small></span></div>
+    <div class="row"><span>5</span><span class="row-main"><strong>Une ligne de sol</strong><small>à 21 sur la grille</small></span></div>
+    <div class="row"><span>6</span><span class="row-main"><strong>L'accent seulement en grand</strong><small>jamais de rouge ni d'orange</small></span></div>
+  </section>
+
+  <section class="section">
+    <div class="section-head"><span class="section-title">Le jeu</span><small class="muted" data-ref="count"></small></div>
+    <div class="set" data-ref="set"></div>
+  </section>
+
+  <section class="section">
+    <div class="section-head"><span class="section-title">Tailles</span><small class="muted">jamais sous 16</small></div>
+    <div class="sizes">
+      <span class="sport-icon s32" data-sport-icon="run"></span>
+      <span class="sport-icon s24" data-sport-icon="run"></span>
+      <span class="sport-icon s20" data-sport-icon="run"></span>
+      <span class="sport-icon s16" data-sport-icon="run"></span>
+      <span class="sport-icon is-filled" data-sport-icon="run"></span>
+    </div>
+  </section>
+
+  <section class="section context">
+    <div class="section-head"><span class="section-title">En contexte</span></div>
+    <div class="row"><span class="sport-icon" data-sport-icon="trail" data-sport-label="Trail"></span><span class="row-main"><strong>Trail · Fontainebleau</strong><small>Dim. 25 · D+ 420 m</small></span><span class="row-value">14,2<small>km</small></span></div>
+    <div class="row"><span class="sport-icon" data-sport-icon="swim" data-sport-label="Natation"></span><span class="row-main"><strong>Natation · crawl</strong><small>Ven. 16 · 2:08 /100 m</small></span><span class="row-value">1 500<small>m</small></span></div>
+    <div class="row"><span class="sport-icon is-filled" data-sport-icon="lift" data-sport-label="Musculation"></span><span class="row-main"><strong>Séance B · Salle</strong><small>prochaine</small></span><span class="row-value">55<small>min</small></span></div>
+  </section>
+</main>
+
+<script src="system.js"></script>
+<script>
+  ref("count").textContent = `${sportIcons.length} icônes`;
+  ref("set").innerHTML = sportIcons.map((icon) => `<div><span class="sport-icon is-accent">${sportIcon(icon.id)}</span>${icon.label}</div>`).join("");
+</script>
+</body>
+</html>

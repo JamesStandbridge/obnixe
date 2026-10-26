@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="fr" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14171c">
+<title>Obnixe — Données et réglages</title>
+<link rel="stylesheet" href="system.css">
+<style>
+  .backup { margin-top: 18px; padding: 16px; border-radius: var(--r-panel); background: var(--surface); display: grid; gap: 6px; }
+  .backup header { display: flex; align-items: center; gap: 8px; font-weight: 700; }
+  .backup p { color: var(--text-2); font-size: 14px; }
+  .backup-option { width: 100%; display: flex; align-items: center; gap: 12px; min-height: 56px; margin-top: 4px; text-align: left; }
+  .backup-option > span { flex: 1; display: grid; gap: 2px; }
+  .backup-option strong { font-weight: 600; }
+  .backup-option small { color: var(--text-2); font-size: 13px; }
+  .sport-toggle { width: 100%; display: flex; align-items: center; gap: 12px; min-height: 60px; border-top: 1px solid var(--line); font-weight: 600; font-size: 17px; text-align: left; }
+  .sport-toggle > span:nth-child(2) { flex: 1; }
+  .backup .primary { margin-top: 10px; height: 56px; font-size: 17px; }
+  .theme-choice { margin-top: 10px; }
+  .theme-choice .segmented { --options: 3; }
+  .list .row { grid-template-columns: minmax(0, 1fr) auto auto; }
+  .list .row-value { font-size: 16px; }
+  .list .row-value.is-text { font: 600 15px/1.2 var(--font-text); color: var(--text-2); }
+</style>
+</head>
+<body>
+<main class="screen">
+  <div class="appbar">
+    <a class="icon-button is-edge-start" href="today.html" aria-label="Retour">
+      <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 5 7.5 11l6 6"/></svg>
+    </a>
+    <span class="appbar-context">Données et réglages</span>
+  </div>
+
+  <section class="backup">
+    <header><i class="notice-mark" aria-hidden="true"></i><span data-ref="backup-status">Sauvegarde il y a 9 jours</span></header>
+    <p>Sans sauvegarde, perdre le téléphone efface tout.</p>
+    <button class="backup-option" role="switch" aria-checked="false"><span><strong>Inclure les photos</strong><small>chiffrées par ta phrase de passe</small></span><i class="switch" aria-hidden="true"></i></button>
+    <button class="primary" data-ref="export">Exporter une sauvegarde</button>
+  </section>
+
+  <section class="section list">
+    <div class="section-head"><span class="section-title">Stockage</span></div>
+    <a class="row" href="import.html?state=merge"><span class="row-main"><strong>Importer une sauvegarde</strong></span><svg class="chevron" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m6 4 4 4-4 4"/></svg></a>
+    <button class="row"><span class="row-main"><strong>Corbeille</strong><small>30 jours</small></span><span class="row-value">1</span><svg class="chevron" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m6 4 4 4-4 4"/></svg></button>
+    <div class="row"><span class="row-main"><strong>Stockage persistant</strong><small>accordé</small></span><span class="row-value">38<small>Mo</small></span><span></span></div>
+    <button class="row"><span class="row-main"><strong>Rappels dans l'agenda</strong></span><span></span><svg class="chevron" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m6 4 4 4-4 4"/></svg></button>
+  </section>
+
+  <section class="section list">
+    <div class="section-head"><span class="section-title">Suivi</span></div>
+    <button class="row" data-sheet-open="sports"><span class="row-main"><strong>Sports</strong><small>Musculation, Course, Escalade, Natation, Rando</small></span><span class="row-value">5</span><svg class="chevron" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m6 4 4 4-4 4"/></svg></button>
+    <button class="row"><span class="row-main"><strong>Zones suivies</strong><small>genou droit, épaule droite</small></span><span class="row-value">2</span><svg class="chevron" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m6 4 4 4-4 4"/></svg></button>
+  </section>
+
+  <section class="section">
+    <div class="section-head"><span class="section-title">Affichage</span></div>
+    <div class="theme-choice">
+      <div class="segmented" data-ref="theme-choice" data-choice role="group" aria-label="Thème">
+        <button data-value="dark">Sombre</button>
+        <button data-value="light">Plein soleil</button>
+        <button data-value="system">Système</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="section list">
+    <div class="section-head"><span class="section-title">Unités</span></div>
+    <button class="row"><span class="row-main"><strong>Charges et poids</strong></span><span class="row-value is-text">kg</span><svg class="chevron" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m6 4 4 4-4 4"/></svg></button>
+  </section>
+</main>
+
+<div class="bottom">
+  <div class="snackbar" data-ref="snackbar" data-open="false" role="status">
+    <span data-ref="snackbar-text"></span>
+    <button data-ref="snackbar-action">Annuler</button>
+  </div>
+</div>
+
+<div class="sheet-root" data-sheet="sports" data-open="false">
+  <div class="scrim" data-sheet-close="sports"></div>
+  <section class="sheet" role="dialog" aria-label="Sports">
+    <div class="grabber"></div>
+    <h2>Sports</h2>
+    <div>
+      <button class="sport-toggle" role="switch" aria-checked="true"><span class="sport-icon" data-sport-icon="lift"></span><span>Musculation</span><i class="switch" aria-hidden="true"></i></button>
+      <button class="sport-toggle" role="switch" aria-checked="true"><span class="sport-icon" data-sport-icon="run"></span><span>Course</span><i class="switch" aria-hidden="true"></i></button>
+      <button class="sport-toggle" role="switch" aria-checked="true"><span class="sport-icon" data-sport-icon="climb"></span><span>Escalade</span><i class="switch" aria-hidden="true"></i></button>
+      <button class="sport-toggle" role="switch" aria-checked="true"><span class="sport-icon" data-sport-icon="swim"></span><span>Natation</span><i class="switch" aria-hidden="true"></i></button>
+      <button class="sport-toggle" role="switch" aria-checked="true"><span class="sport-icon" data-sport-icon="hike"></span><span>Rando</span><i class="switch" aria-hidden="true"></i></button>
+      <button class="sport-toggle" role="switch" aria-checked="false"><span class="sport-icon" data-sport-icon="bike"></span><span>Vélo</span><i class="switch" aria-hidden="true"></i></button>
+      <button class="sport-toggle" role="switch" aria-checked="false"><span class="sport-icon" data-sport-icon="yoga"></span><span>Yoga</span><i class="switch" aria-hidden="true"></i></button>
+    </div>
+  </section>
+</div>
+
+<script src="system.js"></script>
+<script>
+  ref("theme-choice").querySelectorAll("button").forEach((button) => {
+    button.setAttribute("aria-pressed", String(button.dataset.value === document.documentElement.dataset.theme));
+  });
+  ref("theme-choice").addEventListener("choice", (event) => {
+    if (event.detail === "dark" || event.detail === "light") applyTheme(event.detail);
+    if (event.detail === "system") applyTheme(matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
+  });
+  ref("export").addEventListener("click", () => {
+    const withPhotos = document.querySelector(".backup-option").getAttribute("aria-checked") === "true";
+    ref("backup-status").textContent = `Sauvegardée à l'instant${withPhotos ? "" : " · sans photos"}`;
+    showSnackbar("obnixe-2026-10-25.json enregistré dans Téléchargements", null);
+  });
+</script>
+</body>
+</html>
