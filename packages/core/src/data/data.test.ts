@@ -202,7 +202,7 @@ describe("trash", () => {
 
   it("detaches agent calls whose changeset is forgotten", () => {
     const connectionId = context.env.newId();
-    context.db.insert(agentConnection).values({ id: connectionId, client: "Claude", host: "mac", canReadBody: true, canWrite: true, canReadPhotos: false, startedAt: context.env.now() }).run();
+    context.db.insert(agentConnection).values({ id: connectionId, client: "Claude", host: "mac", startedAt: context.env.now() }).run();
     const workout = make.session({ deletedAt: context.env.now() });
     const written = commit(context.db, context.env, { actor: { author: "agent", connectionId }, summary: "Séance ajoutée", revertsId: null, mutations: [{ kind: "insert", table: "session", row: workout }] });
     const callId = context.env.newId();
