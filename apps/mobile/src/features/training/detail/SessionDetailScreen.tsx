@@ -118,10 +118,10 @@ function anchorText(anchor: PainAnchor | undefined, itemWord: string): string {
 
 function exerciseDetail(report: ExerciseReport, today: LocalDate, unit: MassUnit): string {
   const { outcome, exercise } = report;
-  const plan = `prévu ${targetText(exercise)}${exercise.target.rir === null ? "" : ` · RIR ${exercise.target.rir}`}`;
+  const plan = exercise.item === null ? "hors programme" : `prévu ${targetText(exercise)}${exercise.target.rir === null ? "" : ` · RIR ${exercise.target.rir}`}`;
   switch (outcome.kind) {
     case "stopped":
-      return `arrêté · ${outcome.setsDone} ${outcome.setsDone > 1 ? "séries" : "série"} sur ${outcome.setsPlanned}`;
+      return `arrêté · ${outcome.setsDone} ${outcome.setsDone > 1 ? "séries" : "série"}${outcome.setsPlanned === null ? "" : ` sur ${outcome.setsPlanned}`}`;
     case "skipped":
       return "passé";
     case "suspended":

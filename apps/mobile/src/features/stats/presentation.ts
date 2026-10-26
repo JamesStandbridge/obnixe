@@ -4,6 +4,7 @@ import { sports } from "@obnixe/schema";
 import type { FieldDefinition, FieldValue, FieldValues, IndicatorDefinition, SportDefinition, SportKey } from "@obnixe/schema";
 import { durationFigure, effortLabel, formatInteger, formatKilometers, formatMinutesSeconds, formatNumber, lowerFirst, plural } from "@/features/stats/format";
 import type { FigureText } from "@/features/stats/format";
+import { freeStrengthTitle } from "@/features/training/sessionText";
 
 export function sportLabel(sport: SportKey): string {
   return sports[sport].label;
@@ -36,7 +37,7 @@ export function sessionTitle(summary: Pick<SessionSummary, "sport" | "title" | "
   switch (sport.archetype) {
     case "strength":
       if (summary.slotName !== null) return summary.variantName === null ? summary.slotName : `${summary.slotName} · ${summary.variantName}`;
-      return sport.label;
+      return freeStrengthTitle;
     case "itemized": {
       const choice = firstChoice(sport, summary.values);
       const text = textValue(sport, summary.values);

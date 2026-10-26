@@ -15,7 +15,7 @@ export interface BestSet {
 export interface StrengthSummary {
   readonly durationSeconds: number;
   readonly setsDone: number;
-  readonly setsPlanned: number;
+  readonly setsPlanned: number | null;
   readonly volumeGrams: number;
   readonly averageRestSeconds: number | null;
   readonly best: BestSet | null;
@@ -48,7 +48,9 @@ export function strengthSummary(data: WorkoutData, now: EpochMs): StrengthSummar
   return {
     durationSeconds: activeSeconds(data.session, now),
     setsDone,
-    setsPlanned: data.exercises.reduce((total, candidate) => total + Math.max(candidate.target.sets, candidate.sets.length), 0),
+    setsPlanned: data.exercises.some((candidate) => candidate.item !== null)
+      ? data.exercises.reduce((total, candidate) => total + (candidate.item === null ? completedSets(candidate.sets).length : Math.max(candidate.target.sets, candidate.sets.length)), 0)
+      : null,
     volumeGrams,
     averageRestSeconds: rests.length === 0 ? null : Math.round(rests.reduce((total, rest) => total + rest, 0) / rests.length),
     best,
@@ -57,7 +59,7 @@ export function strengthSummary(data: WorkoutData, now: EpochMs): StrengthSummar
 
 export type ExerciseOutcome =
   | { readonly kind: "skipped" }
-  | { readonly kind: "stopped"; readonly setsDone: number; readonly setsPlanned: number }
+  | { readonly kind: "stopped"; readonly setsDone: number; readonly setsPlanned: number | null }
   | { readonly kind: "suspended" }
   | { readonly kind: "first" }
   | { readonly kind: "load"; readonly deltaGrams: number; readonly previousDate: LocalDate }
@@ -71,7 +73,7 @@ const topLoad = (sets: readonly StrengthSet[]): number => Math.max(0, ...sets.ma
 export function exerciseOutcome(current: WorkoutExercise, previous: PreviousPerformance | null, progression: Progression): ExerciseOutcome {
   const done = completedSets(current.sets);
   if (current.entry.status === "skipped" || (current.sets.length === 0 && current.entry.status !== "stopped")) return { kind: "skipped" };
-  if (current.entry.status === "stopped") return { kind: "stopped", setsDone: done.length, setsPlanned: current.target.sets };
+  if (current.entry.status === "stopped") return { kind: "stopped", setsDone: done.length, setsPlanned: current.item === null ? null : current.target.sets };
   if (previous === null) return { kind: "first" };
   const before = completedSets(previous.sets);
   const previousDate = previous.localDate;

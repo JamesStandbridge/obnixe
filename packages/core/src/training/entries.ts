@@ -1,9 +1,19 @@
+import { eq } from "drizzle-orm";
+import { exercise } from "@obnixe/schema";
 import type { Id } from "@obnixe/schema";
+import type { ObnixeDatabase } from "../database.ts";
 import type { Mutation } from "../writer.ts";
+import { SessionStateError } from "./lifecycle.ts";
 import { findExercise } from "./workout.ts";
 import type { WorkoutData } from "./workout.ts";
 
 const temporaryOffset = 1_000_000;
+
+export class ExerciseNotFoundError extends Error {
+  constructor(readonly exerciseId: Id) {
+    super(`Exercise ${exerciseId} does not exist`);
+  }
+}
 
 interface Placement {
   readonly id: Id;
@@ -53,6 +63,20 @@ export function bringForwardMutations(data: WorkoutData, entryId: Id): Mutation[
   const firstPending = rest.findIndex((id) => isPending(data, id));
   rest.splice(firstPending === -1 ? rest.length : firstPending, 0, entryId);
   return reorderMutations(data, rest);
+}
+
+export function addExerciseMutations(db: ObnixeDatabase, data: WorkoutData, exerciseId: Id, newEntryId: Id): Mutation[] {
+  if (data.session.status === "completed") throw new SessionStateError(data.session.id, "open");
+  const found = db.select({ id: exercise.id, mergedIntoId: exercise.mergedIntoId }).from(exercise).where(eq(exercise.id, exerciseId)).get();
+  if (found === undefined) throw new ExerciseNotFoundError(exerciseId);
+  const position = data.exercises.reduce((max, candidate) => Math.max(max, candidate.entry.position + 1), 0);
+  return [
+    {
+      kind: "insert",
+      table: "strength_entry",
+      row: { id: newEntryId, sessionId: data.session.id, position, exerciseId: found.mergedIntoId ?? found.id, programItemId: null, status: "pending", note: null },
+    },
+  ];
 }
 
 export function replaceExerciseMutations(data: WorkoutData, entryId: Id, exerciseId: Id, newEntryId: Id): Mutation[] {

@@ -109,6 +109,7 @@ export function Track({ exercise, previous, currentSetIndex, editingSetId, pains
     }
     const current = index === currentSetIndex;
     const last = previousSets[Math.min(index, previousSets.length - 1)];
+    const range = rangeText(exercise);
     return (
       <View
         key={index}
@@ -117,9 +118,11 @@ export function Track({ exercise, previous, currentSetIndex, editingSetId, pains
         {current ? <View style={[styles.currentBar, { backgroundColor: colors.mark }]} /> : null}
         {label}
         <Text style={[styles.setWord, current ? null : { color: colors.text3, fontFamily: fonts.text600 }]}>{current ? "en cours" : "à faire"}</Text>
-        <Text style={styles.setSmall} tone="secondary" numberOfLines={1}>
-          {last === undefined ? `obj. ${rangeText(exercise)}` : `préc. ${setText(last, unit)}`}
-        </Text>
+        {last === undefined && range === "" ? null : (
+          <Text style={styles.setSmall} tone="secondary" numberOfLines={1}>
+            {last === undefined ? `obj. ${range}` : `préc. ${setText(last, unit)}`}
+          </Text>
+        )}
       </View>
     );
   });

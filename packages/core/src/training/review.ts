@@ -22,6 +22,7 @@ export function rotationChoice(db: ObnixeDatabase, current: Session): RotationCh
     const next = index === -1 || slots.length < 2 ? null : (slots[(index + 1) % slots.length] ?? null);
     return { slot: own, next, assigned: true };
   }
+  if (current.sport === "strength") return null;
   const upcoming = nextSlot(db);
   if (upcoming === null || upcoming.slot.sport !== current.sport) return null;
   return { slot: upcoming.slot, next: upcoming.after, assigned: false };

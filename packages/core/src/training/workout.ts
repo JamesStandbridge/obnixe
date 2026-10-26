@@ -3,7 +3,6 @@ import { exercise, exerciseZone, painReport, programItem, programSlot, programVa
 import type {
   EpochMs,
   Exercise,
-  ExerciseMeasure,
   Id,
   PainReport,
   ProgramItem,
@@ -16,6 +15,7 @@ import type {
   ZoneKey,
 } from "@obnixe/schema";
 import type { ObnixeDatabase } from "../database.ts";
+import { previousPerformance } from "./progression.ts";
 
 export interface ExerciseTarget {
   readonly sets: number;
@@ -67,21 +67,22 @@ export class EntryNotFoundError extends Error {
 }
 
 const defaultRestSeconds = 120;
+const defaultFreeSets = 3;
 
-export function targetFor(item: ProgramItem | null, measure: ExerciseMeasure): ExerciseTarget {
-  if (item === null) {
-    const timed = measure === "duration";
-    return {
-      sets: 3,
-      repsMin: timed ? null : 8,
-      repsMax: timed ? null : 12,
-      durationMinSeconds: timed ? 30 : null,
-      durationMaxSeconds: timed ? 60 : null,
-      rir: 2,
-      restSeconds: defaultRestSeconds,
-      restAfterSeconds: defaultRestSeconds,
-    };
-  }
+export function freeTarget(previousSets: number | null): ExerciseTarget {
+  return {
+    sets: previousSets === null || previousSets <= 0 ? defaultFreeSets : previousSets,
+    repsMin: null,
+    repsMax: null,
+    durationMinSeconds: null,
+    durationMaxSeconds: null,
+    rir: null,
+    restSeconds: defaultRestSeconds,
+    restAfterSeconds: defaultRestSeconds,
+  };
+}
+
+export function targetFor(item: ProgramItem): ExerciseTarget {
   const restSeconds = item.restSeconds ?? defaultRestSeconds;
   return {
     sets: item.sets,
@@ -93,6 +94,11 @@ export function targetFor(item: ProgramItem | null, measure: ExerciseMeasure): E
     restSeconds,
     restAfterSeconds: item.restAfterSeconds ?? restSeconds,
   };
+}
+
+function previousSetCount(db: ObnixeDatabase, current: Session, exerciseId: Id): number | null {
+  const previous = previousPerformance(db, { exerciseId, itemLineageId: null, before: current.startedAt, excludeSessionId: current.id });
+  return previous === null ? null : previous.sets.filter((set) => !set.interrupted).length;
 }
 
 export function loadWorkout(db: ObnixeDatabase, sessionId: Id): WorkoutData | null {
@@ -129,7 +135,7 @@ export function loadWorkout(db: ObnixeDatabase, sessionId: Id): WorkoutData | nu
         entry,
         exercise: found,
         item,
-        target: targetFor(item, found.measure),
+        target: item === null ? freeTarget(previousSetCount(db, row, entry.exerciseId)) : targetFor(item),
         sets: sets.filter((set) => set.entryId === entry.id),
         zones: zones.filter((zone) => zone.exerciseId === entry.exerciseId).map((zone) => zone.zone),
       };

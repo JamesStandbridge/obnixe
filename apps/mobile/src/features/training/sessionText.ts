@@ -13,10 +13,12 @@ function fieldOf(sport: SportKey, key: string): FieldDefinition | undefined {
   return sports[sport].sessionFields.find((field) => field.key === key);
 }
 
+export const freeStrengthTitle = "Musculation libre";
+
 export function sessionTitle(report: Pick<SessionReport, "data">): string {
   const { session, slot, variant } = report.data;
   if (session.title !== null) return session.title;
-  if (slot !== null && session.sport === "strength") return variant === null ? slot.name : `${slot.name} · ${variant.name}`;
+  if (session.sport === "strength") return slot === null ? freeStrengthTitle : variant === null ? slot.name : `${slot.name} · ${variant.name}`;
   const sport = sports[session.sport];
   if (session.sport === "climb") {
     const discipline = session.values.discipline;
@@ -32,7 +34,7 @@ export function sessionTitle(report: Pick<SessionReport, "data">): string {
 
 export function shortTitle(report: Pick<SessionReport, "data">): string {
   const { session, slot } = report.data;
-  if (session.sport === "strength") return slot?.name ?? sports.strength.label;
+  if (session.sport === "strength") return slot?.name ?? freeStrengthTitle;
   return sports[session.sport].label;
 }
 
@@ -182,5 +184,6 @@ export function durationText(session: Session, now: EpochMs): string {
   return formatDuration(activeSeconds(session, now));
 }
 export function setsFact(summary: StrengthSummary): string {
-  return `${plural(summary.setsDone, "série", "séries")} sur ${summary.setsPlanned}`;
+  const done = plural(summary.setsDone, "série", "séries");
+  return summary.setsPlanned === null ? done : `${done} sur ${summary.setsPlanned}`;
 }

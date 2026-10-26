@@ -7,6 +7,7 @@ import { router, useNavigation } from "expo-router";
 import type { NativeStackNavigationProp } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
+  addExerciseMutations,
   bringForwardMutations,
   correctSetMutations,
   draftFor,
@@ -37,6 +38,7 @@ import type { EpochMs, Exercise, Id, PainLevel, StrengthSet, ZoneKey } from "@ob
 import { db, environment } from "@/data/database";
 import { useUndoableWrite, write } from "@/data/write";
 import { equipmentLabels, formatClock, formatLongClock, formatMass, lowerFirst, zoneLabel } from "@/features/training/format";
+import { freeStrengthTitle } from "@/features/training/sessionText";
 import { useMassUnit, useNow } from "@/features/training/useLiveLoad";
 import { ExerciseSheet } from "@/features/training/workout/ExerciseSheet";
 import type { ExerciseSheetMode } from "@/features/training/workout/ExerciseSheet";
@@ -61,6 +63,7 @@ import type { DraftKey } from "@/features/training/workout/Readout";
 import { RestBand } from "@/features/training/workout/RestBand";
 import type { Band } from "@/features/training/workout/RestBand";
 import { Steps, Track, UpNext } from "@/features/training/workout/WorkoutParts";
+import { ControlButton, LinkButton, PrimaryButton } from "@/ui/Button";
 import { PainMark } from "@/ui/Controls";
 import { Icon } from "@/ui/icons/Icon";
 import { IconButton } from "@/ui/Inputs";
@@ -196,13 +199,14 @@ export function LiveWorkoutScreen({ live }: LiveWorkoutScreenProps) {
       const current = loadWorkout(db(), sessionId);
       if (current === null || current.session.status !== "in_progress") return;
       const at = environment.now();
-      if (workoutProgress(current).currentIndex === null) write("Séance terminée", finishMutations(current, at));
+      if (current.exercises.length > 0 && workoutProgress(current).currentIndex === null) write("Séance terminée", finishMutations(current, at));
       else write("Séance interrompue", interruptMutations(current.session, at));
     });
     return () => queueMicrotask(unsubscribe);
   }, [navigation, sessionId]);
 
-  const sessionTitle = data.slot === null ? "Musculation" : data.variant === null ? data.slot.name : `${data.slot.name} · ${data.variant.name}`;
+  const sessionTitle = data.slot === null ? freeStrengthTitle : data.variant === null ? data.slot.name : `${data.slot.name} · ${data.variant.name}`;
+  const empty = data.exercises.length === 0;
   const pendingOthers = (entryId: Id): number => data.exercises.filter((candidate) => candidate.entry.status === "pending" && candidate.entry.id !== entryId).length;
 
   const updateDraft = (patch: Partial<Draft>): void => {
@@ -455,6 +459,12 @@ export function LiveWorkoutScreen({ live }: LiveWorkoutScreenProps) {
     setEditing(null);
   };
 
+  const add = (chosen: Exercise): void => {
+    closeSheet();
+    commitUndoable(`${chosen.name} ajouté`, addExerciseMutations(db(), data, chosen.id, environment.newId()), `${chosen.name} ajouté`);
+    setEditing(null);
+  };
+
   const bringForward = (target: WorkoutExercise): void => {
     commitUndoable(`${target.exercise.name} maintenant`, bringForwardMutations(data, target.entry.id), `${target.exercise.name} maintenant`);
     setEditing(null);
@@ -584,7 +594,16 @@ export function LiveWorkoutScreen({ live }: LiveWorkoutScreenProps) {
             )}
           </>
         )}
-        {finished ? (
+        {empty ? (
+          <View style={styles.empty}>
+            <Text style={styles.emptyTitle} accessibilityRole="header">
+              Aucun exercice
+            </Text>
+            <Text tone="secondary">Choisis un premier exercice pour commencer la séance.</Text>
+            <PrimaryButton label="Ajouter un exercice" icon={<Icon name="plus" color={colors.actInk} />} onPress={() => setSheet({ open: true, mode: "add" })} style={styles.emptyAction} />
+            <LinkButton label="Autres actions" onPress={() => setSheet({ open: true, mode: "menu" })} style={styles.emptyMore} />
+          </View>
+        ) : finished ? (
           <View style={[styles.finished, { backgroundColor: colors.surface }]}>
             <Text style={styles.finishedTitle}>Séance terminée</Text>
             <Text tone="secondary">Séries enregistrées.</Text>
@@ -592,38 +611,43 @@ export function LiveWorkoutScreen({ live }: LiveWorkoutScreenProps) {
         ) : (
           <UpNext exercises={data.exercises} fromIndex={displayIndex} latestPains={live.latestPains} onBringForward={bringForward} />
         )}
+        {empty || editing !== null ? null : (
+          <ControlButton label="Ajouter un exercice" icon={<Icon name="plus" size={18} color={colors.text} />} onPress={() => setSheet({ open: true, mode: "add" })} style={styles.addExercise} />
+        )}
       </ScrollView>
 
-      <View onLayout={(event) => setPanelHeight(event.nativeEvent.layout.height)} style={[styles.panel, { backgroundColor: colors.bg, borderTopColor: colors.line, paddingBottom: insets.bottom + 12 }]}>
-        {band.kind === "running" ? (
-          <View style={styles.strip}>
-            <StripButton label="−15 s" accessibilityLabel="Raccourcir le repos de 15 secondes" onPress={() => adjustRest(-15)} flex={1} />
-            <StripButton label="+15 s" accessibilityLabel="Allonger le repos de 15 secondes" onPress={() => adjustRest(15)} flex={1} />
-            <StripButton label="Passer le repos" onPress={startSet} flex={1.4} />
+      {empty ? null : (
+        <View onLayout={(event) => setPanelHeight(event.nativeEvent.layout.height)} style={[styles.panel, { backgroundColor: colors.bg, borderTopColor: colors.line, paddingBottom: insets.bottom + 12 }]}>
+          {band.kind === "running" ? (
+            <View style={styles.strip}>
+              <StripButton label="−15 s" accessibilityLabel="Raccourcir le repos de 15 secondes" onPress={() => adjustRest(-15)} flex={1} />
+              <StripButton label="+15 s" accessibilityLabel="Allonger le repos de 15 secondes" onPress={() => adjustRest(15)} flex={1} />
+              <StripButton label="Passer le repos" onPress={startSet} flex={1.4} />
+            </View>
+          ) : null}
+          {band.kind === "done" ? (
+            <View style={styles.strip}>
+              <StripButton label={`Commencer la série ${setIndex + 1}`} onPress={startSet} flex={1} />
+            </View>
+          ) : null}
+          <View style={styles.actions}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={painLevel === null ? "Douleur" : `Douleur, ${painLevel === "stop" ? "arrêt signalé" : "gêne signalée"}`}
+              onPress={openPain}
+              style={({ pressed }) => [styles.painButton, { backgroundColor: pressed ? colors.surfacePress : colors.surface, borderColor: colors.controlBorder }]}
+            >
+              <Text style={styles.painLabel}>Douleur</Text>
+              {painLevel === null ? null : (
+                <View style={styles.painIndicator}>
+                  <PainMark level={painLevel} />
+                </View>
+              )}
+            </Pressable>
+            <ActionButton mode={primaryMode} label={primaryLabel} disabled={!canValidate} onPress={validate} />
           </View>
-        ) : null}
-        {band.kind === "done" ? (
-          <View style={styles.strip}>
-            <StripButton label={`Commencer la série ${setIndex + 1}`} onPress={startSet} flex={1} />
-          </View>
-        ) : null}
-        <View style={styles.actions}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={painLevel === null ? "Douleur" : `Douleur, ${painLevel === "stop" ? "arrêt signalé" : "gêne signalée"}`}
-            onPress={openPain}
-            style={({ pressed }) => [styles.painButton, { backgroundColor: pressed ? colors.surfacePress : colors.surface, borderColor: colors.controlBorder }]}
-          >
-            <Text style={styles.painLabel}>Douleur</Text>
-            {painLevel === null ? null : (
-              <View style={styles.painIndicator}>
-                <PainMark level={painLevel} />
-              </View>
-            )}
-          </Pressable>
-          <ActionButton mode={primaryMode} label={primaryLabel} disabled={!canValidate} onPress={validate} />
         </View>
-      </View>
+      )}
 
       <PainSheet
         open={pain.open}
@@ -652,6 +676,7 @@ export function LiveWorkoutScreen({ live }: LiveWorkoutScreenProps) {
         open={sheet.open}
         mode={sheet.mode}
         title={display?.exercise.name ?? sessionTitle}
+        sessionTitle={sessionTitle}
         exerciseId={display?.exercise.id ?? null}
         canChange={!finished && display?.entry.status === "pending"}
         canPostpone={display !== undefined && pendingOthers(display.entry.id) > 0}
@@ -659,6 +684,7 @@ export function LiveWorkoutScreen({ live }: LiveWorkoutScreenProps) {
         onSkip={skip}
         onPostpone={postpone}
         onReplace={replace}
+        onAdd={add}
         onHistory={() => {
           closeSheet();
           if (display !== undefined) router.push({ pathname: "/journal/progress", params: { exercise: display.exercise.id } });
@@ -746,6 +772,11 @@ const styles = StyleSheet.create({
   linkLabel: { fontFamily: fonts.text700, fontSize: 16, textDecorationLine: "underline" },
   finished: { marginTop: 24, padding: 18, borderRadius: radii.panel, gap: 6 },
   finishedTitle: { fontFamily: fonts.text700, fontSize: 22, lineHeight: 25 },
+  empty: { marginTop: 32, gap: 8 },
+  emptyTitle: { fontFamily: fonts.text700, fontSize: 26, lineHeight: 29, letterSpacing: -0.4 },
+  emptyAction: { marginTop: 16 },
+  emptyMore: { alignSelf: "center", marginTop: 4 },
+  addExercise: { marginTop: 24, alignSelf: "flex-start" },
   panel: { position: "absolute", left: 0, right: 0, bottom: 0, borderTopWidth: 1, paddingTop: 10, paddingHorizontal: layout.gutter, gap: 10 },
   strip: { flexDirection: "row", gap: 6 },
   stripButton: { height: 48, borderRadius: radii.control, borderWidth: layout.borderControl, alignItems: "center", justifyContent: "center", paddingHorizontal: 6 },
