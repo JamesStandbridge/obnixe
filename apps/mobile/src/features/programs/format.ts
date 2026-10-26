@@ -143,8 +143,6 @@ export function authorLabel(author: VersionAuthor): string {
       return "Toi";
     case "import":
       return "Import";
-    case "system":
-      return "Obnixe";
     default: {
       const unreachable: never = kind;
       return unreachable;

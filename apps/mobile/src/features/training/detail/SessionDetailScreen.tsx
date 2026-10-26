@@ -148,8 +148,6 @@ function authorTag(entry: HistoryEntry): string {
       return entry.client ?? "Agent";
     case "import":
       return "Import";
-    case "system":
-      return "Obnixe";
     default: {
       const unreachable: never = entry.author;
       return unreachable;

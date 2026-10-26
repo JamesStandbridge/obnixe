@@ -1,12 +1,12 @@
 import { journaledTables, mergePolicies, settings as settingsTable } from "@obnixe/schema";
-import type { Id, JournaledTable, MergePolicy, RowImage } from "@obnixe/schema";
+import type { EpochMs, Id, JournaledTable, MergePolicy, RowImage } from "@obnixe/schema";
 import type { Environment, ObnixeDatabase } from "../../database.ts";
 import { rowKey } from "../../keys.ts";
 import { commit } from "../../writer.ts";
 import type { Actor, Mutation } from "../../writer.ts";
 import { foreignKeysOf } from "../foreignKeys.ts";
 import type { ForeignKey } from "../foreignKeys.ts";
-import { buildSnapshot, readSettings } from "./snapshot.ts";
+import { buildSnapshot, keepLocalAccess, readSettings } from "./snapshot.ts";
 import type { Snapshot, SnapshotSettings, SnapshotTables } from "./snapshot.ts";
 
 export const importActor: Actor = { author: "import", connectionId: null };
@@ -54,7 +54,7 @@ export class UnresolvedReferenceError extends Error {
 }
 
 const managedColumns: ReadonlySet<string> = new Set(["updatedAt", "changesetId"]);
-const renumberOffset = 1_000_000;
+const parkingOffset = 1_000_000;
 
 type UniquePredicate = (candidate: RowImage, other: RowImage) => boolean;
 
@@ -159,7 +159,34 @@ function ownerDecision<T extends JournaledTable>(policy: Extract<MergePolicy<T>,
   return undefined;
 }
 
-function mergeTable<T extends JournaledTable>(table: T, incomingRows: readonly RowImage[], state: MergeState, remap: Remap): void {
+const unmerged = (row: RowImage): boolean => row.mergedIntoId === null || row.mergedIntoId === undefined;
+
+function takesNaturalKeyOfAnother<T extends JournaledTable>(policy: Extract<MergePolicy<T>, { kind: "natural_key" }>, state: TableState, key: string): boolean {
+  const row = state.rows.get(key);
+  if (row === undefined || !unmerged(row)) return false;
+  const wanted = naturalKey(policy, row);
+  return [...state.rows].some(([otherKey, other]) => otherKey !== key && unmerged(other) && naturalKey(policy, other) === wanted);
+}
+
+/** Two open rows can claim the same day when a trashed row comes back from the backup after the day was entered again: the most recent stays, the others go to the trash. */
+function settleDays<T extends JournaledTable>(policy: Extract<MergePolicy<T>, { kind: "day_singleton" }>, state: TableState, now: EpochMs): void {
+  const holders = new Map<string, { readonly key: string; readonly row: RowImage }>();
+  for (const [key, row] of state.rows) {
+    if (!open(row)) continue;
+    const day = policy.columns.map((column) => String(row[column])).join("\u0000");
+    const held = holders.get(day);
+    if (held === undefined) {
+      holders.set(day, { key, row });
+      continue;
+    }
+    const replaces = revision(row) > revision(held.row);
+    const loser = replaces ? held : { key, row };
+    state.rows.set(loser.key, { ...loser.row, deletedAt: now });
+    if (replaces) holders.set(day, { key, row });
+  }
+}
+
+function mergeTable<T extends JournaledTable>(table: T, incomingRows: readonly RowImage[], state: MergeState, remap: Remap, now: EpochMs): void {
   const policy = mergePolicies[table] as MergePolicy<T>;
   const current = state[table];
   const keys = foreignKeysOf(table);
@@ -169,6 +196,7 @@ function mergeTable<T extends JournaledTable>(table: T, incomingRows: readonly R
   for (const source of incomingRows) {
     const row = remapReferences(source, external, remap);
     const key = rowKey(table, row);
+    if (!open(row) && !current.rows.has(key)) continue;
     switch (policy.kind) {
       case "newest":
         takeNewest(policy, current, key, row);
@@ -193,8 +221,14 @@ function mergeTable<T extends JournaledTable>(table: T, incomingRows: readonly R
         break;
       }
       case "natural_key": {
-        if (current.rows.has(key)) {
+        const known = current.rows.get(key);
+        if (known !== undefined) {
+          const decision = current.decisions.get(key) ?? "local";
           takeNewest(policy, current, key, row);
+          if (takesNaturalKeyOfAnother(policy, current, key)) {
+            current.rows.set(key, known);
+            current.decisions.set(key, decision);
+          }
           break;
         }
         const wanted = naturalKey(policy, row);
@@ -252,6 +286,7 @@ function mergeTable<T extends JournaledTable>(table: T, incomingRows: readonly R
     }
   }
   if (policy.kind === "renumber") renumber(policy, current);
+  if (policy.kind === "day_singleton") settleDays(policy, current, now);
 }
 
 function renumber<T extends JournaledTable>(policy: Extract<MergePolicy<T>, { kind: "renumber" }>, state: TableState): void {
@@ -334,6 +369,25 @@ function orderBySelfReference(rows: readonly [string, RowImage][], keys: readonl
   return ordered;
 }
 
+/** Column unique among siblings: rows whose value changes are first parked out of range so that reordered siblings never collide midway. */
+function sequenceColumn(policy: (typeof mergePolicies)[JournaledTable]): string | null {
+  switch (policy.kind) {
+    case "renumber":
+      return policy.number;
+    case "owned":
+      return policy.order;
+    case "newest":
+    case "immutable":
+    case "natural_key":
+    case "day_singleton":
+      return null;
+    default: {
+      const unreachable: never = policy;
+      throw new Error(`Unhandled merge policy ${JSON.stringify(unreachable)}`);
+    }
+  }
+}
+
 function emit(state: MergeState): MergePlan {
   const preliminary: Mutation[] = [];
   const deletes: Mutation[] = [];
@@ -356,6 +410,7 @@ function emit(state: MergeState): MergePlan {
       if (local === undefined) inserts.push([key, row]);
       else if (!sameContent(local, row)) updates.push([key, row]);
     }
+    updates.sort(([, left], [, right]) => Number(open(left)) - Number(open(right)));
     for (const [key, row] of updates) {
       const local = current.local.get(key) as RowImage;
       const released: RowImage = {};
@@ -367,10 +422,11 @@ function emit(state: MergeState): MergePlan {
       }
       if (Object.keys(released).length > 0) preliminary.push({ kind: "update", table, key, patch: released } as Mutation);
     }
-    const renumbered = policy.kind === "renumber" ? updates.filter(([key, row]) => (current.local.get(key) as RowImage)[policy.number] !== row[policy.number]) : [];
-    if (policy.kind === "renumber") {
-      for (const [key, row] of renumbered) {
-        writes.push({ kind: "update", table, key, patch: { [policy.number]: Number(row[policy.number]) + renumberOffset } } as Mutation);
+    const parked = sequenceColumn(policy);
+    if (parked !== null) {
+      for (const [key, row] of updates) {
+        if ((current.local.get(key) as RowImage)[parked] === row[parked]) continue;
+        writes.push({ kind: "update", table, key, patch: { [parked]: Number(row[parked]) + parkingOffset } } as Mutation);
       }
     }
     for (const [key, row] of updates) {
@@ -394,11 +450,11 @@ function emit(state: MergeState): MergePlan {
   return { mutations: [...preliminary, ...deletes, ...writes], counts: { inserted, updated, deleted }, settings: null, photoIds };
 }
 
-export function planMerge(db: ObnixeDatabase, incoming: Snapshot): MergePlan {
+export function planMerge(db: ObnixeDatabase, incoming: Snapshot, now: EpochMs): MergePlan {
   const local = buildSnapshot(db, 0 as Snapshot["createdAt"]);
   const state = createState(local.tables);
   const remap: Remap = new Map();
-  for (const table of journaledTables) mergeTable(table, incoming.tables[table] as readonly RowImage[], state, remap);
+  for (const table of journaledTables) mergeTable(table, incoming.tables[table] as readonly RowImage[], state, remap, now);
   enforceReferences(state);
   const plan = emit(state);
   const settings = incoming.settings.updatedAt > local.settings.updatedAt ? incoming.settings : null;
@@ -406,7 +462,7 @@ export function planMerge(db: ObnixeDatabase, incoming: Snapshot): MergePlan {
 }
 
 export function mergeSnapshot(db: ObnixeDatabase, env: Environment, incoming: Snapshot): MergeResult {
-  const plan = planMerge(db, incoming);
+  const plan = planMerge(db, incoming, env.now());
   let changesetId: Id | null = null;
   db.transaction((tx) => {
     if (plan.mutations.length > 0) changesetId = commit(tx, env, { actor: importActor, summary: mergeSummary, revertsId: null, mutations: plan.mutations });
@@ -416,6 +472,5 @@ export function mergeSnapshot(db: ObnixeDatabase, env: Environment, incoming: Sn
 }
 
 function applySettings(db: ObnixeDatabase, next: SnapshotSettings, env: Environment): void {
-  const current = readSettings(db);
-  db.update(settingsTable).set({ ...current, ...next, updatedAt: env.now() }).run();
+  db.update(settingsTable).set({ ...keepLocalAccess(next, readSettings(db)), updatedAt: env.now() }).run();
 }

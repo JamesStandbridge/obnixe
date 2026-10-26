@@ -46,19 +46,22 @@ const modeOptions: readonly { readonly value: ImportMode; readonly label: string
   { value: "replace", label: "Remplacer" },
 ];
 
-function readError(error: unknown): string {
+const unreadable = "Impossible d'ouvrir ce fichier";
+const interrupted = "Import interrompu, rien n'a changé";
+
+function readError(error: unknown): string | null {
   if (error instanceof WrongPassphraseError) return "Phrase de passe incorrecte";
   if (error instanceof NotABackupError) return "Ce fichier n'est pas une sauvegarde Obnixe";
   if (error instanceof NewerBackupError) return "Sauvegarde faite avec une version plus récente. Mets Obnixe à jour.";
   if (error instanceof CorruptedBackupError) return "Fichier abîmé, impossible à lire";
-  if (error instanceof CodedError) return "Impossible d'ouvrir ce fichier";
-  throw error;
+  if (error instanceof CodedError) return unreadable;
+  return null;
 }
 
-function importError(error: unknown): string {
-  if (error instanceof UnresolvedReferenceError || error instanceof DependentRowsError || error instanceof ZodError) return "Fusion impossible avec les données d'ici. Essaie Remplacer.";
-  if (error instanceof CodedError) return "Import interrompu, rien n'a changé";
-  throw error;
+function importError(error: unknown): string | null {
+  if (error instanceof UnresolvedReferenceError || error instanceof DependentRowsError || error instanceof ZodError) return "Sauvegarde incohérente, rien n'a changé";
+  if (error instanceof CodedError) return interrupted;
+  return null;
 }
 
 function withoutExtension(name: string): string {
@@ -117,7 +120,9 @@ export default function ImportBackup() {
       setMode(null);
       setStage({ kind: "locked", chosen: inspectBackup(file), error: null });
     } catch (error) {
-      setStage({ kind: "empty", error: readError(error) });
+      const message = readError(error);
+      setStage({ kind: "empty", error: message ?? unreadable });
+      if (message === null) throw error;
     }
   };
 
@@ -127,7 +132,9 @@ export default function ImportBackup() {
       const snapshot = await unlockBackup(chosen, passphrase, (progress) => setStage({ kind: "unlocking", chosen, progress }));
       setStage({ kind: "ready", chosen, snapshot, summary: summarizeSnapshot(snapshot.tables), error: null });
     } catch (error) {
-      setStage({ kind: "locked", chosen, error: readError(error) });
+      const message = readError(error);
+      setStage({ kind: "locked", chosen, error: message ?? unreadable });
+      if (message === null) throw error;
     }
   };
 
@@ -136,7 +143,9 @@ export default function ImportBackup() {
     try {
       setStage({ kind: "done", outcome: await importBackup(snapshot, chosenMode) });
     } catch (error) {
-      setStage({ kind: "ready", chosen, snapshot, summary, error: importError(error) });
+      const message = importError(error);
+      setStage({ kind: "ready", chosen, snapshot, summary, error: message ?? interrupted });
+      if (message === null) throw error;
     }
   };
 

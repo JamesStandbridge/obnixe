@@ -1,16 +1,14 @@
-import { and, desc, eq, getTableColumns, isNotNull, isNull, lt, ne } from "drizzle-orm";
+import { and, desc, eq, getTableColumns, inArray, isNotNull, isNull, lt, ne, sql } from "drizzle-orm";
 import type { SQLiteColumn, SQLiteTable } from "drizzle-orm/sqlite-core";
-import { backup, checkIn, journaled, journaledTables, measurement, painReport, photo, session, weighIn } from "@obnixe/schema";
+import { agentCall, backup, change, changeset, checkIn, journaled, journaledTables, measurement, painReport, photo, session, weighIn } from "@obnixe/schema";
 import type { Backup, CheckIn, EpochMs, Id, JournaledTable, Measurement, PainReport, Photo, RowImage, Session, WeighIn } from "@obnixe/schema";
 import type { Environment, ObnixeDatabase } from "../database.ts";
-import { commit } from "../writer.ts";
-import type { Actor, Mutation } from "../writer.ts";
+import { rowKey } from "../keys.ts";
+import { keyCondition } from "../writer.ts";
+import type { Mutation } from "../writer.ts";
 import { foreignKeysTo } from "./foreignKeys.ts";
 
 export const trashRetentionMs = 30 * 86_400_000;
-
-export const systemActor: Actor = { author: "system", connectionId: null };
-export const purgeSummary = "Corbeille vidée après 30 jours";
 
 export type TrashItem =
   | { readonly table: "session"; readonly row: Session; readonly expiresAt: EpochMs }
@@ -85,19 +83,26 @@ export function restoreBlocker(db: ObnixeDatabase, item: TrashItem): RestoreBloc
   }
 }
 
+export interface PurgeTarget {
+  readonly table: JournaledTable;
+  readonly row: RowImage;
+}
+
+export interface PurgeRelease {
+  readonly table: JournaledTable;
+  readonly id: string;
+  readonly patch: Record<string, null>;
+}
+
 export interface PurgePlan {
-  readonly mutations: readonly Mutation[];
+  readonly releases: readonly PurgeRelease[];
+  readonly deletions: readonly PurgeTarget[];
   readonly photoFiles: readonly string[];
 }
 
 export interface PurgeResult {
-  readonly changesetId: Id | null;
+  readonly purgedRows: number;
   readonly photoFiles: readonly string[];
-}
-
-interface Target {
-  readonly table: JournaledTable;
-  readonly row: RowImage;
 }
 
 const tableOrder = new Map<JournaledTable, number>(journaledTables.map((table, index) => [table, index]));
@@ -109,16 +114,16 @@ function referencing(db: ObnixeDatabase, table: JournaledTable, id: string, colu
 }
 
 interface Closure {
-  readonly deletes: Map<string, Target>;
-  readonly releases: Map<string, { readonly table: JournaledTable; readonly id: string; readonly patch: Record<string, null> }>;
+  readonly deletes: Map<string, PurgeTarget>;
+  readonly releases: Map<string, PurgeRelease>;
 }
 
-function collect(db: ObnixeDatabase, root: Target): Closure | null {
-  const deletes = new Map<string, Target>();
-  const pending: Target[] = [root];
+function collect(db: ObnixeDatabase, root: PurgeTarget): Closure | null {
+  const deletes = new Map<string, PurgeTarget>();
+  const pending: PurgeTarget[] = [root];
   const softReferences: { readonly table: JournaledTable; readonly row: RowImage; readonly column: string; readonly restrict: boolean }[] = [];
   while (pending.length > 0) {
-    const current = pending.pop() as Target;
+    const current = pending.pop() as PurgeTarget;
     const key = `${current.table}:${String(current.row.id)}`;
     if (deletes.has(key)) continue;
     deletes.set(key, current);
@@ -140,8 +145,8 @@ function collect(db: ObnixeDatabase, root: Target): Closure | null {
   return { deletes, releases };
 }
 
-function expiredRoots(db: ObnixeDatabase, cutoff: EpochMs): readonly Target[] {
-  const roots: Target[] = [];
+function expiredRoots(db: ObnixeDatabase, cutoff: EpochMs): readonly PurgeTarget[] {
+  const roots: PurgeTarget[] = [];
   const add = (table: JournaledTable, rows: readonly RowImage[]): void => {
     for (const row of rows) roots.push({ table, row });
   };
@@ -155,7 +160,7 @@ function expiredRoots(db: ObnixeDatabase, cutoff: EpochMs): readonly Target[] {
 }
 
 export function planTrashPurge(db: ObnixeDatabase, now: EpochMs): PurgePlan {
-  const deletes = new Map<string, Target>();
+  const deletes = new Map<string, PurgeTarget>();
   const releases: Closure["releases"] = new Map();
   for (const root of expiredRoots(db, (now - trashRetentionMs) as EpochMs)) {
     const closure = collect(db, root);
@@ -163,21 +168,48 @@ export function planTrashPurge(db: ObnixeDatabase, now: EpochMs): PurgePlan {
     for (const [key, target] of closure.deletes) deletes.set(key, target);
     for (const [key, release] of closure.releases) releases.set(key, { ...release, patch: { ...(releases.get(key)?.patch ?? {}), ...release.patch } });
   }
-  const updates: Mutation[] = [...releases]
-    .filter(([key]) => !deletes.has(key))
-    .map(([, release]) => ({ kind: "update", table: release.table, key: release.id, patch: release.patch }) as Mutation);
-  const removals: Mutation[] = [...deletes.values()]
-    .sort((left, right) => (tableOrder.get(right.table) ?? 0) - (tableOrder.get(left.table) ?? 0))
-    .map((target) => ({ kind: "delete", table: target.table, key: String(target.row.id) }) as Mutation);
-  const photoFiles = [...deletes.values()].filter((target) => target.table === "photo").map((target) => String(target.row.file));
-  return { mutations: [...updates, ...removals], photoFiles };
+  const deletions = [...deletes.values()].sort((left, right) => (tableOrder.get(right.table) ?? 0) - (tableOrder.get(left.table) ?? 0));
+  const photoFiles = deletions.filter((target) => target.table === "photo").map((target) => String(target.row.file));
+  return { releases: [...releases].filter(([key]) => !deletes.has(key)).map(([, release]) => release), deletions, photoFiles };
 }
 
+/**
+ * Permanently deletes expired trash outside the journal, together with every recorded change of the
+ * deleted rows: nothing of them survives, and the purge itself cannot be undone. Changesets left
+ * without any change are dropped. Released references are not journaled either, so older changes on
+ * those rows conflict on revert instead of resurrecting a dangling reference.
+ */
 export function purgeExpiredTrash(db: ObnixeDatabase, env: Environment): PurgeResult {
   const plan = planTrashPurge(db, env.now());
-  if (plan.mutations.length === 0) return { changesetId: null, photoFiles: [] };
-  const changesetId = commit(db, env, { actor: systemActor, summary: purgeSummary, revertsId: null, mutations: plan.mutations });
-  return { changesetId, photoFiles: plan.photoFiles };
+  if (plan.deletions.length === 0) return { purgedRows: 0, photoFiles: [] };
+  const now = env.now();
+  db.transaction((tx) => {
+    for (const release of plan.releases) {
+      const target = journaled[release.table] as SQLiteTable;
+      const patch: RowImage = "updatedAt" in getTableColumns(target) ? { ...release.patch, updatedAt: now } : release.patch;
+      tx.update(target).set(patch).where(keyCondition(release.table, release.id)).run();
+    }
+    for (const deletion of plan.deletions) {
+      tx.delete(journaled[deletion.table] as SQLiteTable)
+        .where(keyCondition(deletion.table, rowKey(deletion.table, deletion.row)))
+        .run();
+    }
+    forgetHistory(tx, plan.deletions);
+  });
+  return { purgedRows: plan.deletions.length, photoFiles: plan.photoFiles };
+}
+
+function forgetHistory(db: ObnixeDatabase, targets: readonly PurgeTarget[]): void {
+  const touched = new Set<Id>();
+  for (const target of targets) {
+    const recorded = and(eq(change.tableName, target.table), eq(change.rowId, rowKey(target.table, target.row)));
+    for (const row of db.select({ changesetId: change.changesetId }).from(change).where(recorded).all()) touched.add(row.changesetId);
+    db.delete(change).where(recorded).run();
+  }
+  const emptied = [...touched].filter((changesetId) => db.select({ one: sql<number>`1` }).from(change).where(eq(change.changesetId, changesetId)).limit(1).get() === undefined);
+  if (emptied.length === 0) return;
+  db.update(agentCall).set({ changesetId: null }).where(inArray(agentCall.changesetId, emptied)).run();
+  db.delete(changeset).where(inArray(changeset.id, emptied)).run();
 }
 
 export function replacedSnapshots(db: ObnixeDatabase): readonly Backup[] {
