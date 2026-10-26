@@ -36,6 +36,9 @@ importers:
       esbuild:
         specifier: ^0.28.2
         version: 0.28.2
+      obnixe-relay:
+        specifier: workspace:*
+        version: link:../relay
       typescript:
         specifier: ^7.0.2
         version: 7.0.2
