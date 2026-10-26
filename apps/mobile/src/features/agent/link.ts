@@ -164,13 +164,7 @@ export class AgentLink {
     this.session = session;
     this.setNetwork("dialing");
     socket.onmessage = (event: MessageEvent) => {
-      session.receive(String(event.data)).catch((error: unknown) => {
-        if (error instanceof ProtocolError) {
-          socket.close();
-          return;
-        }
-        throw error;
-      });
+      session.receive(String(event.data)).catch((error: unknown) => this.onSessionFailed(socket, session, error));
     };
     socket.onclose = () => this.onSocketClosed(socket, session);
   }
@@ -193,6 +187,21 @@ export class AgentLink {
         throw new Error(`Unhandled link status ${String(unreachable)}`);
       }
     }
+  }
+
+  /** Ends the connection with a recorded reason; errors other than protocol violations go to the global handler as non-fatal. */
+  private onSessionFailed(socket: WebSocket, session: PhoneSession, error: unknown): void {
+    const reason: ConnectionEndReason = error instanceof ProtocolError ? "protocol" : "error";
+    const connectionId = session.connectionId;
+    if (socket === this.socket && connectionId !== null) {
+      closeConnection(db(), environment, connectionId, reason);
+      session.close(reason);
+      this.setView({ kind: "disconnected", connectionId, at: environment.now() });
+      this.hangUp();
+    } else {
+      socket.close();
+    }
+    if (!(error instanceof ProtocolError)) ErrorUtils.getGlobalHandler()(error, false);
   }
 
   private onRejected(reason: RejectionReason): void {

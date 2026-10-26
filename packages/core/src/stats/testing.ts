@@ -202,7 +202,7 @@ export class Seeder {
     const id = this.id();
     this.context.db
       .insert(agentConnection)
-      .values({ id, client, host: "mac", canReadBody: true, canWrite: true, canReadPhotos: false, startedAt: this.context.env.now(), endedAt: null, endReason: null })
+      .values({ id, client, host: "mac", startedAt: this.context.env.now(), endedAt: null, endReason: null })
       .run();
     return { author: "agent", connectionId: id };
   }

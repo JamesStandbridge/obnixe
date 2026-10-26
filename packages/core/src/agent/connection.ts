@@ -19,9 +19,8 @@ export function readPermissions(db: ObnixeDatabase): AgentPermissions {
 
 export function openConnection(db: ObnixeDatabase, env: Environment, peer: ConnectionPeer): Id {
   const id = env.newId();
-  const permissions = readPermissions(db);
   db.insert(agentConnection)
-    .values({ id, client: peer.client, host: peer.host, ...permissions, startedAt: env.now(), endedAt: null, endReason: null })
+    .values({ id, client: peer.client, host: peer.host, startedAt: env.now(), endedAt: null, endReason: null })
     .run();
   return id;
 }

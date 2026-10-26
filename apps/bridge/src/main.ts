@@ -1,10 +1,13 @@
 #!/usr/bin/env -S node --experimental-strip-types --disable-warning=ExperimentalWarning
 import { randomBytes } from "node:crypto";
+import { networkInterfaces } from "node:os";
 import { fileURLToPath } from "node:url";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { defaultControlPort, defaultPhonePort } from "@obnixe/core/agent/wire";
 import { startControl } from "./control.ts";
 import type { ControlServer } from "./control.ts";
+import { selectPhoneHost } from "./listen.ts";
+import type { PhoneHost } from "./listen.ts";
 import { createMcpServer, hostLabel } from "./mcp.ts";
 import { runPair } from "./pair.ts";
 import { PhoneEndpoint } from "./phone.ts";
@@ -28,13 +31,29 @@ function isAddressInUse(error: unknown): boolean {
   return error instanceof Error && "code" in error && error.code === "EADDRINUSE";
 }
 
+function describeListening(host: PhoneHost): string {
+  switch (host.source) {
+    case "override":
+      return `Waiting for the phone on ${host.address}:${phonePort} (OBNIXE_PHONE_HOST).`;
+    case "tailscale":
+      return `Waiting for the phone on the Tailscale address ${host.address}:${phonePort}.`;
+    case "loopback":
+      return `No Tailscale address (100.64.0.0/10) found on this machine, so the bridge only listens on ${host.address}:${phonePort} and the phone cannot reach it. Start Tailscale and restart the bridge, or set OBNIXE_PHONE_HOST to the address the phone should dial.`;
+    default: {
+      const unreachable: never = host.source;
+      throw new Error(`Unhandled phone host source ${String(unreachable)}`);
+    }
+  }
+}
+
 async function serve(): Promise<void> {
-  const endpoint = new PhoneEndpoint({ port: phonePort, hostLabel: hostLabel(), randomBytes: (length) => new Uint8Array(randomBytes(length)), log });
+  const host = selectPhoneHost(networkInterfaces(), process.env.OBNIXE_PHONE_HOST);
+  const endpoint = new PhoneEndpoint({ port: phonePort, listenHost: host.address, hostLabel: hostLabel(), randomBytes: (length) => new Uint8Array(randomBytes(length)), log });
   let control: ControlServer | null = null;
   try {
     await endpoint.listen();
     control = await startControl(endpoint, controlPort);
-    log(`En attente du téléphone sur le port ${phonePort}.`);
+    log(describeListening(host));
   } catch (error) {
     if (!isAddressInUse(error)) throw error;
     const message = `Another Obnixe bridge already uses port ${phonePort} or ${controlPort}. Only one MCP client can reach the phone at a time; close the other one or set OBNIXE_PHONE_PORT and OBNIXE_CONTROL_PORT.`;
@@ -57,7 +76,9 @@ const usage = `obnixe-bridge, MCP server relaying an agent to the Obnixe phone a
 Cursor (~/.cursor/mcp.json):
   { "mcpServers": { "obnixe": { "command": "node", "args": ["--experimental-strip-types", "--disable-warning=ExperimentalWarning", "${fileURLToPath(import.meta.url)}"] } } }
 
-The phone dials ws://<this Mac>:${phonePort} (OBNIXE_PHONE_PORT); pairing uses http://127.0.0.1:${controlPort} (OBNIXE_CONTROL_PORT).
+The phone dials ws://<Tailscale address of this Mac>:${phonePort}. The listener binds the first Tailscale IPv4 address
+(100.64.0.0/10), or 127.0.0.1 when there is none; OBNIXE_PHONE_HOST overrides the address and OBNIXE_PHONE_PORT the port.
+Pairing uses http://127.0.0.1:${controlPort} (OBNIXE_CONTROL_PORT).
 `;
 
 const [command, argument] = process.argv.slice(2);

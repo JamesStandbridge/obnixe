@@ -3,21 +3,26 @@ import type { ConnectionPeer } from "./connection.ts";
 import {
   ProtocolError,
   SealedChannel,
+  bridgeProof,
+  commitBridgeProof,
   decodeBytes,
   decodeFrame,
-  derivePairingKey,
-  deriveSessionKeys,
+  derivePairingSecrets,
   encodeFrame,
+  generateEphemeralKeyPair,
   heartbeatTimeoutMs,
-  helloProof,
   nonceBytes,
+  openingBytes,
   parseBridgeMessage,
+  phoneProof,
+  proofBytes,
   protocolVersion,
+  publicKeyBytes,
   rpcErrorCodes,
   sameBytes,
-  welcomeProof,
+  sharedSecret,
 } from "./protocol.ts";
-import type { BridgeMessage, Frame, PairingTranscript, PhoneMessage, RandomBytes, RejectionReason, ToolOutcome } from "./protocol.ts";
+import type { BridgeMessage, Frame, PairingSecrets, PairingTranscript, PhoneMessage, RandomBytes, RejectionReason, ToolOutcome } from "./protocol.ts";
 import { toBase64 } from "./encoding.ts";
 
 export type PhoneLinkStatus = "proving" | "waiting" | "open" | "closed";
@@ -47,14 +52,15 @@ export interface PhoneSessionOptions {
 type SessionState =
   | { readonly kind: "challenge" }
   | { readonly kind: "proving" }
-  | { readonly kind: "waiting"; readonly transcript: PairingTranscript; readonly key: Uint8Array }
-  | { readonly kind: "open"; readonly channel: SealedChannel; connectionId: Id | null }
+  | { readonly kind: "waiting"; readonly secrets: PairingSecrets; commitment: Uint8Array | null }
+  | { readonly kind: "open"; readonly channel: SealedChannel }
   | { readonly kind: "closed" };
 
 /** Phone side of the bridge link: answers the pairing challenge, then serves sealed JSON-RPC requests from the bridge. */
 export class PhoneSession {
   private readonly options: PhoneSessionOptions;
   private state: SessionState = { kind: "challenge" };
+  private opened: Id | null = null;
   private lastReceivedAt: number;
 
   constructor(options: PhoneSessionOptions) {
@@ -62,8 +68,9 @@ export class PhoneSession {
     this.lastReceivedAt = options.now();
   }
 
+  /** Connection opened through this session, kept after the session closes so callers can record how it ended. */
   get connectionId(): Id | null {
-    return this.state.kind === "open" ? this.state.connectionId : null;
+    return this.opened;
   }
 
   get isClosed(): boolean {
@@ -74,6 +81,10 @@ export class PhoneSession {
     return this.state.kind === "open" && now - this.lastReceivedAt > heartbeatTimeoutMs;
   }
 
+  /**
+   * Handles one frame from the bridge. Rejects with a ProtocolError when the bridge breaks the protocol; when a tool
+   * handler throws, the session replies with an internal error, closes with reason `error` and rejects with that error.
+   */
   async receive(text: string): Promise<void> {
     if (this.state.kind === "closed") return;
     this.lastReceivedAt = this.options.now();
@@ -81,6 +92,9 @@ export class PhoneSession {
     switch (frame.type) {
       case "challenge":
         await this.answerChallenge(frame);
+        return;
+      case "commit":
+        this.answerCommit(frame);
         return;
       case "welcome":
         this.acceptWelcome(frame);
@@ -98,7 +112,8 @@ export class PhoneSession {
         return;
       }
       case "hello":
-        throw new ProtocolError("Unexpected hello from the bridge");
+      case "proof":
+        throw new ProtocolError(`Unexpected ${frame.type} from the bridge`);
       default: {
         const unreachable: never = frame;
         throw new ProtocolError(`Unhandled frame ${JSON.stringify(unreachable)}`);
@@ -133,22 +148,38 @@ export class PhoneSession {
       this.options.handlers.onStatus("closed");
       return;
     }
-    const transcript: PairingTranscript = { bridgeNonce: decodeBytes(frame.nonce, nonceBytes), phoneNonce: this.options.randomBytes(nonceBytes), device: this.options.device };
+    const keyPair = generateEphemeralKeyPair(this.options.randomBytes);
+    const transcript: PairingTranscript = {
+      bridgeNonce: decodeBytes(frame.nonce, nonceBytes),
+      bridgeKey: decodeBytes(frame.key, publicKeyBytes),
+      phoneNonce: this.options.randomBytes(nonceBytes),
+      phoneKey: keyPair.publicKey,
+      device: this.options.device,
+    };
+    const shared = sharedSecret(keyPair.secretKey, transcript.bridgeKey);
     this.state = { kind: "proving" };
     this.options.handlers.onStatus("proving");
-    const key = await derivePairingKey(this.options.code, transcript);
+    const secrets = await derivePairingSecrets(this.options.code, transcript, shared);
     if (this.state.kind !== "proving") return;
-    this.send({ type: "hello", version: protocolVersion, device: transcript.device, nonce: toBase64(transcript.phoneNonce), proof: toBase64(helloProof(key, transcript)) });
-    this.state = { kind: "waiting", transcript, key };
+    this.send({ type: "hello", version: protocolVersion, device: transcript.device, nonce: toBase64(transcript.phoneNonce), key: toBase64(transcript.phoneKey) });
+    this.state = { kind: "waiting", secrets, commitment: null };
     this.options.handlers.onStatus("waiting");
   }
 
+  private answerCommit(frame: Extract<Frame, { type: "commit" }>): void {
+    if (this.state.kind !== "waiting") throw new ProtocolError("Unexpected commit");
+    const commitment = decodeBytes(frame.commitment, proofBytes);
+    this.state.commitment = commitment;
+    this.send({ type: "proof", proof: toBase64(phoneProof(this.state.secrets, commitment)) });
+  }
+
   private acceptWelcome(frame: Extract<Frame, { type: "welcome" }>): void {
-    if (this.state.kind !== "waiting") throw new ProtocolError("Unexpected welcome");
-    const { key, transcript } = this.state;
-    if (!sameBytes(decodeBytes(frame.proof), welcomeProof(key, transcript))) throw new ProtocolError("The bridge could not prove it knows the code");
-    const keys = deriveSessionKeys(key, transcript);
-    this.state = { kind: "open", channel: new SealedChannel(keys.toBridge, keys.toPhone), connectionId: null };
+    if (this.state.kind !== "waiting" || this.state.commitment === null) throw new ProtocolError("Unexpected welcome");
+    const { secrets, commitment } = this.state;
+    const proof = decodeBytes(frame.proof, proofBytes);
+    const opened = sameBytes(commitBridgeProof(decodeBytes(frame.opening, openingBytes), proof), commitment);
+    if (!opened || !sameBytes(proof, bridgeProof(secrets))) throw new ProtocolError("The bridge could not prove it knows the code");
+    this.state = { kind: "open", channel: new SealedChannel(secrets.sessionKeys.toBridge, secrets.sessionKeys.toPhone) };
   }
 
   private reply(state: Extract<SessionState, { kind: "open" }>, message: PhoneMessage): void {
@@ -158,18 +189,18 @@ export class PhoneSession {
   private handle(state: Extract<SessionState, { kind: "open" }>, message: BridgeMessage): void {
     switch (message.method) {
       case "session.open": {
-        state.connectionId ??= this.options.handlers.onOpen(message.params);
-        this.reply(state, { jsonrpc: "2.0", id: message.id, result: { connectionId: state.connectionId } });
+        this.opened ??= this.options.handlers.onOpen(message.params);
+        this.reply(state, { jsonrpc: "2.0", id: message.id, result: { connectionId: this.opened } });
         this.options.handlers.onStatus("open");
         return;
       }
       case "session.client":
-        if (state.connectionId !== null) this.options.handlers.onClient(state.connectionId, message.params.client);
+        if (this.opened !== null) this.options.handlers.onClient(this.opened, message.params.client);
         return;
       case "ping":
         return;
       case "tools/call": {
-        const connectionId = state.connectionId;
+        const connectionId = this.opened;
         if (connectionId === null) {
           this.reply(state, { jsonrpc: "2.0", id: message.id, error: { code: rpcErrorCodes.notOpen, message: "Session not open" } });
           return;
@@ -178,12 +209,12 @@ export class PhoneSession {
         try {
           outcome = this.options.handlers.onCall(connectionId, message.params.name, message.params.arguments);
         } finally {
-          this.reply(
-            state,
-            outcome === null
-              ? { jsonrpc: "2.0", id: message.id, error: { code: rpcErrorCodes.internal, message: "The phone failed to run the tool" } }
-              : { jsonrpc: "2.0", id: message.id, result: outcome },
-          );
+          if (outcome === null) {
+            this.reply(state, { jsonrpc: "2.0", id: message.id, error: { code: rpcErrorCodes.internal, message: "The phone failed to run the tool" } });
+            this.close("error");
+          } else {
+            this.reply(state, { jsonrpc: "2.0", id: message.id, result: outcome });
+          }
         }
         return;
       }

@@ -77,7 +77,7 @@ export type Dimension = (typeof dimensions)[number];
 export const agentCallKinds = ["read", "write"] as const;
 export type AgentCallKind = (typeof agentCallKinds)[number];
 
-export const connectionEndReasons = ["user", "screen_closed", "timeout", "network"] as const;
+export const connectionEndReasons = ["user", "screen_closed", "timeout", "network", "protocol", "error"] as const;
 export type ConnectionEndReason = (typeof connectionEndReasons)[number];
 
 export const backupKinds = ["export", "import_merge", "import_replace"] as const;
