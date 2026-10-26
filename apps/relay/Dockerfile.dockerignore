@@ -1,0 +1,9 @@
+*
+!package.json
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
+!tsconfig.base.json
+!patches
+!apps/relay
+apps/relay/node_modules
+apps/relay/dist

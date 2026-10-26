@@ -1,0 +1,26 @@
+{
+  "name": "obnixe-relay",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Rendezvous relay forwarding end-to-end sealed frames between the Obnixe phone app and its Mac bridge.",
+  "license": "UNLICENSED",
+  "author": "James Standbridge",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node --experimental-strip-types --disable-warning=ExperimentalWarning src/main.ts",
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "@types/ws": "^8.18.2",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5",
+    "ws": "^8.22.0"
+  }
+}
