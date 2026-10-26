@@ -1,5 +1,5 @@
 import { StyleSheet, View } from "react-native";
-import { checkInAnswerMutations, checkInZoneMutations, todayCheckIn, trackedZones } from "@obnixe/core";
+import { checkInAnswerMutations, checkInZoneMutations, todayCheckIn, checkInZones } from "@obnixe/core";
 import type { CheckInAnswer, CheckInContext, CheckInWrite } from "@obnixe/core";
 import type { EpochMs, LocalDate, PainLevel, SleepBucket, ZoneKey } from "@obnixe/schema";
 import { db, environment } from "@/data/database";
@@ -38,7 +38,7 @@ export function CheckInSection({ today, timeZone, snackbarOffset }: CheckInSecti
   const data = useLiveValue(
     () => {
       const current = todayCheckIn(db(), today);
-      return { ...current, zones: trackedZones(db(), { today, checkInId: current.checkIn?.id ?? null }) };
+      return { ...current, zones: checkInZones(db(), { today, checkInId: current.checkIn?.id ?? null }) };
     },
     ["check_in", "pain_report", "zone_tracking", "session"],
     [today],

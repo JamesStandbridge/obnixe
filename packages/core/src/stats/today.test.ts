@@ -9,7 +9,7 @@ import type { CheckInContext } from "./checkin.ts";
 import { zonePainHistory } from "./pain.ts";
 import { clampReminderMinutes, reminderDays, reminderMask, remindersIcs, toggleReminderDay } from "./reminders.ts";
 import { at, Seeder, userActor } from "./testing.ts";
-import { agentChangesSince, estimatedSlotSeconds, finishOpenSessionMutations, openSession, resumeDeadlineDate, todayNotices, trackedZones, variantPlan } from "./today.ts";
+import { agentChangesSince, estimatedSlotSeconds, finishOpenSessionMutations, openSession, resumeDeadlineDate, todayNotices, checkInZones, variantPlan } from "./today.ts";
 
 const d = (value: string): LocalDate => value as LocalDate;
 
@@ -108,7 +108,7 @@ describe("notices", () => {
     seed.session({ sport: "strength", date: "2026-10-24", pains: [{ zone: "shoulder_right", level: "stop" }] });
     seed.session({ sport: "strength", date: "2026-10-10", pains: [{ zone: "elbow_left", level: "stop" }] });
     const checkInId = seed.checkIn("2026-10-25", 4, [{ zone: "shoulder_right", level: "discomfort" }]);
-    const zones = trackedZones(seed.context.db, { today: d("2026-10-25"), checkInId });
+    const zones = checkInZones(seed.context.db, { today: d("2026-10-25"), checkInId });
     expect(zones.map((zone) => [zone.zone, zone.latest?.level ?? null, zone.latest?.localDate ?? null, zone.todayLevel])).toEqual([
       ["shoulder_right", "stop", "2026-10-24", "discomfort"],
       ["knee_right", null, null, null],

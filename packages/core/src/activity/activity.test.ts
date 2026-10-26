@@ -10,11 +10,13 @@ import { commit } from "../writer.ts";
 import type { Mutation } from "../writer.ts";
 import { emphasisQuantity, enabledSports, fromStored, isFreeSport, quantityUnit, toStored } from "./catalog.ts";
 import type { QuantityField } from "./catalog.ts";
-import { addDays, daysBetween, epochAt, localDateOf, localTimeOf, weekdayOf } from "./dates.ts";
+import { addDays, daysBetween } from "../stats/dates.ts";
+import { parseGrade } from "../stats/indicators.ts";
+import { epochAt, localDateOf, localTimeOf, weekdayOf } from "./dates.ts";
 import { FutureSessionError, InvalidDurationError, NotFreeSportError, activeSeconds, lastSessionSuggestion, planFreeSession } from "./freeSession.ts";
 import type { FreeSessionDraft } from "./freeSession.ts";
 import { EmptyGearNameError, gearUsage, newGear } from "./gear.ts";
-import { evaluateIndicators, parseGrade } from "./indicators.ts";
+import { evaluateIndicators } from "./indicators.ts";
 import { lastPain, sessionPainMutations, trackedZones, zoneStatuses } from "./pain.ts";
 
 const zone = "Europe/Paris";
@@ -108,7 +110,7 @@ describe("indicators", () => {
   });
 
   it("parses grades only within known scales", () => {
-    expect(parseGrade("fontainebleau:6B")).toEqual({ scale: "fontainebleau", grade: "6B", rank: 7 });
+    expect(parseGrade("fontainebleau:6B")).toEqual({ scale: "fontainebleau", index: 7, label: "6B" });
     expect(parseGrade("french:6B")).toBeNull();
     expect(parseGrade(12)).toBeNull();
   });

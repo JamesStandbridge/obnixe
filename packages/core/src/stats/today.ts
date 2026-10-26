@@ -229,7 +229,7 @@ export interface TrackedZoneOptions {
   readonly recentDays?: number;
 }
 
-export function trackedZones(db: ObnixeDatabase, options: TrackedZoneOptions): TrackedZone[] {
+export function checkInZones(db: ObnixeDatabase, options: TrackedZoneOptions): TrackedZone[] {
   const open = db.select({ zone: zoneTracking.zone }).from(zoneTracking).where(isNull(zoneTracking.endedAt)).orderBy(asc(zoneTracking.startedAt)).all();
   const reports = recentReports(db, addDays(options.today, -((options.recentDays ?? 7) - 1)));
   const todays =

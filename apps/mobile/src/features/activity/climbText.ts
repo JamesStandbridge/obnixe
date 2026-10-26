@@ -48,7 +48,7 @@ export function countLabel(noun: ClimbNoun, count: number): string {
 
 export function summaryText(noun: ClimbNoun, summary: ClimbSummary): string {
   const best = parseGrade(summary.maxSent ?? undefined);
-  return `${countLabel(noun, summary.count)} · max enchaîné ${best === null ? "–" : best.grade} · ${summary.flashes} flash`;
+  return `${countLabel(noun, summary.count)} · max enchaîné ${best === null ? "–" : best.label} · ${summary.flashes} flash`;
 }
 
 export function cellText(result: ClimbResult, attempts: number): string {

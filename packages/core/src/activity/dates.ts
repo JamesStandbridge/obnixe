@@ -1,6 +1,5 @@
 import type { EpochMs, LocalDate } from "@obnixe/schema";
 
-const dayMs = 86_400_000;
 
 interface WallClock {
   readonly year: number;
@@ -59,15 +58,6 @@ export function localDateOf(at: number, timeZone: string): LocalDate {
 export function localTimeOf(at: number, timeZone: string): LocalTime {
   const clock = wallClock(at, timeZone);
   return { date: dateOf(clock), minutes: clock.hours * 60 + clock.minutes };
-}
-
-export function addDays(date: LocalDate, days: number): LocalDate {
-  const shifted = new Date(utcMidnight(date) + days * dayMs);
-  return dateOf({ year: shifted.getUTCFullYear(), month: shifted.getUTCMonth() + 1, day: shifted.getUTCDate() });
-}
-
-export function daysBetween(from: LocalDate, to: LocalDate): number {
-  return Math.round((utcMidnight(to) - utcMidnight(from)) / dayMs);
 }
 
 export function weekdayOf(date: LocalDate): number {

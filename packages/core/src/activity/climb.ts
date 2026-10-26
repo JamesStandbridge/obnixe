@@ -5,7 +5,8 @@ import type { Environment, ObnixeDatabase } from "../database.ts";
 import type { Mutation } from "../writer.ts";
 import { localDateOf } from "./dates.ts";
 import type { SlotLink } from "./freeSession.ts";
-import { evaluateIndicators, parseGrade } from "./indicators.ts";
+import { parseGrade } from "../stats/indicators.ts";
+import { evaluateIndicators } from "./indicators.ts";
 
 export const climbResults = ["flash", "sent", "project"] as const;
 export type ClimbResult = (typeof climbResults)[number];
@@ -175,7 +176,7 @@ export function readClimbItem(values: FieldValues): ClimbItemDraft | null {
   const result = values.result;
   if (grade === null || typeof attempts !== "number" || !isClimbResult(result)) return null;
   const style = Array.isArray(values.style) ? values.style.filter(isClimbStyle) : [];
-  return { grade: grade.grade, attempts, result, style };
+  return { grade: grade.label, attempts, result, style };
 }
 
 export function normalizeDraft(draft: ClimbItemDraft): ClimbItemDraft {
@@ -248,7 +249,7 @@ export function defaultGrade(db: ObnixeDatabase, scale: GradeScaleKey): string {
     .limit(30)
     .all();
   const sameScale = recent.map((row) => parseGrade(row.values.grade)).filter((grade) => grade !== null && grade.scale === scale);
-  const best = sameScale.reduce((highest, grade) => (grade !== null && grade.rank > highest ? grade.rank : highest), -1);
+  const best = sameScale.reduce((highest, grade) => (grade !== null && grade.index > highest ? grade.index : highest), -1);
   if (best >= 0) return grades[best] ?? grades[0] ?? "";
   return grades[Math.floor(grades.length / 5)] ?? grades[0] ?? "";
 }

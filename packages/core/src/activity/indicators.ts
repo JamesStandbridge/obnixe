@@ -1,5 +1,6 @@
-import { gradeScales } from "@obnixe/schema";
-import type { ChoiceFilter, FieldValue, FieldValues, GradeScaleKey, GradeValue, IndicatorDefinition, Operand, SportDefinition } from "@obnixe/schema";
+import type { ChoiceFilter, FieldValues, GradeValue, IndicatorDefinition, Operand, SportDefinition } from "@obnixe/schema";
+import { parseGrade } from "../stats/indicators.ts";
+import type { Grade } from "../stats/indicators.ts";
 
 export type IndicatorResult =
   | { readonly kind: "number"; readonly key: string; readonly label: string; readonly value: number }
@@ -9,24 +10,6 @@ export interface IndicatorInput {
   readonly durationSeconds: number;
   readonly values: FieldValues;
   readonly items: readonly FieldValues[];
-}
-
-export interface ParsedGrade {
-  readonly scale: GradeScaleKey;
-  readonly grade: string;
-  readonly rank: number;
-}
-
-export function parseGrade(value: FieldValue | undefined): ParsedGrade | null {
-  if (typeof value !== "string") return null;
-  const separator = value.indexOf(":");
-  if (separator < 0) return null;
-  const scale = value.slice(0, separator);
-  if (!(scale in gradeScales)) return null;
-  const key = scale as GradeScaleKey;
-  const grade = value.slice(separator + 1);
-  const rank = (gradeScales[key].grades as readonly string[]).indexOf(grade);
-  return rank < 0 ? null : { scale: key, grade, rank };
 }
 
 function matches(values: FieldValues, filter: ChoiceFilter | null): boolean {
@@ -61,17 +44,17 @@ function aggregateNumbers(values: readonly number[], fn: "sum" | "max" | "min" |
   }
 }
 
-function aggregateGrades(values: readonly ParsedGrade[], fn: "sum" | "max" | "min" | "average"): GradeValue | null {
+function aggregateGrades(values: readonly Grade[], fn: "sum" | "max" | "min" | "average"): GradeValue | null {
   if (values.length === 0) return null;
-  const sorted = [...values].sort((left, right) => left.rank - right.rank);
+  const sorted = [...values].sort((left, right) => left.index - right.index);
   switch (fn) {
     case "max": {
       const best = sorted.at(-1);
-      return best === undefined ? null : (`${best.scale}:${best.grade}` as GradeValue);
+      return best === undefined ? null : (`${best.scale}:${best.label}` as GradeValue);
     }
     case "min": {
       const lowest = sorted[0];
-      return lowest === undefined ? null : (`${lowest.scale}:${lowest.grade}` as GradeValue);
+      return lowest === undefined ? null : (`${lowest.scale}:${lowest.label}` as GradeValue);
     }
     case "sum":
     case "average":
@@ -89,7 +72,7 @@ function evaluate(definition: IndicatorDefinition, input: IndicatorInput): Indic
     case "aggregate": {
       const sources = definition.scope === "session" ? [input.values] : input.items.filter((item) => matches(item, definition.filter));
       const raw = sources.map((values) => values[definition.field]).filter((value) => value !== undefined);
-      const grades = raw.map(parseGrade).filter((grade): grade is ParsedGrade => grade !== null);
+      const grades = raw.map(parseGrade).filter((grade): grade is Grade => grade !== null);
       if (grades.length > 0) {
         const value = aggregateGrades(grades, definition.fn);
         return value === null ? null : { kind: "grade", ...base, value };

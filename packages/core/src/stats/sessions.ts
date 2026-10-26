@@ -5,7 +5,7 @@ import type { ObnixeDatabase } from "../database.ts";
 
 export type ReportedPainLevel = Exclude<PainLevel, "none">;
 
-export interface ZonePain {
+export interface ReportedZonePain {
   readonly zone: ZoneKey;
   readonly level: ReportedPainLevel;
 }
@@ -25,7 +25,7 @@ export interface SessionSummary {
   readonly review: ReviewStatus;
   readonly note: string | null;
   readonly strengthSets: number;
-  readonly pains: readonly ZonePain[];
+  readonly pains: readonly ReportedZonePain[];
   readonly addedBy: string | null;
 }
 
@@ -45,7 +45,7 @@ export function worsePain(left: ReportedPainLevel | null, right: ReportedPainLev
   return null;
 }
 
-export function mergeZonePains(pains: readonly ZonePain[]): ZonePain[] {
+export function mergeZonePains(pains: readonly ReportedZonePain[]): ReportedZonePain[] {
   const byZone = new Map<ZoneKey, ReportedPainLevel>();
   for (const pain of pains) byZone.set(pain.zone, worsePain(byZone.get(pain.zone) ?? null, pain.level) ?? pain.level);
   return [...byZone.entries()].map(([zone, level]) => ({ zone, level })).sort((left, right) => painRank(right.level) - painRank(left.level));

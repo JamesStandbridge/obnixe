@@ -4,7 +4,8 @@ import type { EpochMs, Id, LocalDate, MassUnit, WeighIn } from "@obnixe/schema";
 import type { Environment, ObnixeDatabase } from "../database.ts";
 import type { Mutation } from "../writer.ts";
 import { fromStored, massUnitOf, toStored } from "../activity/catalog.ts";
-import { addDays, daysBetween, localDateOf } from "../activity/dates.ts";
+import { localDateOf } from "../activity/dates.ts";
+import { addDays, daysBetween } from "../stats/dates.ts";
 
 export const weighInBounds = { minGrams: 20_000, maxGrams: 400_000 } as const;
 
