@@ -157,6 +157,10 @@ export function sessionValuesSchema(sport: SportDefinition): z.ZodType<FieldValu
   return valuesSchema(sport.sessionFields);
 }
 
+export function targetValuesSchema(sport: SportDefinition): z.ZodType<FieldValues> {
+  return valuesSchema(sport.sessionFields.map((field) => ({ ...field, required: false })));
+}
+
 export function itemValuesSchema(sport: SportDefinition, sessionValues: FieldValues): z.ZodType<FieldValues> {
   const scaleBy = sport.gradeScaleBy;
   if (scaleBy === null) return valuesSchema(sport.itemFields);

@@ -1,19 +1,15 @@
-import { StyleSheet, Text } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { sports } from "@obnixe/schema";
-import { colors } from "@/theme";
+import { sportKeys, sports } from "@obnixe/schema";
+import { AppBar, Row, Screen, Section } from "@/ui/Layout";
 
 export default function Today() {
   return (
-    <SafeAreaView style={styles.screen}>
-      <Text style={styles.title}>Obnixe</Text>
-      <Text style={styles.meta}>{Object.values(sports).map((sport) => sport.label).join(" · ")}</Text>
-    </SafeAreaView>
+    <Screen>
+      <AppBar title="Aujourd'hui" />
+      <Section title="Sports">
+        {sportKeys.map((key, index) => (
+          <Row key={key} title={sports[key].label} last={index === sportKeys.length - 1} />
+        ))}
+      </Section>
+    </Screen>
   );
 }
-
-const styles = StyleSheet.create({
-  screen: { flex: 1, paddingHorizontal: 18, paddingTop: 18, gap: 6, backgroundColor: colors.bg },
-  title: { color: colors.text, fontSize: 30, fontWeight: "700", letterSpacing: -0.6 },
-  meta: { color: colors.text2, fontSize: 15 },
-});
