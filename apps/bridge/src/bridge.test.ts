@@ -195,7 +195,7 @@ describe("relayed tool calls", () => {
     const phone = await pairedPhone();
     const connectionId = phone.session.connectionId;
     if (connectionId === null) throw new Error("No connection");
-    expect(connectionRow(connectionId)).toMatchObject({ client: "Cursor", host: "MacBook Pro", canWrite: false, endedAt: null });
+    expect(connectionRow(connectionId)).toMatchObject({ client: "Cursor", host: "MacBook Pro", endedAt: null });
 
     const sports = await client.callTool({ name: "list_sports", arguments: {} });
     expect(sports.isError).toBe(false);

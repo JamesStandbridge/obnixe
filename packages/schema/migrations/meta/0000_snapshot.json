@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "e80f7161-9792-4c52-adce-2801dd118859",
+  "id": "a657e684-4408-4a8e-b011-8eba560caa5d",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "check_in": {
@@ -735,27 +735,6 @@
         "host": {
           "name": "host",
           "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "can_read_body": {
-          "name": "can_read_body",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "can_write": {
-          "name": "can_write",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "can_read_photos": {
-          "name": "can_read_photos",
-          "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false

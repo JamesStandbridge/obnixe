@@ -118,6 +118,17 @@ describe("permissions", () => {
     expect(calls().map((row) => row.summary)).toEqual(["Douleurs et check-ins, 30 jours", "Douleurs, check-ins et poids, 30 jours"]);
   });
 
+  it("applies permission changes to an open connection immediately", () => {
+    const activity = { sport: "bike", startedAt: "2026-10-10T09:00:00+02:00", durationSeconds: 3600, values: { distance: 32000 } };
+    allow({ agentCanWrite: true });
+    expect(call("log_activity", activity).isError).toBe(false);
+    allow({ agentCanWrite: false });
+    const revoked = call("log_activity", activity);
+    expect(revoked.isError).toBe(true);
+    expect(revoked.text).toContain("Modifier directement");
+    expect(context.db.select().from(session).all()).toHaveLength(1);
+  });
+
   it("gates photos", () => {
     expect(call("list_photos", {}).isError).toBe(true);
     allow({ agentCanReadPhotos: true });
@@ -394,10 +405,8 @@ describe("reads", () => {
 });
 
 describe("connections", () => {
-  it("snapshots permissions and closes dangling connections at their last call", () => {
-    allow({ agentCanWrite: true });
-    const second = openConnection(context.db, context.env, { client: "Codex", host: "MacBook Pro" });
-    expect(context.db.select().from(agentConnection).where(eq(agentConnection.id, second)).get()).toMatchObject({ canWrite: true, canReadBody: false });
+  it("closes dangling connections at their last call", () => {
+    openConnection(context.db, context.env, { client: "Codex", host: "MacBook Pro" });
     ok("list_sports", {});
     const calledAt = context.env.now();
     context.advance(60_000);
