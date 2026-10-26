@@ -5,17 +5,19 @@ import { exercise as exerciseTable, exerciseNameKey } from "@obnixe/schema";
 import type { Exercise, Id } from "@obnixe/schema";
 import { db } from "@/data/database";
 import { equipmentLabels } from "@/features/training/format";
+import { AddExercise } from "@/features/training/workout/AddExercise";
 import { MenuItem, TextField } from "@/ui/Inputs";
 import { Row } from "@/ui/Layout";
 import { Sheet } from "@/ui/Overlays";
 import { Text } from "@/ui/Text";
 
-export type ExerciseSheetMode = "menu" | "replace";
+export type ExerciseSheetMode = "menu" | "replace" | "add";
 
 interface ExerciseSheetProps {
   readonly open: boolean;
   readonly mode: ExerciseSheetMode;
   readonly title: string;
+  readonly sessionTitle: string;
   readonly exerciseId: Id | null;
   readonly canChange: boolean;
   readonly canPostpone: boolean;
@@ -23,13 +25,14 @@ interface ExerciseSheetProps {
   readonly onSkip: () => void;
   readonly onPostpone: () => void;
   readonly onReplace: (exercise: Exercise) => void;
+  readonly onAdd: (exercise: Exercise) => void;
   readonly onHistory: () => void;
   readonly onLeave: () => void;
   readonly onFinish: () => void;
   readonly onClose: () => void;
 }
 
-export function ExerciseSheet({ open, mode, title, exerciseId, canChange, canPostpone, onMode, onSkip, onPostpone, onReplace, onHistory, onLeave, onFinish, onClose }: ExerciseSheetProps) {
+export function ExerciseSheet({ open, mode, title, sessionTitle, exerciseId, canChange, canPostpone, onMode, onSkip, onPostpone, onReplace, onAdd, onHistory, onLeave, onFinish, onClose }: ExerciseSheetProps) {
   const [query, setQuery] = useState("");
   useEffect(() => {
     if (open) setQuery("");
@@ -49,6 +52,14 @@ export function ExerciseSheet({ open, mode, title, exerciseId, canChange, canPos
   );
   const key = exerciseNameKey(query);
   const matches = key === "" ? candidates : candidates.filter((candidate) => candidate.nameKey.includes(key));
+
+  if (mode === "add") {
+    return (
+      <Sheet open={open} title="Ajouter un exercice" context={sessionTitle} onClose={onClose}>
+        <AddExercise open={open} onAdd={onAdd} />
+      </Sheet>
+    );
+  }
 
   if (mode === "replace") {
     return (
@@ -75,7 +86,8 @@ export function ExerciseSheet({ open, mode, title, exerciseId, canChange, canPos
         {canChange ? <MenuItem label="Passer l'exercice" onPress={onSkip} /> : null}
         {canChange && canPostpone ? <MenuItem label="Faire plus tard" detail="Après les autres exercices" onPress={onPostpone} /> : null}
         {canChange ? <MenuItem label="Remplacer l'exercice" onPress={() => onMode("replace")} /> : null}
-        <MenuItem label="Historique" onPress={onHistory} />
+        <MenuItem label="Ajouter un exercice" detail="À la fin de la séance" onPress={() => onMode("add")} />
+        {exerciseId === null ? null : <MenuItem label="Historique" onPress={onHistory} />}
         <MenuItem label="Quitter la séance" detail="Reprise possible jusqu'à demain 6 h" onPress={onLeave} />
         <MenuItem label="Terminer la séance" detail="Les exercices restants seront passés" onPress={onFinish} />
       </View>

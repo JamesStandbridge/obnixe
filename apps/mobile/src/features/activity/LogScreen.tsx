@@ -180,7 +180,7 @@ export function LogScreen() {
 
   useEffect(() => {
     if (requested === "climb") router.replace({ pathname: "/climb/[id]", params: { id: "new", ...(slotId === undefined ? {} : { slotId }) } });
-    else if (requested === "strength") router.replace({ pathname: "/workout/[id]", params: { id: "new" } });
+    else if (requested === "strength") router.replace({ pathname: "/workout/[id]", params: { id: "new", free: "1" } });
   }, [requested, router, slotId]);
 
   const definition: SportDefinition = sports[sport];
@@ -249,7 +249,7 @@ export function LogScreen() {
     }
     setSheet({ kind: "none" });
     if (next === "climb") router.replace({ pathname: "/climb/[id]", params: { id: "new", ...(slotId === undefined ? {} : { slotId }) } });
-    else if (next === "strength") router.replace({ pathname: "/workout/[id]", params: { id: "new" } });
+    else if (next === "strength") router.replace({ pathname: "/workout/[id]", params: { id: "new", free: "1" } });
   };
 
   const fieldOf = (key: string): FieldDefinition | undefined => definition.sessionFields.find((field) => field.key === key);

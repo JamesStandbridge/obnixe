@@ -10,6 +10,7 @@ import {
   openSessionRow,
   resumeMutations,
   SlotNotFoundError,
+  startFreeWorkoutMutations,
   startWorkoutMutations,
   VariantNotInSlotError,
 } from "@obnixe/core";
@@ -18,6 +19,7 @@ import type { Id, Session } from "@obnixe/schema";
 import { db, environment } from "@/data/database";
 import { write } from "@/data/write";
 import { Message } from "@/features/training/Message";
+import { freeStrengthTitle } from "@/features/training/sessionText";
 import { deviceTimeZone, useLiveLoad } from "@/features/training/useLiveLoad";
 import { LiveWorkoutScreen } from "@/features/training/workout/LiveWorkoutScreen";
 import { loadLiveWorkout } from "@/features/training/workout/liveWorkout";
@@ -55,7 +57,13 @@ function openSessionHref(session: Session): void {
 
 type StartOutcome = { readonly kind: "opened" } | { readonly kind: "nothing" } | { readonly kind: "invalid" };
 
-function startOrResume(slotParam: string | undefined, variantParam: string | undefined): StartOutcome {
+interface StartParams {
+  readonly free: boolean;
+  readonly slotId: string | undefined;
+  readonly variantId: string | undefined;
+}
+
+function startOrResume(params: StartParams): StartOutcome {
   const now = environment.now();
   const open = openSessionRow(db());
   if (open !== null) {
@@ -66,8 +74,14 @@ function startOrResume(slotParam: string | undefined, variantParam: string | und
     const stale = loadWorkout(db(), open.id);
     if (stale !== null) write("Séance close", finishMutations(stale, now));
   }
-  let slotId = slotParam as Id | undefined;
-  let variantId = variantParam as Id | undefined;
+  if (params.free) {
+    const started = startFreeWorkoutMutations(environment.newId, { now, timeZone: deviceTimeZone() });
+    write(`${freeStrengthTitle} commencée`, started.mutations);
+    router.replace({ pathname: "/workout/[id]", params: { id: started.sessionId } });
+    return { kind: "opened" };
+  }
+  let slotId = params.slotId as Id | undefined;
+  let variantId = params.variantId as Id | undefined;
   if (slotId === undefined) {
     const upcoming = nextSlot(db());
     if (upcoming === null || upcoming.slot.sport !== "strength") return { kind: "nothing" };
@@ -91,14 +105,14 @@ function startOrResume(slotParam: string | undefined, variantParam: string | und
 }
 
 function StartWorkout() {
-  const { slotId, variantId } = useLocalSearchParams<{ slotId?: string; variantId?: string }>();
+  const { free, slotId, variantId } = useLocalSearchParams<{ free?: string; slotId?: string; variantId?: string }>();
   const started = useRef(false);
   const [outcome, setOutcome] = useState<StartOutcome | null>(null);
   useEffect(() => {
     if (started.current) return;
     started.current = true;
-    setOutcome(startOrResume(slotId, variantId));
-  }, [slotId, variantId]);
+    setOutcome(startOrResume({ free: free === "1", slotId, variantId }));
+  }, [free, slotId, variantId]);
 
   if (outcome === null || outcome.kind === "opened") return null;
   return (
