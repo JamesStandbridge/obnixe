@@ -129,7 +129,6 @@ type SessionState =
   | { readonly kind: "open"; readonly channel: SealedChannel }
   | { readonly kind: "closed" };
 
-/** Phone side of the bridge link: pairs with a code or resumes a trusted pairing, then serves sealed JSON-RPC requests from the bridge. */
 /** Surfaces a failed derivation where the secrets are needed, so it is never lost while no commit arrives. */
 function readySecrets(derived: DerivedSecrets): PairingSecrets {
   switch (derived.kind) {
@@ -144,6 +143,7 @@ function readySecrets(derived: DerivedSecrets): PairingSecrets {
   }
 }
 
+/** Phone side of the bridge link: pairs with a code or resumes a trusted pairing, then serves sealed JSON-RPC requests from the bridge. */
 export class PhoneSession {
   private readonly options: PhoneSessionOptions;
   private state: SessionState = { kind: "challenge" };
