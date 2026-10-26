@@ -113,7 +113,7 @@ describe("climbBreakdown", () => {
     recordedAt: 0 as EpochMs,
   });
 
-  it("counts sends and flashes and groups the lowest grades together", () => {
+  it("counts sends and flashes and groups the lowest grades together under their range", () => {
     const summary = climbBreakdown([
       item(0, "5", "flash", 1),
       item(1, "5+", "flash", 1),
@@ -125,10 +125,20 @@ describe("climbBreakdown", () => {
     ]);
     expect(summary).toMatchObject({ count: 7, sent: 5, flash: 3, maxSent: "6B" });
     expect(summary.groups).toEqual([
-      { label: "6B", andBelow: false, count: 2, sent: 1, flash: 0, attempts: 8 },
-      { label: "6A+", andBelow: false, count: 1, sent: 0, flash: 0, attempts: 4 },
-      { label: "6A", andBelow: false, count: 2, sent: 2, flash: 1, attempts: 3 },
-      { label: "5+", andBelow: true, count: 2, sent: 2, flash: 2, attempts: 2 },
+      { label: "6B", lowest: null, count: 2, sent: 1, flash: 0, attempts: 8 },
+      { label: "6A+", lowest: null, count: 1, sent: 0, flash: 0, attempts: 4 },
+      { label: "6A", lowest: null, count: 2, sent: 2, flash: 1, attempts: 3 },
+      { label: "5+", lowest: "5", count: 2, sent: 2, flash: 2, attempts: 2 },
+    ]);
+  });
+
+  it("names the lowest grade of the folded group so a low flash stays visible", () => {
+    const summary = climbBreakdown([item(0, "6A", "flash", 1), item(1, "6A+", "sent", 2), item(2, "6B", "project", 3), item(3, "6B+", "sent", 2), item(4, "5+", "flash", 1)]);
+    expect(summary.groups.map((group) => [group.label, group.lowest, group.count, group.flash])).toEqual([
+      ["6B+", null, 1, 0],
+      ["6B", null, 1, 0],
+      ["6A+", null, 1, 0],
+      ["6A", "5+", 2, 2],
     ]);
   });
 });

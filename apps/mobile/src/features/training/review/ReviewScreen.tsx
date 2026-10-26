@@ -138,7 +138,7 @@ function doneRows(report: SessionReport, today: LocalDate, unit: MassUnit): read
     const word = climbItemWord(session);
     return report.climb.groups.map((group) => ({
       key: group.label,
-      title: group.andBelow ? `${group.label} et moins` : group.label,
+      title: group.lowest === null ? group.label : `${group.lowest} à ${group.label}`,
       detail: plural(group.count, word.singular, word.plural),
       mark: null,
       value: group.sent === 0 ? "pas encore" : group.flash === group.sent ? `${group.flash} flash` : plural(group.sent, "enchaîné", "enchaînés"),

@@ -93,7 +93,8 @@ export function exerciseOutcome(current: WorkoutExercise, previous: PreviousPerf
 
 export interface ClimbGradeGroup {
   readonly label: string;
-  readonly andBelow: boolean;
+  /** Lowest grade folded into this group, null when the group holds a single grade. */
+  readonly lowest: string | null;
   readonly count: number;
   readonly sent: number;
   readonly flash: number;
@@ -119,12 +120,13 @@ export function climbBreakdown(items: readonly SessionItem[]): ClimbBreakdown {
   const groups: ClimbGradeGroup[] = [];
   ranks.forEach((rank, index) => {
     if (index > separateGrades) return;
-    const andBelow = index === separateGrades && ranks.length > separateGrades + 1;
-    const members = parsed.filter((entry) => entry.grade !== null && (andBelow ? entry.grade.index <= rank : entry.grade.index === rank));
+    const folded = index === separateGrades && ranks.length > separateGrades + 1;
+    const members = parsed.filter((entry) => entry.grade !== null && (folded ? entry.grade.index <= rank : entry.grade.index === rank));
     const label = members.find((entry) => entry.grade?.index === rank)?.grade?.label ?? "";
+    const lowestRank = ranks[ranks.length - 1];
     groups.push({
       label,
-      andBelow,
+      lowest: folded ? (members.find((entry) => entry.grade?.index === lowestRank)?.grade?.label ?? null) : null,
       count: members.length,
       sent: members.filter((entry) => isSent(entry.result)).length,
       flash: members.filter((entry) => entry.result === "flash").length,
