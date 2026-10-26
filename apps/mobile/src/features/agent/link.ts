@@ -245,7 +245,7 @@ export class AgentLink {
         onCall: (connectionId, tool, args) => runAgentTool(db(), environment, { connectionId, tool, arguments: args, timeZone: deviceTimeZone() }),
         onRejected: (reason) => this.onRejected(reason),
         onPaired: (pairing) => this.onPaired(pairing),
-        onRevocationSent: (revocation) => this.onRevocationSent(revocation),
+        onRevocationAcknowledged: (revocation) => this.onRevocationAcknowledged(revocation),
       },
     });
     this.socket = socket;
@@ -290,7 +290,7 @@ export class AgentLink {
     this.listener.onKnownMac(pairing.bridgeName);
   }
 
-  private onRevocationSent(revocation: PhoneRevocation): void {
+  private onRevocationAcknowledged(revocation: PhoneRevocation): void {
     if (this.revocation?.pairingId !== revocation.pairingId) return;
     deleteRevocation();
     this.revocation = null;
