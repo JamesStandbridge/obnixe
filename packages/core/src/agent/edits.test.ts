@@ -1,6 +1,6 @@
 import { asc, eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
-import { agentCall, changeset, exercise, exerciseZone, painReport, program, programItem, session, sessionItem, settings, strengthEntry, strengthSet } from "@obnixe/schema";
+import { agentCall, change, changeset, exercise, exerciseZone, painReport, program, programItem, session, sessionItem, settings, strengthEntry, strengthSet } from "@obnixe/schema";
 import type { EpochMs, Id, LocalDate, PainReport, Session } from "@obnixe/schema";
 import { trashItems } from "../data/trash.ts";
 import { createTestContext } from "../testing.ts";
@@ -384,9 +384,31 @@ interface ExerciseData {
   readonly loadStepGrams: number | null;
   readonly zones: readonly string[];
   readonly archived: boolean;
+  readonly cues: string | null;
 }
 
 describe("update_exercise", () => {
+  it("writes technique cues alone or with other details, reads them back and undoes them", () => {
+    ok("create_exercise", { name: "Squat", measure: "load_reps", equipment: "barbell" });
+    const written = ok<ExerciseData>("update_exercise", { exercise: "Squat", cues: "  Pieds largeur d'épaules  \n\n\n\nInspirer en haut, bloquer  " });
+    expect(written.cues).toBe("Pieds largeur d'épaules\n\nInspirer en haut, bloquer");
+    expect(lastCall().summary).toBe("Consignes modifiées · Squat");
+    expect(ok<{ exercises: { name: string; cues: string | null }[] }>("list_exercises", {}).exercises).toEqual([expect.objectContaining({ name: "Squat", cues: written.cues })]);
+    expect(failed("update_exercise", { exercise: "Squat", cues: "Pieds largeur d'épaules\n\nInspirer en haut, bloquer" })).toContain("Nothing to change");
+
+    const both = ok<ExerciseData>("update_exercise", { exercise: "Squat", equipment: "machine", cues: "Descendre sous la parallèle" });
+    expect(both).toMatchObject({ cues: "Descendre sous la parallèle" });
+    expect(lastCall().summary).toBe("Exercice modifié · Squat");
+    const changes = context.db.select().from(change).where(eq(change.changesetId, lastCall().changesetId)).all();
+    expect(changes).toHaveLength(1);
+
+    undoLast();
+    expect(context.db.select().from(exercise).where(eq(exercise.name, "Squat")).get()).toMatchObject({ equipment: "barbell", cues: written.cues });
+    expect(ok<ExerciseData>("update_exercise", { exercise: "Squat", cues: null }).cues).toBeNull();
+    undoLast();
+    expect(context.db.select().from(exercise).where(eq(exercise.name, "Squat")).get()?.cues).toBe(written.cues);
+  });
+
   it("renames, re-equips and re-zones an exercise, then is undone", () => {
     ok("create_exercise", { name: "Rowing haltère", measure: "load_reps", equipment: "dumbbell", loadStepGrams: 1000, zones: ["lower_back"] });
     const updated = ok<ExerciseData>("update_exercise", { exercise: "rowing haltere", name: "Rowing  unilatéral", equipment: "cable", loadStepGrams: 2500, zones: ["shoulder_right", "lower_back"] });

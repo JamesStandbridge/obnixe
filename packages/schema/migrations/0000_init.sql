@@ -77,6 +77,7 @@ CREATE TABLE `exercise` (
 	`base_grams` integer,
 	`load_step_grams` integer,
 	`zones_reviewed` integer NOT NULL,
+	`cues` text,
 	`merged_into_id` text,
 	`archived_at` integer,
 	`created_at` integer NOT NULL,

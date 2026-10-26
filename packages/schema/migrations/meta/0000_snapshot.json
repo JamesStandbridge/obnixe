@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "a657e684-4408-4a8e-b011-8eba560caa5d",
+  "id": "b4cf8bc9-f1ab-4595-9e95-af0f1d61add4",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "check_in": {
@@ -506,6 +506,13 @@
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
+          "autoincrement": false
+        },
+        "cues": {
+          "name": "cues",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false
         },
         "merged_into_id": {

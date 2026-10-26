@@ -387,6 +387,7 @@ export function listExercises(db: ObnixeDatabase, _env: AgentEnvironment, input:
         loadStepGrams: row.loadStepGrams,
         archived: row.archivedAt !== null,
         zones: zoneRows.filter((zone) => zone.exerciseId === row.id).map((zone) => zone.zone),
+        cues: row.cues,
       })),
     },
   };

@@ -20,6 +20,8 @@ import {
   loadWorkout,
   logSetMutations,
   massToGrams,
+  normalizeCues,
+  planExerciseCues,
   postponeEntryMutations,
   previousSetAt,
   replaceExerciseMutations,
@@ -452,6 +454,14 @@ export function LiveWorkoutScreen({ live }: LiveWorkoutScreenProps) {
     setEditing(null);
   };
 
+  const saveCues = (text: string): void => {
+    closeSheet();
+    if (display === undefined) return;
+    const mutation = planExerciseCues(display.exercise, text);
+    if (mutation === null) return;
+    commitUndoable(`Consignes · ${display.exercise.name}`, [mutation], normalizeCues(text) === null ? "Consignes effacées" : "Consignes enregistrées");
+  };
+
   const postpone = (): void => {
     closeSheet();
     if (display === undefined) return;
@@ -694,9 +704,11 @@ export function LiveWorkoutScreen({ live }: LiveWorkoutScreenProps) {
         title={display?.exercise.name ?? sessionTitle}
         sessionTitle={sessionTitle}
         exerciseId={display?.exercise.id ?? null}
+        cues={display?.exercise.cues ?? null}
         canChange={!finished && display?.entry.status === "pending"}
         canPostpone={display !== undefined && pendingOthers(display.entry.id) > 0}
         onMode={(mode) => setSheet({ open: true, mode })}
+        onSaveCues={saveCues}
         onSkip={skip}
         onPostpone={postpone}
         onReplace={replace}
