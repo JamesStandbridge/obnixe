@@ -1,6 +1,7 @@
 import { drizzle } from "drizzle-orm/expo-sqlite";
 import type { ExpoSQLiteDatabase } from "drizzle-orm/expo-sqlite";
 import { getRandomValues } from "expo-crypto";
+import { File, Paths } from "expo-file-system";
 import { backupDatabaseAsync, deleteDatabaseAsync, openDatabaseAsync } from "expo-sqlite";
 import type { SQLiteDatabase } from "expo-sqlite";
 import { createIdFactory, schema, settings } from "@obnixe/schema";
@@ -29,18 +30,52 @@ export async function openDatabase(): Promise<AppDatabase> {
   return current;
 }
 
-/** Copies the database to a dated file before deleting it, so a failed migration never destroys the only copy. */
-export async function setDatabaseAside(): Promise<void> {
-  const source = connection ?? (await openDatabaseAsync(databaseName));
+async function closeConnection(): Promise<void> {
+  const open = connection;
   connection = null;
   current = null;
-  const copy = await openDatabaseAsync(`obnixe-unreadable-${Date.now()}.db`);
+  if (open !== null) await open.closeAsync();
+}
+
+async function backUpTo(name: string): Promise<void> {
+  const source = await openDatabaseAsync(databaseName);
   try {
-    await backupDatabaseAsync({ sourceDatabase: source, destDatabase: copy });
+    const copy = await openDatabaseAsync(name);
+    try {
+      await backupDatabaseAsync({ sourceDatabase: source, destDatabase: copy });
+    } finally {
+      await copy.closeAsync();
+    }
   } finally {
-    await copy.closeAsync();
     await source.closeAsync();
   }
+}
+
+async function copyFilesTo(name: string): Promise<void> {
+  for (const suffix of ["", "-wal", "-shm"]) {
+    const file = new File(Paths.document, "SQLite", `${databaseName}${suffix}`);
+    if (file.exists) await file.copy(new File(Paths.document, "SQLite", `${name}${suffix}`));
+  }
+}
+
+/**
+ * Copies the database to dated files before deleting it, so a failed migration never destroys the only copy.
+ * A file SQLite cannot open is copied byte for byte instead.
+ */
+export async function setDatabaseAside(): Promise<void> {
+  const name = `obnixe-unreadable-${environment.now()}`;
+  await closeConnection();
+  try {
+    await backUpTo(`${name}.db`);
+  } catch (reason) {
+    if (!(reason instanceof Error)) throw reason;
+    await copyFilesTo(`${name}-raw.db`);
+  }
+  await deleteDatabaseAsync(databaseName);
+}
+
+export async function eraseDatabase(): Promise<void> {
+  await closeConnection();
   await deleteDatabaseAsync(databaseName);
 }
 

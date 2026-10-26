@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { useMigrations } from "drizzle-orm/expo-sqlite/migrator";
 import migrations from "@obnixe/schema/migrations";
-import { ensureSettings, setDatabaseAside, openDatabase } from "@/data/database";
+import { ensureSettings, eraseDatabase, openDatabase, setDatabaseAside } from "@/data/database";
 import type { AppDatabase } from "@/data/database";
 import { LinkButton } from "@/ui/Button";
 import { MenuItem } from "@/ui/Inputs";
@@ -26,29 +26,37 @@ export function DatabaseGate({ children }: DatabaseGateProps) {
     openDatabase().then(setDatabase, (reason: unknown) => setError(asError(reason)));
   }, [generation]);
 
-  const erase = async (): Promise<void> => {
-    await setDatabaseAside();
-    setDatabase(null);
-    setError(null);
-    setGeneration((value) => value + 1);
-  };
+  const restartAfter =
+    (discard: () => Promise<void>) =>
+    async (): Promise<void> => {
+      await discard();
+      setDatabase(null);
+      setError(null);
+      setGeneration((value) => value + 1);
+    };
+  const recovery: Recovery = { setAside: restartAfter(setDatabaseAside), erase: restartAfter(eraseDatabase) };
 
-  if (error !== null) return <UnreadableDatabase error={error} onErase={erase} />;
+  if (error !== null) return <UnreadableDatabase error={error} recovery={recovery} />;
   if (database === null) return null;
   return (
-    <Migrated key={generation} database={database} onErase={erase}>
+    <Migrated key={generation} database={database} recovery={recovery}>
       {children}
     </Migrated>
   );
 }
 
+interface Recovery {
+  readonly setAside: () => Promise<void>;
+  readonly erase: () => Promise<void>;
+}
+
 interface MigratedProps {
   readonly database: AppDatabase;
-  readonly onErase: () => Promise<void>;
+  readonly recovery: Recovery;
   readonly children: ReactNode;
 }
 
-function Migrated({ database, onErase, children }: MigratedProps) {
+function Migrated({ database, recovery, children }: MigratedProps) {
   const { success, error } = useMigrations(database, migrations);
   const [ready, setReady] = useState(false);
 
@@ -58,23 +66,23 @@ function Migrated({ database, onErase, children }: MigratedProps) {
     setReady(true);
   }, [success]);
 
-  if (error !== undefined) return <UnreadableDatabase error={error} onErase={onErase} />;
+  if (error !== undefined) return <UnreadableDatabase error={error} recovery={recovery} />;
   return ready ? children : null;
 }
 
 interface UnreadableDatabaseProps {
   readonly error: Error;
-  readonly onErase: () => Promise<void>;
+  readonly recovery: Recovery;
 }
 
-function UnreadableDatabase({ error, onErase }: UnreadableDatabaseProps) {
+function UnreadableDatabase({ error, recovery }: UnreadableDatabaseProps) {
   const [confirming, setConfirming] = useState(false);
   const [erasing, setErasing] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
 
-  const erase = (): void => {
+  const run = (action: () => Promise<void>): void => {
     setErasing(true);
-    onErase().then(
+    action().then(
       () => undefined,
       (reason: unknown) => {
         setErasing(false);
@@ -95,7 +103,10 @@ function UnreadableDatabase({ error, onErase }: UnreadableDatabaseProps) {
               Rien n'a été modifié : {failure}
             </Text>
           )}
-          <MenuItem label={erasing ? "Mise de côté…" : "Mettre de côté et repartir"} destructive onPress={erasing ? () => undefined : erase} />
+          <MenuItem label={erasing ? "En cours…" : "Mettre de côté et repartir"} destructive onPress={erasing ? () => undefined : () => run(recovery.setAside)} />
+          {failure === null ? null : (
+            <MenuItem label="Effacer définitivement, sans copie" destructive onPress={erasing ? () => undefined : () => run(recovery.erase)} />
+          )}
           <LinkButton label="Garder les données" disabled={erasing} onPress={() => setConfirming(false)} />
         </>
       ) : (
