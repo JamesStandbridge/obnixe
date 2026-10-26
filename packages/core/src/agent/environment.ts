@@ -31,7 +31,7 @@ export class PermissionDeniedError extends Error {
 }
 
 const permissionMessages: Readonly<Record<AgentPermission, string>> = {
-  body: "The user has not allowed agents to read body data (weight, measurements). Ask them to turn on 'Lire le corps' on the Agent screen of the phone.",
+  body: "The user has not allowed agents to access body data (weight, measurements), needed to read or record it. Ask them to turn on 'Lire le corps' on the Agent screen of the phone.",
   photos: "The user has not allowed agents to see photos. Ask them to turn on 'Voir les photos' on the Agent screen of the phone.",
   write: "The user has not allowed agents to modify data. Ask them to turn on 'Modifier directement' on the Agent screen of the phone, or describe the change so they can apply it.",
 };

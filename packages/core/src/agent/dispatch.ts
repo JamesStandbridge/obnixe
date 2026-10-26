@@ -7,7 +7,7 @@ import { DependentRowsError, DuplicateRowError, RowNotFoundError } from "../writ
 import type { Actor } from "../writer.ts";
 import { isConnectionOpen, readPermissions } from "./connection.ts";
 import { isToolName, toolContracts } from "./contract.ts";
-import type { ToolInput, ToolName } from "./contract.ts";
+import type { AgentPermission, ToolInput, ToolName } from "./contract.ts";
 import { PermissionDeniedError, ToolInputError, hasPermission } from "./environment.ts";
 import type { AgentEnvironment, ToolResult } from "./environment.ts";
 import type { ToolOutcome } from "./protocol.ts";
@@ -58,7 +58,8 @@ export function runAgentTool(db: ObnixeDatabase, env: Environment, request: Agen
   const agentEnv: AgentEnvironment = { now: env.now, newId: env.newId, timeZone: request.timeZone, permissions };
   const actor: Actor = { author: "agent", connectionId: request.connectionId };
   try {
-    if (contract.permission !== null && !hasPermission(permissions, contract.permission)) throw new PermissionDeniedError(contract.permission);
+    const missing: AgentPermission | undefined = contract.permissions.find((permission) => !hasPermission(permissions, permission));
+    if (missing !== undefined) throw new PermissionDeniedError(missing);
     const result = db.transaction((tx) => {
       const outcome = execute(tx, agentEnv, actor, name, request.arguments);
       tx.insert(agentCall)

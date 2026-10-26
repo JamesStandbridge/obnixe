@@ -10,7 +10,7 @@ export interface ToolContract {
   readonly title: string;
   readonly description: string;
   readonly kind: AgentCallKind;
-  readonly permission: AgentPermission | null;
+  readonly permissions: readonly AgentPermission[];
   readonly input: z.ZodObject;
 }
 
@@ -106,7 +106,7 @@ export const toolContracts = {
     description:
       "List the sports Obnixe tracks with their session and item fields (key, type, unit dimension, allowed options and grades), pain zones and the catalog version. Call this before logging activities or setting slot targets.",
     kind: "read",
-    permission: null,
+    permissions: [],
     input: z.object({}),
   },
   get_history: {
@@ -115,7 +115,7 @@ export const toolContracts = {
     description:
       "Return the sessions of a date range (max 366 days), newest first: sport, status, start time, duration in seconds, catalog values, effort, sensation, enjoyment, notes, program slot, strength exercises with every set (loadGrams in grams, reps, durationSeconds, rir), itemized entries (e.g. climbing problems) and pain reports.",
     kind: "read",
-    permission: null,
+    permissions: [],
     input: z.object({ ...range, sport: z.enum(sportKeys).optional().describe("Only this sport.") }).refine(rangeRule.check, rangeRule.params),
   },
   get_exercise_progress: {
@@ -124,7 +124,7 @@ export const toolContracts = {
     description:
       "Return the history of one strength exercise: per session the sets (loadGrams in grams, reps, durationSeconds, rir), best set, estimated one-rep max in grams (Epley) and volume in gram-reps. Defaults to the whole history.",
     kind: "read",
-    permission: null,
+    permissions: [],
     input: z.object({ exercise: exerciseReference, from: localDate.optional(), to: localDate.optional() }),
   },
   get_body_signals: {
@@ -133,7 +133,7 @@ export const toolContracts = {
     description:
       "Return recovery signals for a date range (max 366 days): daily check-ins (energy 1-5, sleep bucket), pain reports (zone, level none/discomfort/stop, phase, session), zone tracking periods. Weigh-ins (grams) and body measurements (millimeters) are included only when the user allowed body access; 'bodyIncluded' tells which.",
     kind: "read",
-    permission: null,
+    permissions: [],
     input: z.object(range).refine(rangeRule.check, rangeRule.params),
   },
   list_photos: {
@@ -141,7 +141,7 @@ export const toolContracts = {
     title: "Progress photos",
     description: "List progress photo metadata (pose, day, pixel size). Requires the user's photo permission. Image files stay on the phone.",
     kind: "read",
-    permission: "photos",
+    permissions: ["photos"],
     input: z.object({ from: localDate.optional(), to: localDate.optional() }),
   },
   list_programs: {
@@ -149,7 +149,7 @@ export const toolContracts = {
     title: "Programs",
     description: "List training programs with status (draft, active, archived), latest version number, name and sessions per week.",
     kind: "read",
-    permission: null,
+    permissions: [],
     input: z.object({}),
   },
   get_program: {
@@ -158,7 +158,7 @@ export const toolContracts = {
     description:
       "Return a program with its latest version tree: slots (sessions of the rotation) with sport, targets and variants, each variant with its exercise prescriptions. Every slot, variant and item carries a lineageId to reuse in upsert_program. Set includeHistory to get every version with its summary, reason and author.",
     kind: "read",
-    permission: null,
+    permissions: [],
     input: z.object({ programId: z.string().min(1), includeHistory: z.boolean().optional() }),
   },
   list_exercises: {
@@ -166,7 +166,7 @@ export const toolContracts = {
     title: "Exercises",
     description: "List strength exercises with id, name, measure, equipment, load step in grams and the body zones they load.",
     kind: "read",
-    permission: null,
+    permissions: [],
     input: z.object({
       query: z.string().trim().min(1).optional().describe("Filter by name, case and accent insensitive."),
       includeArchived: z.boolean().optional(),
@@ -177,7 +177,7 @@ export const toolContracts = {
     title: "Create exercise",
     description: "Create a strength exercise. Fails if an exercise with the same name already exists. The user can undo it from the phone.",
     kind: "write",
-    permission: "write",
+    permissions: ["write"],
     input: z.object({
       name: shortText.max(80).describe("Exercise name in French, e.g. 'Rowing haltère'."),
       measure: newExercise.shape.measure,
@@ -192,7 +192,7 @@ export const toolContracts = {
     description:
       "Create a program (omit programId; it starts as a draft) or publish a new immutable version of an existing one. Send the complete program: every slot, variant and item of the new version. Reuse lineageIds from get_program for what stays the same, omit them for new elements; anything left out is removed from the new version. Unknown exercises named in items are created. The user sees 'summary' in the app and can undo the change.",
     kind: "write",
-    permission: "write",
+    permissions: ["write"],
     input: z.object({
       programId: z.string().min(1).optional(),
       name: shortText.max(60).describe("Program name in French."),
@@ -208,7 +208,7 @@ export const toolContracts = {
     description:
       "Record a completed past session of any sport except strength (use log_strength_session). Values and items are validated against the sport catalog from list_sports. The user can undo it from the phone.",
     kind: "write",
-    permission: "write",
+    permissions: ["write"],
     input: z.object({
       sport: z.enum(nonStrengthSports),
       startedAt: dateTime,
@@ -228,7 +228,7 @@ export const toolContracts = {
     description:
       "Record a completed past strength session with its exercises and sets, in order. Unknown exercises are created. The user can undo it from the phone.",
     kind: "write",
-    permission: "write",
+    permissions: ["write"],
     input: z.object({
       startedAt: dateTime,
       durationSeconds: z.int().min(60).max(21_600).describe("Session duration in seconds."),

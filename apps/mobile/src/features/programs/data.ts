@@ -10,14 +10,13 @@ import {
   listVersions,
   loadVersionTree,
   nextSlot,
+  zonePainWindowMs,
 } from "@obnixe/core";
 import type { NextSlot, ProgramEntry, VersionEntry, VersionTree, LatestZonePain } from "@obnixe/core";
 import { changeset, exercise, sportPreference } from "@obnixe/schema";
 import type { EpochMs, Exercise, Id, SportKey, ZoneKey } from "@obnixe/schema";
 import { db, environment } from "@/data/database";
 import type { ExerciseName } from "@/features/programs/format";
-
-const painWindowMs = 14 * 86_400_000;
 
 export function useRevision(): string {
   const { data } = useLiveQuery(db().select({ id: changeset.id }).from(changeset).orderBy(desc(changeset.id)).limit(1));
@@ -82,16 +81,11 @@ export function useExerciseCatalog(): ExerciseCatalog {
 }
 
 export function useZonePain(revision: string): ReadonlyMap<ZoneKey, LatestZonePain> {
-  return useMemo(() => latestZonePain(db(), (environment.now() - painWindowMs) as EpochMs), [revision]);
+  return useMemo(() => latestZonePain(db(), (environment.now() - zonePainWindowMs) as EpochMs), [revision]);
 }
 
 export function useEnabledSports(revision: string): readonly SportKey[] {
   return useMemo(() => enabledSports(db().select().from(sportPreference).all()), [revision]);
-}
-
-export function worstPain(exerciseZones: readonly ZoneKey[], pain: ReadonlyMap<ZoneKey, LatestZonePain>): LatestZonePain | null {
-  const reports = exerciseZones.map((zone) => pain.get(zone)).filter((value): value is LatestZonePain => value !== undefined);
-  return reports.find((report) => report.level === "stop") ?? reports[0] ?? null;
 }
 
 export function readExercise(id: Id): Exercise | null {

@@ -25,6 +25,7 @@ import {
   replaceExerciseMutations,
   painReportMutations,
   skipEntryMutations,
+  stepGramsFor,
   stopEntryMutations,
   stoppedZones,
   workoutProgress,
@@ -51,7 +52,6 @@ import {
   loadLimits,
   repsLimit,
   setText,
-  stepGramsFor,
   targetText,
 } from "@/features/training/workout/liveWorkout";
 import type { Draft, LiveWorkout } from "@/features/training/workout/liveWorkout";

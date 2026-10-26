@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { StyleSheet, View } from "react-native";
-import { durationStepSeconds, gramsToMass, massToGrams } from "@obnixe/core";
+import { durationStepSeconds, gramsToMass, massToGrams, stepGramsFor } from "@obnixe/core";
 import type { WorkoutExercise } from "@obnixe/core";
 import type { MassUnit, StrengthSet } from "@obnixe/schema";
 import { formatClock } from "@/format/durations";
 import { formatNumber } from "@/format/numbers";
-import { loadLimits, repsLimit, stepGramsFor } from "@/features/training/workout/liveWorkout";
+import { loadLimits, repsLimit } from "@/features/training/workout/liveWorkout";
 import type { Draft } from "@/features/training/workout/liveWorkout";
 import { LinkButton, SheetButton } from "@/ui/Button";
 import { Stepper } from "@/ui/Controls";

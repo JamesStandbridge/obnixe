@@ -1,8 +1,8 @@
 import { Pressable, StyleSheet, View } from "react-native";
 import { sports } from "@obnixe/schema";
 import type { Id, ZoneKey } from "@obnixe/schema";
+import { worstPain } from "@obnixe/core";
 import type { DraftItem, DraftSlot, DraftVariant, LatestZonePain } from "@obnixe/core";
-import { worstPain } from "@/features/programs/data";
 import { formatItemDetail, formatPrescription, slotDetail, slotTitle } from "@/features/programs/format";
 import { zoneLabel } from "@/format/labels";
 import type { ExerciseName } from "@/features/programs/format";
