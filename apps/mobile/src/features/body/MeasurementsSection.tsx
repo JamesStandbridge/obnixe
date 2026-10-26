@@ -7,7 +7,7 @@ import { useUndoableWrite, write } from "@/data/write";
 import { formatDayMonth, formatRelativeDay } from "@/features/activity/format";
 import { deviceTimeZone } from "@/format/dates";
 import { formatNumber, formatSigned } from "@/format/numbers";
-import { PadSheet } from "@/features/activity/PadSheet";
+import { PadSheet } from "@/ui/PadSheet";
 import { ControlButton, LinkButton, SheetButton } from "@/ui/Button";
 import { Icon } from "@/ui/icons/Icon";
 import { MenuItem, TextField } from "@/ui/Inputs";

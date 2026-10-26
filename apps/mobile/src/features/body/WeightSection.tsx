@@ -9,12 +9,13 @@ import { formatRelativeDay, formatShortDay, weekdayInitial, weekdayName } from "
 import { capitalize } from "@/format/labels";
 import { deviceTimeZone } from "@/format/dates";
 import { formatNumber, formatSigned } from "@/format/numbers";
-import { PadSheet } from "@/features/activity/PadSheet";
-import type { PadResult } from "@/features/activity/PadSheet";
+import { PadSheet } from "@/ui/PadSheet";
+import type { PadResult } from "@/ui/PadSheet";
 import { Sparkline } from "@/features/body/Sparkline";
 import { LinkButton } from "@/ui/Button";
 import { Section, Row } from "@/ui/Layout";
 import { Text } from "@/ui/Text";
+import { StepButton } from "@/ui/Controls";
 import { useTheme } from "@/ui/theme";
 import { fonts, layout, radii } from "@/ui/tokens";
 
@@ -104,7 +105,7 @@ export function WeightSection({ weighIns, massUnit, children }: WeightSectionPro
           Pesée du jour
         </Text>
         <View style={styles.stepper}>
-          <StepButton label="−" accessibilityLabel={massUnit === "kg" ? "Retirer 100 g" : "Retirer 0,1 lb"} disabled={shown <= min} onPress={() => step(-1)} />
+          <StepButton size="tall" label="−" accessibilityLabel={massUnit === "kg" ? "Retirer 100 g" : "Retirer 0,1 lb"} disabled={shown <= min} onPress={() => step(-1)} />
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={`Saisir le poids, ${label}${!touched && trend.today === null ? ", proposé" : ""}`}
@@ -118,7 +119,7 @@ export function WeightSection({ weighIns, massUnit, children }: WeightSectionPro
               {unit.symbol}
             </Text>
           </Pressable>
-          <StepButton label="+" accessibilityLabel={massUnit === "kg" ? "Ajouter 100 g" : "Ajouter 0,1 lb"} disabled={shown >= max} onPress={() => step(1)} />
+          <StepButton size="tall" label="+" accessibilityLabel={massUnit === "kg" ? "Ajouter 100 g" : "Ajouter 0,1 lb"} disabled={shown >= max} onPress={() => step(1)} />
         </View>
         {context === null ? null : (
           <Text variant="small" tone="secondary" style={styles.comparison}>
@@ -209,10 +210,13 @@ export function WeightSection({ weighIns, massUnit, children }: WeightSectionPro
         {...(dayRow === undefined
           ? {}
           : {
-              removeLabel: "Supprimer la pesée",
-              onRemove: () => {
-                setSheet({ kind: "none" });
-                remove(dayRow);
+              action: {
+                label: "Supprimer la pesée",
+                appearance: "link",
+                onPress: () => {
+                  setSheet({ kind: "none" });
+                  remove(dayRow);
+                },
               },
             })}
         onSubmit={submitPad}
@@ -222,34 +226,9 @@ export function WeightSection({ weighIns, massUnit, children }: WeightSectionPro
   );
 }
 
-interface StepButtonProps {
-  readonly label: string;
-  readonly accessibilityLabel: string;
-  readonly disabled: boolean;
-  readonly onPress: () => void;
-}
-
-function StepButton({ label, accessibilityLabel, disabled, onPress }: StepButtonProps) {
-  const { colors } = useTheme();
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel}
-      accessibilityState={{ disabled }}
-      disabled={disabled}
-      onPress={onPress}
-      style={({ pressed }) => [styles.step, { backgroundColor: pressed ? colors.surfacePress : colors.surface, borderColor: colors.controlBorder }, disabled && styles.disabled]}
-    >
-      <Text style={styles.stepLabel}>{label}</Text>
-    </Pressable>
-  );
-}
-
 const styles = StyleSheet.create({
   weight: { marginTop: 18, gap: 10 },
   stepper: { flexDirection: "row", alignItems: "center", gap: 6 },
-  step: { width: 64, height: 72, borderRadius: radii.control, borderWidth: layout.borderControl, alignItems: "center", justifyContent: "center" },
-  stepLabel: { fontFamily: fonts.figure700, fontSize: 22, lineHeight: 24 },
   stepValue: { flex: 1, height: 72, borderRadius: radii.control, flexDirection: "row", alignItems: "baseline", justifyContent: "center", gap: 6 },
   weightValue: { fontFamily: fonts.figure800, fontSize: 64, lineHeight: 72, letterSpacing: -0.6 },
   unit: { fontFamily: fonts.text600 },
@@ -260,7 +239,6 @@ const styles = StyleSheet.create({
   day: { flex: 1, minHeight: 52, paddingVertical: 10, alignItems: "center", gap: 6 },
   dayInitial: { fontFamily: fonts.text700, fontSize: 12, lineHeight: 12 },
   dayValue: { fontFamily: fonts.figure700, fontSize: 16, lineHeight: 17 },
-  disabled: { opacity: 0.4 },
   spark: { marginTop: 12, marginBottom: 4 },
   more: { alignItems: "center", marginTop: 4 },
 });

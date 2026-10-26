@@ -72,19 +72,3 @@ export function lastPainLabel(last: LastPain, today: LocalDate): string {
 export function shiftDay(date: LocalDate, days: number): LocalDate {
   return addDays(date, days);
 }
-
-export function durationFromDigits(digits: string): number {
-  const padded = digits.padStart(6, "0");
-  const hours = Number(padded.slice(0, -4));
-  const minutes = Number(padded.slice(-4, -2));
-  const seconds = Number(padded.slice(-2));
-  return hours * 3600 + minutes * 60 + seconds;
-}
-
-export function formatDigitsAsClock(digits: string): string {
-  const padded = digits.padStart(4, "0");
-  const hours = padded.slice(0, -4);
-  const minutes = padded.slice(-4, -2);
-  const seconds = padded.slice(-2);
-  return hours === "" ? `${Number(minutes)}:${seconds}` : `${Number(hours)}:${minutes}:${seconds}`;
-}

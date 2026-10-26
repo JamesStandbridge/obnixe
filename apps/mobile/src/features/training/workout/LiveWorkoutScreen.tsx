@@ -56,8 +56,8 @@ import {
   targetText,
 } from "@/features/training/workout/liveWorkout";
 import type { Draft, LiveWorkout } from "@/features/training/workout/liveWorkout";
-import { PadSheet } from "@/features/training/workout/PadSheet";
-import type { PadRequest } from "@/features/training/workout/PadSheet";
+import { SetValuePad } from "@/features/training/workout/SetValuePad";
+import type { PadRequest } from "@/features/training/workout/SetValuePad";
 import { PainSheet } from "@/features/training/workout/PainSheet";
 import type { PainStep, PainZoneOption } from "@/features/training/workout/PainSheet";
 import { Readout } from "@/features/training/workout/Readout";
@@ -670,7 +670,7 @@ export function LiveWorkoutScreen({ live }: LiveWorkoutScreenProps) {
           setSheet({ open: true, mode: "replace" });
         }}
       />
-      <PadSheet request={pad?.request ?? null} onClose={() => setPad(null)} onConfirm={confirmPad} />
+      <SetValuePad request={pad?.request ?? null} onClose={() => setPad(null)} onConfirm={confirmPad} />
       <ExerciseSheet
         open={sheet.open}
         mode={sheet.mode}

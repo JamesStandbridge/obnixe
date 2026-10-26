@@ -38,7 +38,7 @@ import type { DraftAction } from "@/features/programs/editor/draftReducer";
 import { ItemSheet, newItem, withExercise } from "@/features/programs/editor/ItemSheet";
 import { SlotList } from "@/features/programs/editor/SlotList";
 import type { ItemMarks } from "@/features/programs/editor/SlotList";
-import { AddSlotSheet, NewVariantSheet, PadSheet, SlotSheet, padFieldLabel } from "@/features/programs/editor/SlotSheets";
+import { AddSlotSheet, NewVariantSheet, SlotSheet, TargetPadSheet } from "@/features/programs/editor/SlotSheets";
 import { ControlButton, LinkButton, PrimaryButton } from "@/ui/Button";
 import { Stepper } from "@/ui/Controls";
 import { Choices, IconButton } from "@/ui/Inputs";
@@ -453,20 +453,20 @@ function EditorSheets(props: EditorSheetsProps) {
       const slot = findSlot(sheet.slotId);
       if (slot === null) return null;
       return (
-        <Sheet open={open} title={padFieldLabel(slot, sheet.field)} context={`${slot.name} · objectif`} onClose={close}>
-          <PadSheet
-            key={`${slot.lineageId}-${sheet.field}`}
-            slot={slot}
-            fieldKey={sheet.field}
-            onValue={(value) => {
-              const targetValues = { ...slot.targetValues };
-              if (value === null) delete targetValues[sheet.field];
-              else targetValues[sheet.field] = value;
-              dispatch({ type: "update_slot", slotId: slot.lineageId, patch: { targetValues } });
-              close();
-            }}
-          />
-        </Sheet>
+        <TargetPadSheet
+          key={`${slot.lineageId}-${sheet.field}`}
+          open={open}
+          slot={slot}
+          fieldKey={sheet.field}
+          onValue={(value) => {
+            const targetValues = { ...slot.targetValues };
+            if (value === null) delete targetValues[sheet.field];
+            else targetValues[sheet.field] = value;
+            dispatch({ type: "update_slot", slotId: slot.lineageId, patch: { targetValues } });
+            close();
+          }}
+          onClose={close}
+        />
       );
     }
     case "picker": {

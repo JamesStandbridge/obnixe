@@ -8,7 +8,8 @@ import type { QuantityUnit } from "@/features/programs/units";
 import type { DraftAction } from "@/features/programs/editor/draftReducer";
 import { ControlButton, SheetButton } from "@/ui/Button";
 import { Switch } from "@/ui/Controls";
-import { IconButton, MenuItem, NumberPad, Question, TextField, parsePadValue } from "@/ui/Inputs";
+import { IconButton, MenuItem, Question, TextField } from "@/ui/Inputs";
+import { PadSheet } from "@/ui/PadSheet";
 import { SportIcon } from "@/ui/icons/SportIcon";
 import { Text } from "@/ui/Text";
 
@@ -117,14 +118,12 @@ export function NewVariantSheet({ slot, source, onCreate }: NewVariantSheetProps
   );
 }
 
-interface PadSheetProps {
+interface TargetPadSheetProps {
+  readonly open: boolean;
   readonly slot: DraftSlot;
   readonly fieldKey: string;
   readonly onValue: (value: FieldValue | null) => void;
-}
-
-export function padFieldLabel(slot: DraftSlot, fieldKey: string): string {
-  return sports[slot.sport].sessionFields.find((field) => field.key === fieldKey)?.label ?? fieldKey;
+  readonly onClose: () => void;
 }
 
 function rangeWarning(min: number | null, max: number | null, unit: QuantityUnit): string {
@@ -133,28 +132,30 @@ function rangeWarning(min: number | null, max: number | null, unit: QuantityUnit
   return `Au plus ${padValue(max ?? 0, unit)} ${unit.unit}`.trim();
 }
 
-export function PadSheet({ slot, fieldKey, onValue }: PadSheetProps) {
+export function TargetPadSheet({ open, slot, fieldKey, onValue, onClose }: TargetPadSheetProps) {
   const field = sports[slot.sport].sessionFields.find((entry) => entry.key === fieldKey);
-  const unit = field?.type === "quantity" ? quantityUnit(field.dimension, field.key, slot.sport) : null;
+  if (field?.type !== "quantity") return null;
+  const unit = quantityUnit(field.dimension, field.key, slot.sport);
   const current = slot.targetValues[fieldKey];
-  const [value, setValue] = useState(() => (unit !== null && typeof current === "number" ? padValue(current, unit) : ""));
-  if (field?.type !== "quantity" || unit === null) return null;
-  const parsed = parsePadValue(value);
-  const stored = parsed === null ? null : Math.round(parsed * unit.factor);
-  const outOfRange = stored !== null && ((field.min !== null && stored < field.min) || (field.max !== null && stored > field.max));
+  const outOfRange = (stored: number): boolean => (field.min !== null && stored < field.min) || (field.max !== null && stored > field.max);
   return (
-    <View>
-      <NumberPad
-        value={value}
-        unit={unit.unit}
-        placeholder="0"
-        decimals={unit.decimals}
-        onChange={setValue}
-        {...(outOfRange ? { warning: rangeWarning(field.min, field.max, unit) } : {})}
-      />
-      <SheetButton label={stored === null ? "Valider" : `Utiliser ${value} ${unit.unit}`.trim()} disabled={stored === null || outOfRange} onPress={() => onValue(stored)} style={styles.done} />
-      {typeof current === "number" ? <ControlButton label="Effacer l'objectif" onPress={() => onValue(null)} style={styles.remove} /> : null}
-    </View>
+    <PadSheet
+      open={open}
+      title={field.label}
+      context={`${slot.name} · objectif`}
+      mode="number"
+      unit={unit.unit}
+      decimals={unit.decimals}
+      current={null}
+      initialBuffer={typeof current === "number" ? padValue(current, unit) : ""}
+      validate={(value) => (outOfRange(Math.round(value * unit.factor)) ? rangeWarning(field.min, field.max, unit) : null)}
+      confirmLabel={(entry) => (entry.value === null ? "Valider" : `Utiliser ${entry.buffer} ${unit.unit}`.trim())}
+      {...(typeof current === "number" ? { action: { label: "Effacer l'objectif", appearance: "control", onPress: () => onValue(null) } } : {})}
+      onSubmit={(result) => {
+        if (result.kind === "value") onValue(Math.round(result.value * unit.factor));
+      }}
+      onClose={onClose}
+    />
   );
 }
 

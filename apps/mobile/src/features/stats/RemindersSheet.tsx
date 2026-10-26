@@ -10,6 +10,7 @@ import { SheetButton } from "@/ui/Button";
 import { Sheet } from "@/ui/Overlays";
 import { useSnackbar } from "@/ui/SnackbarHost";
 import { Text } from "@/ui/Text";
+import { StepButton } from "@/ui/Controls";
 import { useTheme } from "@/ui/theme";
 import { fonts, layout, radii } from "@/ui/tokens";
 import { weekdayAbbrev, weekdayLetters } from "@/features/stats/format";
@@ -106,11 +107,11 @@ export function RemindersSheet({ open, mask: savedMask, minutes: savedMinutes, t
           Heure du rappel
         </Text>
         <View style={styles.stepper}>
-          <StepButton label="−" accessibilityLabel="30 minutes plus tôt" disabled={minutes <= reminderMinutesRange.min} onPress={() => setMinutes(clampReminderMinutes(minutes - reminderMinutesRange.step))} />
+          <StepButton size="compact" label="−" accessibilityLabel="30 minutes plus tôt" disabled={minutes <= reminderMinutesRange.min} onPress={() => setMinutes(clampReminderMinutes(minutes - reminderMinutesRange.step))} />
           <View style={styles.stepValue} accessible accessibilityLabel={`Rappel à ${formatTimeOfDay(minutes)}`}>
             <Text style={styles.stepFigure}>{formatTimeOfDay(minutes)}</Text>
           </View>
-          <StepButton label="+" accessibilityLabel="30 minutes plus tard" disabled={minutes >= reminderMinutesRange.max} onPress={() => setMinutes(clampReminderMinutes(minutes + reminderMinutesRange.step))} />
+          <StepButton size="compact" label="+" accessibilityLabel="30 minutes plus tard" disabled={minutes >= reminderMinutesRange.max} onPress={() => setMinutes(clampReminderMinutes(minutes + reminderMinutesRange.step))} />
         </View>
       </View>
       <SheetButton
@@ -123,29 +124,6 @@ export function RemindersSheet({ open, mask: savedMask, minutes: savedMinutes, t
   );
 }
 
-interface StepButtonProps {
-  readonly label: string;
-  readonly accessibilityLabel: string;
-  readonly disabled: boolean;
-  readonly onPress: () => void;
-}
-
-function StepButton({ label, accessibilityLabel, disabled, onPress }: StepButtonProps) {
-  const { colors } = useTheme();
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel}
-      accessibilityState={{ disabled }}
-      disabled={disabled}
-      onPress={onPress}
-      style={({ pressed }) => [styles.step, { backgroundColor: pressed ? colors.surfacePress : colors.surface, borderColor: colors.controlBorder }, disabled && styles.disabled]}
-    >
-      <Text style={styles.stepLabel}>{label}</Text>
-    </Pressable>
-  );
-}
-
 const styles = StyleSheet.create({
   days: { marginTop: 14, flexDirection: "row", gap: 6 },
   day: { flex: 1, minHeight: 48, borderRadius: radii.control, alignItems: "center", justifyContent: "center" },
@@ -153,10 +131,7 @@ const styles = StyleSheet.create({
   time: { marginTop: 14, flexDirection: "row", alignItems: "center", gap: 12 },
   timeLabel: { flex: 1 },
   stepper: { width: 176, flexDirection: "row", alignItems: "center", gap: 6 },
-  step: { width: 52, height: 52, borderRadius: radii.control, borderWidth: layout.borderControl, alignItems: "center", justifyContent: "center" },
-  stepLabel: { fontFamily: fonts.figure700, fontSize: 22, lineHeight: 24 },
   stepValue: { flex: 1, height: 52, alignItems: "center", justifyContent: "center" },
   stepFigure: { fontFamily: fonts.figure800, fontSize: 28, lineHeight: 32, letterSpacing: -0.3 },
   export: { marginTop: 14 },
-  disabled: { opacity: 0.4 },
 });

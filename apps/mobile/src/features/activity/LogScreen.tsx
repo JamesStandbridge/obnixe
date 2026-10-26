@@ -35,8 +35,8 @@ import { deviceTimeZone } from "@/format/dates";
 import { formatLongClock } from "@/format/durations";
 import { CatalogueSheet, ChoiceSheet, GearSheet, TextSheet, WhenSheet, ZonePickerSheet, whenLabel } from "@/features/activity/LogSheets";
 import type { WhenValue } from "@/features/activity/LogSheets";
-import { PadSheet } from "@/features/activity/PadSheet";
-import type { PadResult } from "@/features/activity/PadSheet";
+import { PadSheet } from "@/ui/PadSheet";
+import type { PadResult } from "@/ui/PadSheet";
 import { fieldUnit, formatKilometers, formatQuantity, formatRatio, gearLabel, sportArticle } from "@/features/activity/presentation";
 import { zoneLabel } from "@/format/labels";
 import { LinkButton, PrimaryButton } from "@/ui/Button";
@@ -579,11 +579,14 @@ export function LogScreen() {
         }}
         {...(sheet.kind === "pad" && ((sheet.target.kind === "field" && padSheet?.field !== emphasis && typeof values[sheet.target.key] === "number") || (sheet.target.kind === "paused" && paused > 0))
           ? {
-              removeLabel: "Retirer",
-              onRemove: () => {
-                if (sheet.target.kind === "paused") setPaused(0);
-                else if (sheet.target.kind === "field") setValues(withValue(values, sheet.target.key, null));
-                setSheet({ kind: "none" });
+              action: {
+                label: "Retirer",
+                appearance: "link",
+                onPress: () => {
+                  if (sheet.target.kind === "paused") setPaused(0);
+                  else if (sheet.target.kind === "field") setValues(withValue(values, sheet.target.key, null));
+                  setSheet({ kind: "none" });
+                },
               },
             }
           : {})}

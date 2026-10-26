@@ -9,14 +9,14 @@ import { environment } from "@/data/database";
 import { formatKilometers } from "@/features/activity/presentation";
 import { zoneLabel } from "@/format/labels";
 import { ControlButton, LinkButton, SheetButton } from "@/ui/Button";
-import { Segmented } from "@/ui/Controls";
+import { Segmented, StepButton } from "@/ui/Controls";
 import { Icon } from "@/ui/icons/Icon";
 import { SportIcon } from "@/ui/icons/SportIcon";
 import { Choices, MenuItem, TextField } from "@/ui/Inputs";
 import { Sheet } from "@/ui/Overlays";
 import { Text } from "@/ui/Text";
 import { useTheme } from "@/ui/theme";
-import { fonts, layout, radii } from "@/ui/tokens";
+import { fonts } from "@/ui/tokens";
 
 export type WhenDay = "today" | "yesterday" | "other";
 
@@ -39,30 +39,6 @@ export function whenLabel(value: WhenValue): string {
       return unreachable;
     }
   }
-}
-
-interface StepButtonProps {
-  readonly label: string;
-  readonly accessibilityLabel: string;
-  readonly disabled?: boolean;
-  readonly onPress: () => void;
-  readonly icon?: "back" | "forward";
-}
-
-function StepButton({ label, accessibilityLabel, disabled = false, onPress, icon }: StepButtonProps) {
-  const { colors } = useTheme();
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel}
-      accessibilityState={{ disabled }}
-      disabled={disabled}
-      onPress={onPress}
-      style={({ pressed }) => [styles.step, { backgroundColor: pressed ? colors.surfacePress : colors.surface, borderColor: colors.controlBorder }, disabled && styles.disabled]}
-    >
-      {icon === undefined ? <Text style={styles.stepLabel}>{label}</Text> : <Icon name={icon} />}
-    </Pressable>
-  );
 }
 
 interface WhenSheetProps {
@@ -111,12 +87,11 @@ export function WhenSheet({ open, value, onConfirm, onClose }: WhenSheetProps) {
       />
       {draft.day === "other" ? (
         <View style={styles.stepper}>
-          <StepButton label="" icon="back" accessibilityLabel="Jour précédent" onPress={() => setDraft({ ...draft, date: shiftDay(draft.date, -1) })} />
+          <StepButton icon="back" accessibilityLabel="Jour précédent" onPress={() => setDraft({ ...draft, date: shiftDay(draft.date, -1) })} />
           <View style={styles.stepValue} accessibilityLiveRegion="polite">
             <Text style={styles.dayValue}>{formatShortDay(draft.date)}</Text>
           </View>
           <StepButton
-            label=""
             icon="forward"
             accessibilityLabel="Jour suivant"
             disabled={shiftDay(draft.date, 1) >= shiftDay(today, -1)}
@@ -285,12 +260,9 @@ export function ZonePickerSheet({ open, zones, onPick, onClose }: ZonePickerShee
 
 const styles = StyleSheet.create({
   stepper: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 14 },
-  step: { width: 56, height: 56, borderRadius: radii.control, borderWidth: layout.borderControl, alignItems: "center", justifyContent: "center" },
-  stepLabel: { fontFamily: fonts.figure700, fontSize: 22, lineHeight: 24 },
   stepValue: { flex: 1, height: 56, alignItems: "center", justifyContent: "center" },
   dayValue: { fontFamily: fonts.text700, fontSize: 18, lineHeight: 22 },
   confirm: { marginTop: 14 },
-  disabled: { opacity: 0.4 },
   menu: { marginTop: 8 },
   menuLabel: { fontFamily: fonts.text600, fontSize: 17, lineHeight: 22 },
   gearRow: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 60, borderTopWidth: 1 },

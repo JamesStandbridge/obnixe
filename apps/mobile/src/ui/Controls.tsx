@@ -1,6 +1,9 @@
 import { useEffect, useRef } from "react";
 import { Animated, Pressable, StyleSheet, View } from "react-native";
+import type { ViewStyle } from "react-native";
 import type { PainLevel } from "@obnixe/schema";
+import { Icon } from "@/ui/icons/Icon";
+import type { IconName } from "@/ui/icons/Icon";
 import { easeOut, usePressScale } from "@/ui/motion";
 import { Text } from "@/ui/Text";
 import { useTheme } from "@/ui/theme";
@@ -102,14 +105,24 @@ export function Switch({ value, onChange, label }: SwitchProps) {
   );
 }
 
-interface StepButtonProps {
-  readonly label: string;
-  readonly accessibilityLabel: string;
-  readonly disabled: boolean;
-  readonly onPress: () => void;
-}
+export type StepButtonSize = "compact" | "regular" | "tall";
 
-function StepButton({ label, accessibilityLabel, disabled, onPress }: StepButtonProps) {
+type StepButtonFace = { readonly label: string; readonly icon?: never } | { readonly icon: IconName; readonly label?: never };
+
+type StepButtonProps = StepButtonFace & {
+  readonly accessibilityLabel: string;
+  readonly disabled?: boolean;
+  readonly size?: StepButtonSize;
+  readonly onPress: () => void;
+};
+
+const stepSizes: Readonly<Record<StepButtonSize, ViewStyle>> = {
+  compact: { width: 52, height: 52 },
+  regular: { width: 56, minHeight: 56 },
+  tall: { width: 64, height: 72 },
+};
+
+export function StepButton({ accessibilityLabel, disabled = false, size = "regular", onPress, ...face }: StepButtonProps) {
   const { colors } = useTheme();
   const press = usePressScale(0.96);
   return (
@@ -117,16 +130,18 @@ function StepButton({ label, accessibilityLabel, disabled, onPress }: StepButton
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={accessibilityLabel}
+        accessibilityState={{ disabled }}
         disabled={disabled}
         onPress={onPress}
         onPressIn={press.onPressIn}
         onPressOut={press.onPressOut}
         style={({ pressed }) => [
           styles.step,
+          stepSizes[size],
           { backgroundColor: pressed ? colors.surfacePress : colors.surface, borderColor: colors.controlBorder },
         ]}
       >
-        <Text style={styles.stepLabel}>{label}</Text>
+        {face.icon === undefined ? <Text style={styles.stepLabel}>{face.label}</Text> : <Icon name={face.icon} />}
       </Pressable>
     </Animated.View>
   );
@@ -226,8 +241,6 @@ const styles = StyleSheet.create({
   thumb: { width: 20, height: 20, borderRadius: 10 },
   stepper: { flexDirection: "row", alignItems: "center", gap: 6 },
   step: {
-    width: 56,
-    minHeight: 56,
     borderRadius: radii.control,
     borderWidth: layout.borderControl,
     alignItems: "center",
