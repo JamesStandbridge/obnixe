@@ -1,0 +1,33 @@
+diff --git a/web/WorkerChannel.ts b/web/WorkerChannel.ts
+index 2c5ff82614a692a5e4e69c43a640ba43e5a68a9c..a555f1f7612b85c2e2abba8b1d0414addefbdf02 100644
+--- a/web/WorkerChannel.ts
++++ b/web/WorkerChannel.ts
+@@ -124,24 +124,16 @@ export function invokeWorkerSync<T extends SQLiteWorkerMessageType & keyof Resul
+     resultBuffer,
+   });
+ 
+-  let i = 0;
+   // @ts-expect-error: Remove this when TypeScript supports Atomics.pause
+   const useAtomicsPause = typeof Atomics.pause === 'function';
++  const deadline = performance.now() + 30_000;
+   while (Atomics.load(lock, 0) === PENDING) {
+-    ++i;
+-
++    if (performance.now() > deadline) {
++      throw new Error('Sync operation timeout');
++    }
+     if (useAtomicsPause) {
+-      if (i > 1_000_000) {
+-        throw new Error('Sync operation timeout');
+-      }
+       // @ts-expect-error: Remove this when TypeScript supports Atomics.pause
+       Atomics.pause();
+-    } else {
+-      // NOTE(kudo): Unfortunate for the busy loop,
+-      // because we don't have a way for main thread to yield its execution to other callbacks.
+-      if (i > 1000_000_000) {
+-        throw new Error('Sync operation timeout');
+-      }
+     }
+   }
+ 

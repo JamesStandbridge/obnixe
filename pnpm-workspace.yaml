@@ -4,3 +4,5 @@ packages:
 allowBuilds:
   better-sqlite3: true
   esbuild: true
+patchedDependencies:
+  expo-sqlite@58.0.14: patches/expo-sqlite@58.0.14.patch
