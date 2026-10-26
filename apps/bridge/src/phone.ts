@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { createServer } from "node:http";
 import type { IncomingMessage, Server } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -13,15 +14,19 @@ import {
   derivePairingSecrets,
   deriveResumeSecrets,
   encodeFrame,
+  formatInvite,
   generateEphemeralKeyPair,
   heartbeatIntervalMs,
   identityBytes,
+  inviteTtlMs,
   isPairingCode,
+  maxInviteNameLength,
   maxPairingAttempts,
   nonceBytes,
   openingBytes,
   pairingCodeTtlMs,
   pairingSecretBytes,
+  pairingTokenBytes,
   parsePhoneMessage,
   parseSessionOpenResult,
   parseToolOutcome,
@@ -35,8 +40,23 @@ import {
   sameBytes,
   sharedSecret,
   toBase64,
+  toBase64Url,
 } from "@obnixe/core/agent/wire";
-import type { BridgeMessage, EphemeralKeyPair, Frame, PairingSecrets, PairingTranscript, RandomBytes, RejectionReason, SessionKeys, ToolOutcome } from "@obnixe/core/agent/wire";
+import type {
+  BridgeMessage,
+  EphemeralKeyPair,
+  Frame,
+  PairingSecret,
+  PairingSecretKind,
+  PairingSecrets,
+  PairingTranscript,
+  RandomBytes,
+  RejectionReason,
+  RelayEndpoint,
+  SessionKeys,
+  ToolOutcome,
+} from "@obnixe/core/agent/wire";
+import type { PhoneHosts } from "./listen.ts";
 import type { PairingFile } from "./pairings.ts";
 
 const maxPending = 8;
@@ -45,11 +65,13 @@ const defaultHandshakeTimeoutMs = 10_000;
 const defaultProofTimeoutMs = 10_000;
 const policyViolation = 1008;
 const tryAgainLater = 1013;
+const inviteIdBytes = 9;
 
 export interface EndpointOptions {
   readonly port: number;
-  readonly listenHost?: string;
+  readonly hosts: () => PhoneHosts;
   readonly hostLabel: string;
+  readonly relayUrl: string | null;
   readonly pairings: PairingFile;
   readonly randomBytes: RandomBytes;
   readonly log: (line: string) => void;
@@ -60,6 +82,7 @@ export interface EndpointOptions {
 }
 
 interface Hello {
+  readonly secret: PairingSecretKind;
   readonly transcript: PairingTranscript;
   readonly shared: Uint8Array;
   readonly receivedAt: number;
@@ -81,6 +104,10 @@ interface Pending {
 }
 
 type Candidate = Pending & { readonly hello: Hello };
+
+function isCandidate(pending: Pending): pending is Candidate {
+  return pending.hello !== null;
+}
 
 type Verdict =
   | { readonly kind: "match"; readonly candidate: Candidate; readonly secrets: PairingSecrets; readonly opening: Uint8Array }
@@ -123,6 +150,37 @@ export interface ForgetResult {
   readonly devices: readonly string[];
 }
 
+export type InviteState =
+  | { readonly kind: "waiting"; readonly expiresAt: number }
+  | { readonly kind: "paired"; readonly device: string; readonly client: string }
+  | { readonly kind: "expired" }
+  | { readonly kind: "refused" }
+  | { readonly kind: "failed"; readonly message: string };
+
+export interface InviteStatus {
+  readonly id: string;
+  readonly state: InviteState;
+}
+
+export interface InviteTicket {
+  readonly id: string;
+  readonly url: string;
+  readonly name: string;
+  readonly hosts: readonly string[];
+  readonly expiresAt: number;
+}
+
+export type InviteResult = { readonly kind: "ready"; readonly ticket: InviteTicket } | { readonly kind: "no_address" };
+
+/** The QR invitation: a bridge-generated token that stands in for the code, live until used, expired or refused too often. */
+interface Invitation {
+  readonly ticket: InviteTicket;
+  readonly token: Uint8Array;
+  failures: number;
+  consumed: boolean;
+  state: InviteState;
+}
+
 export interface EndpointStatus {
   readonly phone: "none" | "waiting" | "connected";
   readonly device: string | null;
@@ -130,7 +188,7 @@ export interface EndpointStatus {
 }
 
 export const notConnectedMessage =
-  "The Obnixe phone is not connected. Ask the user to open the Agent screen of the Obnixe app (Aujourd'hui, Connecter un agent): a phone paired before reconnects by itself, otherwise run `obnixe-bridge pair` in a terminal with the code shown on the phone, then retry.";
+  "The Obnixe phone is not connected. Ask the user to open the Agent screen of the Obnixe app (Aujourd'hui, Connecter un agent): a phone paired before reconnects by itself, otherwise ask them to run `obnixe-bridge pair` in a terminal and scan the QR code it shows with Scanner le QR code du Mac, then retry.";
 
 /** WebSocket endpoint the phone dials: verifies pairing proofs, then relays sealed JSON-RPC tool calls to the phone. */
 export class PhoneEndpoint {
@@ -138,7 +196,10 @@ export class PhoneEndpoint {
   private readonly now: () => number;
   private readonly bridgeId: string;
   private readonly pendings = new Map<WebSocket, Pending>();
-  private http: Server | null = null;
+  private readonly listeners = new Map<string, Server>();
+  private port = 0;
+  private announced: readonly string[] = [];
+  private invitation: Invitation | null = null;
   private sockets: WebSocketServer | null = null;
   private heartbeat: ReturnType<typeof setInterval> | null = null;
   private active: Active | null = null;
@@ -151,22 +212,68 @@ export class PhoneEndpoint {
     this.bridgeId = options.pairings.bridgeId();
   }
 
+  /** Binds every phone address on one port; the first address picks the port and fails loudly, later ones only log. */
   async listen(): Promise<number> {
+    const sockets = new WebSocketServer({ noServer: true, maxPayload: 4 * 1024 * 1024 });
+    sockets.on("connection", (socket, request) => this.accept(socket, request));
+    this.sockets = sockets;
+    const hosts = this.options.hosts();
+    const [first, ...others] = hosts.bind;
+    if (first === undefined) throw new Error("No address to listen on");
+    this.port = await this.bind(sockets, first, this.options.port);
+    for (const address of others) await this.bindIfAvailable(sockets, address);
+    this.announced = this.advertised(hosts);
+    this.heartbeat = setInterval(() => this.tick(), heartbeatIntervalMs);
+    return this.port;
+  }
+
+  /** Follows interface changes such as a new DHCP lease: binds new addresses, drops vanished ones and tells the phone. */
+  async refreshHosts(): Promise<void> {
+    const sockets = this.sockets;
+    if (sockets === null) return;
+    const hosts = this.options.hosts();
+    for (const [address, http] of [...this.listeners]) {
+      if (hosts.bind.includes(address)) continue;
+      this.listeners.delete(address);
+      http.close();
+    }
+    for (const address of hosts.bind) if (!this.listeners.has(address)) await this.bindIfAvailable(sockets, address);
+    const advertised = this.advertised(hosts);
+    if (advertised.join(",") === this.announced.join(",")) return;
+    this.announced = advertised;
+    const active = this.active;
+    if (active?.open === true) this.notify(active, { jsonrpc: "2.0", method: "session.hosts", params: { hosts: [...advertised] } });
+  }
+
+  private advertised(hosts: PhoneHosts): readonly string[] {
+    return hosts.advertise.map((address) => `${address}:${this.port}`);
+  }
+
+  private async bind(sockets: WebSocketServer, address: string, port: number): Promise<number> {
     const http = createServer((_request, response) => {
       response.writeHead(426, { "content-type": "text/plain" }).end("Obnixe bridge expects a WebSocket");
     });
+    http.on("upgrade", (request, socket, head) => {
+      sockets.handleUpgrade(request, socket, head, (upgraded) => sockets.emit("connection", upgraded, request));
+    });
     await new Promise<void>((resolve, reject) => {
       http.once("error", reject);
-      http.listen(this.options.port, this.options.listenHost, () => {
+      http.listen(port, address, () => {
         http.off("error", reject);
         resolve();
       });
     });
-    this.http = http;
-    this.sockets = new WebSocketServer({ server: http, maxPayload: 4 * 1024 * 1024 });
-    this.sockets.on("connection", (socket, request) => this.accept(socket, request));
-    this.heartbeat = setInterval(() => this.tick(), heartbeatIntervalMs);
+    this.listeners.set(address, http);
     return (http.address() as AddressInfo).port;
+  }
+
+  private async bindIfAvailable(sockets: WebSocketServer, address: string): Promise<void> {
+    try {
+      await this.bind(sockets, address, this.port);
+    } catch (error) {
+      if (!isUnavailableAddress(error)) throw error;
+      this.options.log(`Could not listen on ${address}:${this.port} (${error.code}); the phone cannot use that address.`);
+    }
   }
 
   markUnavailable(reason: string): void {
@@ -179,6 +286,40 @@ export class PhoneEndpoint {
     if (active?.open === true) this.notify(active, { jsonrpc: "2.0", method: "session.client", params: { client } });
   }
 
+  /** The live invitation, or a new one when none is live; this is what the control page shows. */
+  invite(): InviteResult {
+    const live = this.liveInvitation();
+    return live === null ? this.renewInvite() : { kind: "ready", ticket: live.ticket };
+  }
+
+  /** Replaces any earlier invitation with a fresh single-use token valid for five minutes. */
+  renewInvite(): InviteResult {
+    if (this.announced.length === 0) return { kind: "no_address" };
+    const token = this.options.randomBytes(pairingTokenBytes);
+    const name = this.options.hostLabel.slice(0, maxInviteNameLength);
+    const relay: RelayEndpoint | null = this.options.relayUrl === null ? null : { url: this.options.relayUrl, room: relayRoom(this.bridgeId) };
+    const expiresAt = this.now() + inviteTtlMs;
+    const url = formatInvite({ bridgeId: this.bridgeId, token, name, hosts: this.announced, relay });
+    const ticket: InviteTicket = { id: toBase64Url(this.options.randomBytes(inviteIdBytes)), url, name, hosts: this.announced, expiresAt };
+    this.invitation = { ticket, token, failures: 0, consumed: false, state: { kind: "waiting", expiresAt } };
+    this.options.log("A pairing QR code is ready for five minutes.");
+    return { kind: "ready", ticket };
+  }
+
+  inviteStatus(): InviteStatus | null {
+    this.liveInvitation();
+    const invitation = this.invitation;
+    return invitation === null ? null : { id: invitation.ticket.id, state: invitation.state };
+  }
+
+  private liveInvitation(): Invitation | null {
+    const invitation = this.invitation;
+    if (invitation === null || invitation.consumed || invitation.state.kind !== "waiting") return null;
+    if (this.now() <= invitation.ticket.expiresAt) return invitation;
+    invitation.state = { kind: "expired" };
+    return null;
+  }
+
   status(): EndpointStatus {
     if (this.active?.open === true) return { phone: "connected", device: this.active.device, client: this.client };
     const waiting = [...this.pendings.values()].find((pending) => pending.hello !== null);
@@ -189,9 +330,9 @@ export class PhoneEndpoint {
     const code = input.replace(/\s+/g, "");
     if (!isPairingCode(code)) return { kind: "invalid_code" };
     this.expirePending();
-    const candidates = [...this.pendings.values()].filter((pending): pending is Candidate => pending.hello !== null && pending.attempt === null);
+    const candidates = [...this.pendings.values()].filter((pending): pending is Candidate => pending.hello?.secret === "code" && pending.attempt === null);
     if (candidates.length === 0) return { kind: "no_phone" };
-    const verdicts = await Promise.all(candidates.map((candidate) => this.attempt(candidate, code)));
+    const verdicts = await Promise.all(candidates.map((candidate) => this.attempt(candidate, { kind: "code", code })));
     for (const verdict of verdicts) {
       if (verdict.kind === "match" && this.pendings.get(verdict.candidate.socket) === verdict.candidate) return this.welcome(verdict);
     }
@@ -231,15 +372,18 @@ export class PhoneEndpoint {
     }
     if (this.active !== null) this.drop(this.active, "bridge stopped");
     const sockets = this.sockets;
-    const http = this.http;
     if (sockets !== null) {
       for (const socket of sockets.clients) socket.terminate();
       await new Promise<void>((resolve) => sockets.close(() => resolve()));
     }
-    if (http !== null) {
-      http.closeAllConnections();
-      await new Promise<void>((resolve) => http.close(() => resolve()));
-    }
+    const listeners = [...this.listeners.values()];
+    this.listeners.clear();
+    await Promise.all(
+      listeners.map((http) => {
+        http.closeAllConnections();
+        return new Promise<void>((resolve) => http.close(() => resolve()));
+      }),
+    );
   }
 
   /**
@@ -339,8 +483,57 @@ export class PhoneEndpoint {
     const transcript = this.transcriptOf(pending, frame);
     const shared = sharedSecret(pending.keyPair.secretKey, transcript.phoneKey);
     clearTimeout(pending.handshakeTimer);
-    pending.hello = { transcript, shared, receivedAt: this.now() };
-    this.options.log(`${frame.device} is waiting to pair. Run \`obnixe-bridge pair\` and enter the code shown on the phone.`);
+    pending.hello = { secret: frame.secret, transcript, shared, receivedAt: this.now() };
+    switch (frame.secret) {
+      case "code":
+        this.options.log(`${frame.device} is waiting to pair. Run \`obnixe-bridge pair <code>\` with the code shown on the phone.`);
+        return;
+      case "token":
+        if (isCandidate(pending)) void this.pairWithToken(pending);
+        return;
+      default: {
+        const unreachable: never = frame.secret;
+        throw new ProtocolError(`Unhandled pairing secret ${String(unreachable)}`);
+      }
+    }
+  }
+
+  /** Pairs a phone that scanned the QR code; the token is spent by the first matching proof and burnt after too many failures. */
+  private async pairWithToken(candidate: Candidate): Promise<void> {
+    const device = candidate.hello.transcript.device;
+    const invitation = this.liveInvitation();
+    if (invitation === null) {
+      this.options.log(`${device} scanned a QR code that is no longer valid; run \`obnixe-bridge pair\` for a new one.`);
+      this.reject(candidate, "expired");
+      return;
+    }
+    const verdict = await this.attempt(candidate, { kind: "token", token: invitation.token });
+    switch (verdict.kind) {
+      case "gone":
+        return;
+      case "mismatch":
+        invitation.failures += 1;
+        if (invitation.failures >= maxPairingAttempts && this.liveInvitation() === invitation) {
+          invitation.state = { kind: "refused" };
+          this.options.log("Too many wrong pairing proofs; the QR code is no longer valid.");
+        }
+        this.reject(candidate, "code");
+        return;
+      case "match": {
+        if (this.liveInvitation() !== invitation) {
+          this.reject(candidate, "expired");
+          return;
+        }
+        invitation.consumed = true;
+        const result = await this.welcome(verdict);
+        invitation.state = result.kind === "paired" ? { kind: "paired", device: result.device, client: result.client } : { kind: "failed", message: describeFailure(result) };
+        return;
+      }
+      default: {
+        const unreachable: never = verdict;
+        throw new Error(`Unhandled verdict ${JSON.stringify(unreachable)}`);
+      }
+    }
   }
 
   private transcriptOf(pending: Pending, frame: Extract<Frame, { type: "hello" | "resume" }>): PairingTranscript {
@@ -414,9 +607,9 @@ export class PhoneEndpoint {
     active.socket.close(1000, "forgotten");
   }
 
-  /** Commits to the bridge proof for `code`, then waits for the phone proof; the bridge proof is only revealed on a match. */
-  private async attempt(candidate: Candidate, code: string): Promise<Verdict> {
-    const secrets = await derivePairingSecrets(code, candidate.hello.transcript, candidate.hello.shared);
+  /** Commits to the bridge proof for `secret`, then waits for the phone proof; the bridge proof is only revealed on a match. */
+  private async attempt(candidate: Candidate, secret: PairingSecret): Promise<Verdict> {
+    const secrets = await derivePairingSecrets(secret, candidate.hello.transcript, candidate.hello.shared);
     if (this.pendings.get(candidate.socket) !== candidate || candidate.attempt !== null) return { kind: "gone" };
     const opening = this.options.randomBytes(openingBytes);
     const commitment = commitBridgeProof(opening, bridgeProof(secrets));
@@ -482,7 +675,7 @@ export class PhoneEndpoint {
       alive: true,
     };
     this.active = active;
-    const reply = await this.request(active, { method: "session.open", params: { client: this.client, host: this.options.hostLabel } });
+    const reply = await this.request(active, { method: "session.open", params: { client: this.client, host: this.options.hostLabel, hosts: [...this.announced] } });
     if (!reply.ok) {
       this.drop(active, "session refused");
       socket.close(1000, "refused");
@@ -560,6 +753,7 @@ export class PhoneEndpoint {
 
   private tick(): void {
     this.expirePending();
+    void this.refreshHosts();
     const active = this.active;
     if (active === null) return;
     if (!active.alive) {
@@ -574,6 +768,31 @@ export class PhoneEndpoint {
 }
 
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
+
+function isUnavailableAddress(error: unknown): error is Error & { readonly code: string } {
+  return error instanceof Error && "code" in error && (error.code === "EADDRINUSE" || error.code === "EADDRNOTAVAIL");
+}
+
+function describeFailure(result: Exclude<PairResult, { kind: "paired" }>): string {
+  switch (result.kind) {
+    case "failed":
+      return result.message;
+    case "no_phone":
+      return "The phone left before the session opened";
+    case "bad_code":
+    case "invalid_code":
+      return "The pairing proof did not match";
+    default: {
+      const unreachable: never = result;
+      throw new Error(`Unhandled pair result ${JSON.stringify(unreachable)}`);
+    }
+  }
+}
+
+/** Stable relay rendezvous of this bridge, derived from its public id so the phone can store it with the pairing. */
+function relayRoom(bridgeId: string): string {
+  return toBase64Url(createHash("sha256").update("obnixe-relay-room").update(Buffer.from(bridgeId, "base64")).digest().subarray(0, 16));
+}
 
 function remoteAddress(request: IncomingMessage): string {
   const address = request.socket.remoteAddress ?? "unknown";

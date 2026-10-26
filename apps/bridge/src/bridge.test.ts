@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import { get } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
@@ -15,13 +16,15 @@ import {
   decodeFrame,
   encodeFrame,
   generateIdentity,
+  inviteTtlMs,
   openConnection,
   pairingCodeTtlMs,
+  parseInvite,
   phoneRevocation,
   renameConnectionClient,
   runAgentTool,
 } from "@obnixe/core";
-import type { Frame, PhoneLinkStatus, PhonePairing, PhoneRevocation, RejectionReason } from "@obnixe/core";
+import type { Frame, LearnedPairing, PairingInvite, PhoneLinkStatus, PhonePairing, PhoneRevocation, PhoneSecret, RejectionReason } from "@obnixe/core";
 import { createTestContext } from "@obnixe/core/testing";
 import type { TestContext } from "@obnixe/core/testing";
 import { agentCall, agentConnection, changeset, session, settings } from "@obnixe/schema";
@@ -30,9 +33,11 @@ import { startControl } from "./control.ts";
 import type { ControlServer } from "./control.ts";
 import { postForget, runForget } from "./forget.ts";
 import { createMcpServer } from "./mcp.ts";
-import { postPairingCode } from "./pair.ts";
+import type { PhoneHosts } from "./listen.ts";
+import { getInviteStatus, postInvite, postPairingCode, runPair } from "./pair.ts";
 import { PairingFile } from "./pairings.ts";
 import { PhoneEndpoint, notConnectedMessage } from "./phone.ts";
+import type { InviteTicket } from "./phone.ts";
 
 const bytes = (length: number): Uint8Array => new Uint8Array(randomBytes(length));
 
@@ -44,6 +49,8 @@ let control: ControlServer;
 let phonePort: number;
 let client: Client;
 let skew = 0;
+let phoneHosts: PhoneHosts;
+let relayUrl: string | null;
 const logs: string[] = [];
 const deviceId = generateIdentity(bytes);
 
@@ -53,7 +60,8 @@ interface SimulatedPhone {
   readonly sent: Frame[];
   readonly statuses: PhoneLinkStatus[];
   readonly rejections: RejectionReason[];
-  readonly paired: PhonePairing[];
+  readonly paired: LearnedPairing[];
+  readonly hosts: (readonly string[])[];
   readonly closeCodes: number[];
 }
 
@@ -61,6 +69,7 @@ interface PhoneOptions {
   readonly host?: string;
   readonly pairing?: PhonePairing;
   readonly revocation?: PhoneRevocation;
+  readonly secret?: PhoneSecret;
 }
 
 async function until(predicate: () => boolean, label: string): Promise<void> {
@@ -76,10 +85,11 @@ function connectPhone(code: string, options: PhoneOptions = {}): SimulatedPhone 
   const sent: Frame[] = [];
   const statuses: PhoneLinkStatus[] = [];
   const rejections: RejectionReason[] = [];
-  const paired: PhonePairing[] = [];
+  const paired: LearnedPairing[] = [];
+  const hosts: (readonly string[])[] = [];
   const closeCodes: number[] = [];
   const phoneSession = new PhoneSession({
-    code,
+    secret: options.secret ?? { kind: "code", code },
     device: "iPhone",
     deviceId,
     pairing: options.pairing ?? null,
@@ -100,6 +110,7 @@ function connectPhone(code: string, options: PhoneOptions = {}): SimulatedPhone 
       onCall: (connectionId, tool, args) => runAgentTool(context.db, context.env, { connectionId, tool, arguments: args, timeZone: "Europe/Paris" }),
       onRejected: (reason) => rejections.push(reason),
       onPaired: (pairing) => paired.push(pairing),
+      onHosts: (announced) => hosts.push(announced),
       onRevocationSent: () => undefined,
     },
   });
@@ -112,7 +123,7 @@ function connectPhone(code: string, options: PhoneOptions = {}): SimulatedPhone 
     if (connectionId !== null && !phoneSession.isClosed) closeConnection(context.db, context.env, connectionId, "network");
     phoneSession.markClosed();
   });
-  return { session: phoneSession, socket, sent, statuses, rejections, paired, closeCodes };
+  return { session: phoneSession, socket, sent, statuses, rejections, paired, hosts, closeCodes };
 }
 
 async function pairedPhone(): Promise<SimulatedPhone> {
@@ -124,9 +135,19 @@ async function pairedPhone(): Promise<SimulatedPhone> {
 }
 
 function storedPairing(phone: SimulatedPhone): PhonePairing {
-  const [pairing] = phone.paired;
-  if (pairing === undefined) throw new Error("The phone stored no pairing");
-  return pairing;
+  const [learned] = phone.paired;
+  if (learned === undefined) throw new Error("The phone stored no pairing");
+  return { ...learned, lastHost: null, relay: null };
+}
+
+async function freshInvite(): Promise<InviteTicket> {
+  const result = await postInvite(control.port);
+  if (result.kind !== "ready") throw new Error("Expected an invite");
+  return result.ticket;
+}
+
+function scannedPhone(invite: PairingInvite, token: Uint8Array = invite.token): SimulatedPhone {
+  return connectPhone("000000", { secret: { kind: "token", token, bridgeId: invite.bridgeId } });
 }
 
 async function resumedPhone(pairing: PhonePairing): Promise<SimulatedPhone> {
@@ -147,8 +168,9 @@ function textOf(result: Awaited<ReturnType<Client["callTool"]>>): string {
 async function startBridge(): Promise<void> {
   endpoint = new PhoneEndpoint({
     port: 0,
-    listenHost: "::",
+    hosts: () => phoneHosts,
     hostLabel: "MacBook Pro",
+    relayUrl,
     pairings,
     randomBytes: bytes,
     log: (line) => logs.push(line),
@@ -192,6 +214,8 @@ beforeEach(async () => {
     .run();
   logs.length = 0;
   skew = 0;
+  phoneHosts = { bind: ["127.0.0.1", "::1"], advertise: ["127.0.0.1"], source: "interfaces" };
+  relayUrl = null;
   configDir = mkdtempSync(join(tmpdir(), "obnixe-bridge-"));
   pairings = new PairingFile(join(configDir, "obnixe", "bridge.json"), bytes);
   await startBridge();
@@ -310,6 +334,152 @@ describe("pairing", () => {
     skew = pairingCodeTtlMs + 1;
     expect(await postPairingCode(control.port, "482917")).toEqual({ kind: "no_phone" });
     await until(() => phone.rejections.includes("expired"), "expiry");
+  });
+});
+
+describe("QR pairing", () => {
+  it("pairs the first phone that proves the token, without a code, and only once", async () => {
+    const ticket = await freshInvite();
+    const invite = parseInvite(ticket.url);
+    expect(invite).toEqual({ bridgeId: pairings.bridgeId(), token: expect.any(Uint8Array), name: "MacBook Pro", hosts: [`127.0.0.1:${phonePort}`], relay: null });
+    expect(await getInviteStatus(control.port)).toEqual({ id: ticket.id, state: { kind: "waiting", expiresAt: ticket.expiresAt } });
+
+    const phone = scannedPhone(invite);
+    await until(() => phone.statuses.includes("open"), "token session");
+    expect(phone.sent.find((frame) => frame.type === "hello")).toMatchObject({ secret: "token" });
+    expect(phone.paired).toEqual([expect.objectContaining({ bridgeId: invite.bridgeId, bridgeName: "MacBook Pro", hosts: invite.hosts })]);
+    expect(pairings.list().map((entry) => entry.pairingId)).toEqual([storedPairing(phone).pairingId]);
+    expect(await getInviteStatus(control.port)).toEqual({ id: ticket.id, state: { kind: "paired", device: "iPhone", client: "Cursor" } });
+    expect((await client.callTool({ name: "list_sports", arguments: {} })).isError).toBe(false);
+
+    const again = scannedPhone(invite);
+    await until(() => again.rejections.length > 0, "spent token");
+    expect(again.rejections).toEqual(["expired"]);
+    expect(endpoint.status().phone).toBe("connected");
+
+    const resumed = await resumedPhone(storedPairing(phone));
+    expect(resumed.statuses).toEqual(["resuming", "open"]);
+  });
+
+  it("expires the token after five minutes", async () => {
+    const invite = parseInvite((await freshInvite()).url);
+    skew = inviteTtlMs + 1;
+    const phone = scannedPhone(invite);
+    await until(() => phone.rejections.length > 0, "expired token");
+    expect(phone.rejections).toEqual(["expired"]);
+    expect((await getInviteStatus(control.port))?.state).toEqual({ kind: "expired" });
+  });
+
+  it("refuses a wrong token and burns the QR code after too many failures", async () => {
+    const invite = parseInvite((await freshInvite()).url);
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const intruder = scannedPhone(invite, bytes(32));
+      await until(() => intruder.rejections.length > 0, "wrong token");
+      expect(intruder.rejections).toEqual(["code"]);
+      expect(intruder.paired).toEqual([]);
+    }
+    expect((await getInviteStatus(control.port))?.state).toEqual({ kind: "refused" });
+    const late = scannedPhone(invite);
+    await until(() => late.rejections.length > 0, "burnt token");
+    expect(late.rejections).toEqual(["expired"]);
+    expect(pairings.list()).toEqual([]);
+  });
+
+  it("invalidates an older QR code when a new one is created, and keeps a code pairing working", async () => {
+    const older = parseInvite((await freshInvite()).url);
+    const newer = await freshInvite();
+    const stale = scannedPhone(older);
+    await until(() => stale.rejections.length > 0, "stale token");
+    expect(stale.rejections).toEqual(["code"]);
+    expect((await getInviteStatus(control.port))?.id).toBe(newer.id);
+    expect(await postPairingCode(control.port, "000000")).toEqual({ kind: "no_phone" });
+    await pairedPhone();
+  });
+
+  it("serves the live QR code on a page only loopback hosts can load", async () => {
+    const response = await fetch(`http://127.0.0.1:${control.port}/pair`);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
+    expect(response.headers.get("access-control-allow-origin")).toBeNull();
+    const html = await response.text();
+    expect(html).toContain("<svg");
+    const href = /id="invite" href="([^"]+)"/.exec(html)?.[1];
+    if (href === undefined) throw new Error("No invite link on the page");
+    const invite = parseInvite(href.replace(/&amp;/g, "&"));
+    const live = await getInviteStatus(control.port);
+    const second = await (await fetch(`http://127.0.0.1:${control.port}/pair`)).text();
+    expect(second).toContain(`data-invite="${live?.id ?? ""}"`);
+    expect(await getInviteStatus(control.port)).toEqual(live);
+
+    const forged = await new Promise<number | undefined>((resolve) => {
+      get({ host: "127.0.0.1", port: control.port, path: "/pair", headers: { host: "obnixe.example:7430" } }, (answer) => {
+        answer.resume();
+        resolve(answer.statusCode);
+      });
+    });
+    expect(forged).toBe(403);
+    const posted = await fetch(`http://127.0.0.1:${control.port}/invite`, { method: "POST", headers: { "content-type": "text/plain" }, body: "{}" });
+    expect(posted.status).toBe(415);
+
+    const phone = scannedPhone(invite);
+    await until(() => phone.statuses.includes("open"), "page token session");
+  });
+
+  it("prints the QR code and waits for the phone in `obnixe-bridge pair`", async () => {
+    const output = new PassThrough();
+    let printed = "";
+    output.on("data", (chunk: Buffer) => {
+      printed += chunk.toString("utf8");
+    });
+    const opened: string[] = [];
+    const run = runPair({ controlPort: control.port, code: undefined, interactive: false, input: new PassThrough(), output, openPage: (url) => opened.push(url), pollMs: 20 });
+    await until(() => printed.includes("obnixe://pair?"), "printed invite");
+    const link = /(obnixe:\/\/pair\?\S+)/.exec(printed)?.[1];
+    if (link === undefined) throw new Error("No link printed");
+    expect(opened).toEqual([`http://127.0.0.1:${control.port}/pair`]);
+    expect(printed).toContain("\u2580");
+    scannedPhone(parseInvite(link));
+    expect(await run).toBe(0);
+    expect(printed).toContain("Connected to iPhone.");
+  });
+
+  it("carries the relay rendezvous when the bridge has one", async () => {
+    await stopBridge();
+    relayUrl = "wss://relay.obnixe.app/v1";
+    await startBridge();
+    const first = parseInvite((await freshInvite()).url);
+    const second = parseInvite((await freshInvite()).url);
+    expect(first.relay).toEqual({ url: "wss://relay.obnixe.app/v1", room: expect.stringMatching(/^[A-Za-z0-9_-]{22}$/) });
+    expect(second.relay).toEqual(first.relay);
+  });
+});
+
+describe("addresses", () => {
+  it("tells the phone where the bridge listens and follows address changes", async () => {
+    const phone = await pairedPhone();
+    expect(storedPairing(phone).hosts).toEqual([`127.0.0.1:${phonePort}`]);
+
+    phoneHosts = { bind: ["127.0.0.1"], advertise: ["127.0.0.1", "192.168.1.24"], source: "interfaces" };
+    await endpoint.refreshHosts();
+    await until(() => phone.hosts.length === 1, "announced hosts");
+    expect(phone.hosts).toEqual([[`127.0.0.1:${phonePort}`, `192.168.1.24:${phonePort}`]]);
+    const dropped = new WebSocket(`ws://[::1]:${phonePort}`);
+    expect(await new Promise<string>((resolve) => dropped.on("error", (error) => resolve(error.message)))).toContain("ECONNREFUSED");
+
+    phoneHosts = { bind: ["127.0.0.1", "::1"], advertise: ["127.0.0.1", "192.168.1.24"], source: "interfaces" };
+    await endpoint.refreshHosts();
+    expect(phone.hosts).toHaveLength(1);
+    const resumed = connectPhone("000000", { host: "[::1]", pairing: storedPairing(phone) });
+    await until(() => resumed.statuses.includes("open"), "resume on the new address");
+    expect(resumed.hosts).toEqual([[`127.0.0.1:${phonePort}`, `192.168.1.24:${phonePort}`]]);
+  });
+
+  it("refuses to create a QR code without an address the phone can dial", async () => {
+    await stopBridge();
+    phoneHosts = { bind: ["::1"], advertise: [], source: "override" };
+    await startBridge();
+    expect(await postInvite(control.port)).toEqual({ kind: "no_address" });
+    expect((await fetch(`http://127.0.0.1:${control.port}/pair`)).status).toBe(409);
   });
 });
 

@@ -1,7 +1,9 @@
+import { randomBytes } from "node:crypto";
 import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
-import type { PairResult, PhoneEndpoint } from "./phone.ts";
+import { pagePolicy, pairPage } from "./page.ts";
+import type { InviteResult, PairResult, PhoneEndpoint } from "./phone.ts";
 
 const maxBody = 1024;
 
@@ -37,8 +39,43 @@ function pairStatus(result: PairResult): number {
   }
 }
 
+function inviteStatus(result: InviteResult): number {
+  switch (result.kind) {
+    case "ready":
+      return 201;
+    case "no_address":
+      return 409;
+    default: {
+      const unreachable: never = result;
+      throw new Error(`Unhandled invite result ${JSON.stringify(unreachable)}`);
+    }
+  }
+}
+
+const privateHeaders = { "cache-control": "no-store", "x-content-type-options": "nosniff", "cross-origin-resource-policy": "same-origin" } as const;
+
 function json(response: ServerResponse, status: number, body: unknown): void {
-  response.writeHead(status, { "content-type": "application/json" }).end(JSON.stringify(body));
+  response.writeHead(status, { ...privateHeaders, "content-type": "application/json" }).end(JSON.stringify(body));
+}
+
+function servePage(endpoint: PhoneEndpoint, response: ServerResponse): void {
+  const result = endpoint.invite();
+  switch (result.kind) {
+    case "ready": {
+      const nonce = randomBytes(16).toString("base64");
+      response
+        .writeHead(200, { ...privateHeaders, "content-type": "text/html; charset=utf-8", "content-security-policy": pagePolicy(nonce), "x-frame-options": "DENY", "referrer-policy": "no-referrer" })
+        .end(pairPage(result.ticket, nonce));
+      return;
+    }
+    case "no_address":
+      response.writeHead(409, { ...privateHeaders, "content-type": "text/plain; charset=utf-8" }).end("Ce Mac n'a aucune adresse IPv4 joignable par le téléphone. Retire OBNIXE_PHONE_HOST ou indique une adresse IPv4.");
+      return;
+    default: {
+      const unreachable: never = result;
+      throw new Error(`Unhandled invite result ${JSON.stringify(unreachable)}`);
+    }
+  }
 }
 
 function readBody(request: IncomingMessage): Promise<string | null> {
@@ -65,7 +102,11 @@ function parseJson(text: string): unknown {
   }
 }
 
-/** Localhost-only HTTP port used by `obnixe-bridge pair` and `forget`. Requires a JSON content type and a loopback Host so browsers cannot post codes. */
+/**
+ * Localhost-only HTTP port used by `obnixe-bridge pair` and `forget`, and serving the QR page at /pair. Requires a
+ * loopback Host against DNS rebinding and a JSON content type on writes so other sites cannot post codes; responses carry
+ * no CORS header, so other origins cannot read the invitation.
+ */
 export async function startControl(endpoint: PhoneEndpoint, port: number): Promise<ControlServer> {
   const server = createServer((request, response) => {
     void handle(endpoint, request, response, server.address() as AddressInfo);
@@ -91,6 +132,24 @@ async function handle(endpoint: PhoneEndpoint, request: IncomingMessage, respons
   }
   if (request.method === "GET" && request.url === "/status") {
     json(response, 200, endpoint.status());
+    return;
+  }
+  if (request.method === "GET" && request.url === "/pair") {
+    servePage(endpoint, response);
+    return;
+  }
+  if (request.method === "GET" && request.url === "/invite") {
+    const status = endpoint.inviteStatus();
+    json(response, status === null ? 404 : 200, status ?? { error: "no_invite" });
+    return;
+  }
+  if (request.method === "POST" && request.url === "/invite") {
+    if (request.headers["content-type"] !== "application/json") {
+      json(response, 415, { error: "json_required" });
+      return;
+    }
+    const result = endpoint.renewInvite();
+    json(response, inviteStatus(result), result);
     return;
   }
   if (request.method === "POST" && request.url === "/pair") {
