@@ -51,16 +51,16 @@ async function backUpTo(name: string): Promise<void> {
   }
 }
 
-async function copyFilesTo(name: string): Promise<void> {
+function copyFilesTo(name: string): void {
   for (const suffix of ["", "-wal", "-shm"]) {
     const file = new File(Paths.document, "SQLite", `${databaseName}${suffix}`);
-    if (file.exists) await file.copy(new File(Paths.document, "SQLite", `${name}${suffix}`));
+    if (file.exists) file.copy(new File(Paths.document, "SQLite", `${name}${suffix}`));
   }
 }
 
 /**
  * Copies the database to dated files before deleting it, so a failed migration never destroys the only copy.
- * A file SQLite cannot open is copied byte for byte instead.
+ * Whatever makes the SQLite backup fail, the files are then copied byte for byte instead.
  */
 export async function setDatabaseAside(): Promise<void> {
   const name = `obnixe-unreadable-${environment.now()}`;
@@ -69,7 +69,9 @@ export async function setDatabaseAside(): Promise<void> {
     await backUpTo(`${name}.db`);
   } catch (reason) {
     if (!(reason instanceof Error)) throw reason;
-    await copyFilesTo(`${name}-raw.db`);
+    const partial = new File(Paths.document, "SQLite", `${name}.db`);
+    if (partial.exists) partial.delete();
+    copyFilesTo(`${name}-raw.db`);
   }
   await deleteDatabaseAsync(databaseName);
 }
