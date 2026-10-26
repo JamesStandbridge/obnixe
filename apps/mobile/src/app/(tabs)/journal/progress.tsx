@@ -1,9 +1,5 @@
-import { AppBar, Screen } from "@/ui/Layout";
+import { ProgressScreen } from "@/features/stats/ProgressScreen";
 
 export default function Progress() {
-  return (
-    <Screen>
-      <AppBar title="Progression" />
-    </Screen>
-  );
+  return <ProgressScreen />;
 }
