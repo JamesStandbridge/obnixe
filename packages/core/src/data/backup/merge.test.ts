@@ -26,6 +26,7 @@ import type { TestContext } from "../../testing.ts";
 import { revert } from "../../undo.ts";
 import { fixtures } from "../testFixtures.ts";
 import type { Fixtures } from "../testFixtures.ts";
+import { purgeExpiredTrash } from "../trash.ts";
 import { mergeSnapshot, planMerge } from "./merge.ts";
 import { replaceWithSnapshot } from "./replace.ts";
 import { buildSnapshot } from "./snapshot.ts";
@@ -101,7 +102,7 @@ describe("newest", () => {
     there.write([{ kind: "update", table: "session", key: workout.id, patch: { note: "Ancienne" } }]);
     later();
     here.write([{ kind: "update", table: "session", key: workout.id, patch: { note: "Récente" } }]);
-    expect(planMerge(local.db, snapshotOf(remote)).mutations).toHaveLength(0);
+    expect(planMerge(local.db, snapshotOf(remote), local.env.now()).mutations).toHaveLength(0);
     expect(local.db.select({ note: session.note }).from(session).get()).toEqual({ note: "Récente" });
   });
 
@@ -214,7 +215,7 @@ describe("day_singleton", () => {
     there.write([{ kind: "insert", table: "weigh_in", row: there.weighIn("2026-10-24", 71900) }]);
     later();
     here.write([{ kind: "insert", table: "weigh_in", row: here.weighIn("2026-10-24", 72400) }]);
-    expect(planMerge(local.db, snapshotOf(remote)).mutations).toHaveLength(0);
+    expect(planMerge(local.db, snapshotOf(remote), local.env.now()).mutations).toHaveLength(0);
   });
 
   it("brings the winning check-in's pain reports along", () => {
@@ -316,6 +317,138 @@ describe("merge changeset", () => {
   });
 });
 
+describe("conflicts", () => {
+  it("applies exercises and sets reordered elsewhere, and undoes it", () => {
+    const bench = here.exercise("Développé couché");
+    const workout = here.session();
+    const firstEntry = here.entry(workout.id, bench.id, 0);
+    const secondEntry = here.entry(workout.id, bench.id, 1);
+    const lowSet = here.set(firstEntry.id, 0, 5);
+    const highSet = here.set(firstEntry.id, 1, 6);
+    here.write([
+      { kind: "insert", table: "exercise", row: bench },
+      { kind: "insert", table: "session", row: workout },
+      { kind: "insert", table: "strength_entry", row: firstEntry },
+      { kind: "insert", table: "strength_entry", row: secondEntry },
+      { kind: "insert", table: "strength_set", row: lowSet },
+      { kind: "insert", table: "strength_set", row: highSet },
+    ]);
+    copyLocalToRemote();
+    later();
+    there.write([
+      { kind: "update", table: "strength_entry", key: firstEntry.id, patch: { position: 2 } },
+      { kind: "update", table: "strength_entry", key: secondEntry.id, patch: { position: 0 } },
+      { kind: "update", table: "strength_entry", key: firstEntry.id, patch: { position: 1 } },
+      { kind: "update", table: "strength_set", key: lowSet.id, patch: { position: 2 } },
+      { kind: "update", table: "strength_set", key: highSet.id, patch: { position: 0 } },
+      { kind: "update", table: "strength_set", key: lowSet.id, patch: { position: 1 } },
+      { kind: "update", table: "session", key: workout.id, patch: { note: "Ordre inversé" } },
+    ]);
+    const result = mergeSnapshot(local.db, local.env, snapshotOf(remote));
+    expect(local.db.select({ id: strengthEntry.id }).from(strengthEntry).orderBy(asc(strengthEntry.position)).all()).toEqual([{ id: secondEntry.id }, { id: firstEntry.id }]);
+    expect(local.db.select({ id: strengthSet.id }).from(strengthSet).orderBy(asc(strengthSet.position)).all()).toEqual([{ id: highSet.id }, { id: lowSet.id }]);
+    revert(local.db, local.env, { actor: { author: "user", connectionId: null }, changesetId: result.changesetId as Id, summary: "Annulation", restoredVersionSummary: (number) => `v${number}` });
+    expect(local.db.select({ id: strengthEntry.id }).from(strengthEntry).orderBy(asc(strengthEntry.position)).all()).toEqual([{ id: firstEntry.id }, { id: secondEntry.id }]);
+  });
+
+  it("trashes the older weigh-in when a trashed one comes back for a day entered again", () => {
+    const original = here.weighIn("2026-10-24", 72000);
+    here.write([{ kind: "insert", table: "weigh_in", row: original }]);
+    copyLocalToRemote();
+    later();
+    here.write([{ kind: "update", table: "weigh_in", key: original.id, patch: { deletedAt: local.env.now() } }]);
+    const again = here.weighIn("2026-10-24", 73000);
+    here.write([{ kind: "insert", table: "weigh_in", row: again }]);
+    later();
+    there.write([{ kind: "update", table: "weigh_in", key: original.id, patch: { grams: 71000 } }]);
+    mergeSnapshot(local.db, local.env, snapshotOf(remote));
+    expect(local.db.select({ id: weighIn.id, grams: weighIn.grams, deletedAt: weighIn.deletedAt }).from(weighIn).orderBy(asc(weighIn.grams)).all()).toEqual([
+      { id: original.id, grams: 71000, deletedAt: null },
+      { id: again.id, grams: 73000, deletedAt: local.env.now() },
+    ]);
+  });
+
+  it("keeps the local exercise when a rename elsewhere takes the name of another one here", () => {
+    const squat = here.exercise("Squat");
+    here.write([{ kind: "insert", table: "exercise", row: squat }]);
+    copyLocalToRemote();
+    later();
+    const front = here.exercise("Squat avant");
+    here.write([{ kind: "insert", table: "exercise", row: front }]);
+    later();
+    there.write([{ kind: "update", table: "exercise", key: squat.id, patch: { name: "Squat avant", nameKey: front.nameKey } }]);
+    expect(planMerge(local.db, snapshotOf(remote), local.env.now()).mutations).toHaveLength(0);
+    mergeSnapshot(local.db, local.env, snapshotOf(remote));
+    expect(local.db.select({ name: exercise.name }).from(exercise).orderBy(asc(exercise.name)).all()).toEqual([{ name: "Squat" }, { name: "Squat avant" }]);
+  });
+
+  it("keeps the local measurement kind when a rename elsewhere takes the label of another one here", () => {
+    const waist = { id: local.env.newId(), label: "Taille", zone: null, position: 0, archivedAt: null };
+    here.write([{ kind: "insert", table: "measurement_kind", row: waist }]);
+    copyLocalToRemote();
+    later();
+    here.write([{ kind: "insert", table: "measurement_kind", row: { id: local.env.newId(), label: "Hanches", zone: null, position: 1, archivedAt: null } }]);
+    later();
+    there.write([{ kind: "update", table: "measurement_kind", key: waist.id, patch: { label: "hanches" } }]);
+    mergeSnapshot(local.db, local.env, snapshotOf(remote));
+    expect(local.db.select({ label: measurementKind.label }).from(measurementKind).orderBy(asc(measurementKind.position)).all()).toEqual([{ label: "Taille" }, { label: "Hanches" }]);
+  });
+
+  it("releases a zone tracking whose pain report is dropped by a newer check-in", () => {
+    const day = here.checkIn("2026-10-24", 3);
+    const report = { id: local.env.newId(), zone: "knee_right" as const, level: "discomfort" as const, occurredAt: local.env.now(), localDate: "2026-10-24" as LocalDate, timeZone: "Europe/Paris", sessionId: null, phase: null, strengthSetId: null, sessionItemId: null, checkInId: day.id, note: null, deletedAt: null };
+    const tracking = local.env.newId();
+    here.write([
+      { kind: "insert", table: "check_in", row: day },
+      { kind: "insert", table: "pain_report", row: report },
+      { kind: "insert", table: "zone_tracking", row: { id: tracking, zone: "knee_right", reason: "pain_reported", painReportId: report.id, startedAt: local.env.now(), endedAt: null } },
+    ]);
+    copyLocalToRemote();
+    later();
+    there.write([
+      { kind: "update", table: "zone_tracking", key: tracking, patch: { painReportId: null, reason: "user" } },
+      { kind: "delete", table: "pain_report", key: report.id },
+      { kind: "update", table: "check_in", key: day.id, patch: { energy: 4 } },
+    ]);
+    mergeSnapshot(local.db, local.env, snapshotOf(remote));
+    expect(local.db.select().from(painReport).all()).toHaveLength(0);
+    expect(local.db.select({ painReportId: zoneTracking.painReportId, reason: zoneTracking.reason }).from(zoneTracking).get()).toEqual({ painReportId: null, reason: "pain_reported" });
+  });
+});
+
+describe("purged rows", () => {
+  const day = 86_400_000;
+
+  it("come back from an older backup only when they were not trashed in it", () => {
+    const kept = here.session({ note: "Gardée" });
+    const trashed = here.session({ note: "Jetée", startedAt: local.env.now(), endedAt: local.env.now() });
+    here.write([
+      { kind: "insert", table: "session", row: kept },
+      { kind: "insert", table: "session", row: trashed },
+    ]);
+    here.write([{ kind: "update", table: "session", key: trashed.id, patch: { deletedAt: local.env.now() } }]);
+    const older = snapshotOf(local);
+    later();
+    here.write([{ kind: "update", table: "session", key: kept.id, patch: { deletedAt: local.env.now() } }]);
+    local.advance(31 * day);
+    purgeExpiredTrash(local.db, local.env);
+    expect(local.db.select().from(session).all()).toHaveLength(0);
+    const result = mergeSnapshot(local.db, local.env, older);
+    expect(result.counts).toEqual({ inserted: 1, updated: 0, deleted: 0 });
+    expect(local.db.select({ id: session.id, deletedAt: session.deletedAt }).from(session).all()).toEqual([{ id: kept.id, deletedAt: null }]);
+  });
+
+  it("still take a trashed version over a live local row", () => {
+    const workout = here.session();
+    here.write([{ kind: "insert", table: "session", row: workout }]);
+    copyLocalToRemote();
+    later();
+    there.write([{ kind: "update", table: "session", key: workout.id, patch: { deletedAt: remote.env.now() } }]);
+    mergeSnapshot(local.db, local.env, snapshotOf(remote));
+    expect(local.db.select({ deletedAt: session.deletedAt }).from(session).get()).toEqual({ deletedAt: remote.env.now() });
+  });
+});
+
 describe("replace", () => {
   it("wipes local rows and loads the snapshot in one go", () => {
     here.write([{ kind: "insert", table: "session", row: here.session({ sport: "run" }) }]);
@@ -338,5 +471,32 @@ describe("replace", () => {
     expect(local.db.select({ changesetId: programVersion.changesetId }).from(programVersion).get()).toEqual({ changesetId });
     expect(local.db.select({ theme: settings.theme }).from(settings).get()).toEqual({ theme: "system" });
     expect(currentProgram(local.db)?.program.id).toBe(shared.id);
+  });
+});
+
+describe("agent access on import", () => {
+  const access = (context: TestContext) =>
+    context.db.select({ body: settings.agentCanReadBody, write: settings.agentCanWrite, photos: settings.agentCanReadPhotos, bridgeHost: settings.bridgeHost, theme: settings.theme }).from(settings).get();
+
+  beforeEach(() => {
+    later();
+    remote.db.update(settings).set({ agentCanReadBody: true, agentCanWrite: true, agentCanReadPhotos: true, bridgeHost: "192.168.1.20:8787", theme: "sunlight", updatedAt: remote.env.now() }).run();
+  });
+
+  it("stays as configured here on replace", () => {
+    replaceWithSnapshot(local.db, local.env, snapshotOf(remote));
+    expect(access(local)).toEqual({ body: false, write: false, photos: false, bridgeHost: null, theme: "sunlight" });
+  });
+
+  it("stays as configured here on merge", () => {
+    mergeSnapshot(local.db, local.env, snapshotOf(remote));
+    expect(access(local)).toEqual({ body: false, write: false, photos: false, bridgeHost: null, theme: "sunlight" });
+  });
+
+  it("is not revoked by a backup either", () => {
+    local.db.update(settings).set({ agentCanReadBody: true, bridgeHost: "10.0.0.2:8787" }).run();
+    remote.db.update(settings).set({ agentCanReadBody: false, agentCanWrite: false, agentCanReadPhotos: false, bridgeHost: null }).run();
+    replaceWithSnapshot(local.db, local.env, snapshotOf(remote));
+    expect(access(local)).toEqual({ body: true, write: false, photos: false, bridgeHost: "10.0.0.2:8787", theme: "sunlight" });
   });
 });

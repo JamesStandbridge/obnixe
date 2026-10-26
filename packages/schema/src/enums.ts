@@ -1,7 +1,7 @@
 export const archetypes = ["strength", "itemized", "continuous"] as const;
 export type Archetype = (typeof archetypes)[number];
 
-export const authors = ["user", "agent", "import", "system"] as const;
+export const authors = ["user", "agent", "import"] as const;
 export type Author = (typeof authors)[number];
 
 export const painLevels = ["none", "discomfort", "stop"] as const;

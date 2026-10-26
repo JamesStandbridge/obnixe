@@ -80,6 +80,11 @@ export function readSettings(db: ObnixeDatabase): SnapshotSettings {
   return rest;
 }
 
+/** Agent permissions and the bridge pairing belong to this device: importing a backup never grants an agent access. */
+export function keepLocalAccess(incoming: SnapshotSettings, local: SnapshotSettings): SnapshotSettings {
+  return { ...incoming, agentCanReadBody: local.agentCanReadBody, agentCanWrite: local.agentCanWrite, agentCanReadPhotos: local.agentCanReadPhotos, bridgeHost: local.bridgeHost };
+}
+
 export function buildSnapshot(db: ObnixeDatabase, createdAt: EpochMs, photos: readonly PhotoFile[] = []): Snapshot {
   const tables: Partial<Record<JournaledTable, readonly RowImage[]>> = {};
   for (const table of journaledTables) {

@@ -200,7 +200,7 @@ function required(db: ObnixeDatabase, table: JournaledTable, key: string): RowIm
   return row;
 }
 
-function keyCondition(table: JournaledTable, key: string): SQL {
+export function keyCondition(table: JournaledTable, key: string): SQL {
   const columns = getTableColumns(journaled[table] as SQLiteTable);
   const values = keyValues(table, key);
   const conditions = keyColumnsOf(table).map((name) => {

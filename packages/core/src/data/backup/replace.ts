@@ -3,6 +3,7 @@ import type { SQLiteTable } from "drizzle-orm/sqlite-core";
 import { changeset, journaled, journaledTables, settings } from "@obnixe/schema";
 import type { Id, RowImage } from "@obnixe/schema";
 import type { Environment, ObnixeDatabase } from "../../database.ts";
+import { keepLocalAccess, readSettings } from "./snapshot.ts";
 import type { Snapshot } from "./snapshot.ts";
 
 export const replaceSummary = "Remplacement par une sauvegarde";
@@ -16,6 +17,7 @@ export function replaceWithSnapshot(db: ObnixeDatabase, env: Environment, snapsh
   const changesetId = env.newId();
   const now = env.now();
   db.transaction((tx) => {
+    const local = readSettings(tx);
     tx.run(sql`PRAGMA defer_foreign_keys = ON`);
     for (const table of [...journaledTables].reverse()) tx.delete(journaled[table] as SQLiteTable).run();
     tx.insert(changeset).values({ id: changesetId, author: "import", connectionId: null, summary: replaceSummary, revertsId: null, createdAt: now }).run();
@@ -27,7 +29,7 @@ export function replaceWithSnapshot(db: ObnixeDatabase, env: Environment, snapsh
           .run();
       }
     }
-    tx.update(settings).set({ ...snapshot.settings, updatedAt: now }).run();
+    tx.update(settings).set({ ...keepLocalAccess(snapshot.settings, local), updatedAt: now }).run();
   });
   return changesetId;
 }
