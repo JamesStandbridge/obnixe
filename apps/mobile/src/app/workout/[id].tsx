@@ -1,9 +1,7 @@
-import { AppBar, Screen } from "@/ui/Layout";
+import { useLocalSearchParams } from "expo-router";
+import { WorkoutScreen } from "@/features/training/workout/WorkoutScreen";
 
 export default function Workout() {
-  return (
-    <Screen>
-      <AppBar title="Séance en cours" />
-    </Screen>
-  );
+  const { id } = useLocalSearchParams<{ id: string }>();
+  return <WorkoutScreen id={id} />;
 }
