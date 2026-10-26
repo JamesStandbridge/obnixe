@@ -489,27 +489,30 @@ describe("replace", () => {
 
 describe("agent access on import", () => {
   const access = (context: TestContext) =>
-    context.db.select({ body: settings.agentCanReadBody, write: settings.agentCanWrite, photos: settings.agentCanReadPhotos, bridgeHost: settings.bridgeHost, theme: settings.theme }).from(settings).get();
+    context.db.select({ body: settings.agentCanReadBody, write: settings.agentCanWrite, photos: settings.agentCanReadPhotos, bridgeHost: settings.bridgeHost, declined: settings.restAlertsDeclinedAt, theme: settings.theme }).from(settings).get();
 
   beforeEach(() => {
     later();
-    remote.db.update(settings).set({ agentCanReadBody: true, agentCanWrite: true, agentCanReadPhotos: true, bridgeHost: "192.168.1.20:8787", theme: "sunlight", updatedAt: remote.env.now() }).run();
+    remote.db.update(settings).set({ agentCanReadBody: true, agentCanWrite: true, agentCanReadPhotos: true, bridgeHost: "192.168.1.20:8787", restAlertsDeclinedAt: remote.env.now(), theme: "sunlight", updatedAt: remote.env.now() }).run();
   });
 
   it("stays as configured here on replace", () => {
     replaceWithSnapshot(local.db, local.env, snapshotOf(remote));
-    expect(access(local)).toEqual({ body: false, write: false, photos: false, bridgeHost: null, theme: "sunlight" });
+    expect(access(local)).toEqual({ body: false, write: false, photos: false, bridgeHost: null, declined: null, theme: "sunlight" });
   });
 
   it("stays as configured here on merge", () => {
     mergeSnapshot(local.db, local.env, snapshotOf(remote));
-    expect(access(local)).toEqual({ body: false, write: false, photos: false, bridgeHost: null, theme: "sunlight" });
+    expect(access(local)).toEqual({ body: false, write: false, photos: false, bridgeHost: null, declined: null, theme: "sunlight" });
   });
 
   it("is not revoked by a backup either", () => {
-    local.db.update(settings).set({ agentCanReadBody: true, bridgeHost: "10.0.0.2:8787" }).run();
-    remote.db.update(settings).set({ agentCanReadBody: false, agentCanWrite: false, agentCanReadPhotos: false, bridgeHost: null }).run();
+    const declinedAt = local.env.now();
+    local.db.update(settings).set({ agentCanReadBody: true, bridgeHost: "10.0.0.2:8787", restAlertsDeclinedAt: declinedAt }).run();
+    remote.db.update(settings).set({ agentCanReadBody: false, agentCanWrite: false, agentCanReadPhotos: false, bridgeHost: null, restAlertsDeclinedAt: null }).run();
     replaceWithSnapshot(local.db, local.env, snapshotOf(remote));
-    expect(access(local)).toEqual({ body: true, write: false, photos: false, bridgeHost: "10.0.0.2:8787", theme: "sunlight" });
+    expect(access(local)).toEqual({ body: true, write: false, photos: false, bridgeHost: "10.0.0.2:8787", declined: declinedAt, theme: "sunlight" });
+    mergeSnapshot(local.db, local.env, snapshotOf(remote));
+    expect(access(local)).toEqual({ body: true, write: false, photos: false, bridgeHost: "10.0.0.2:8787", declined: declinedAt, theme: "sunlight" });
   });
 });

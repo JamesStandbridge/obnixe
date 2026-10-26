@@ -23,10 +23,15 @@ function reportFailure(error: unknown): void {
   ErrorUtils.getGlobalHandler()(error, false);
 }
 
-/** The body is frozen when a rest starts, so adjusting the next set does not reschedule; changing the rest length does. */
-export function useRestAlert(request: RestAlertRequest | null): RestAlertPrompt {
+export interface RestAlertAccess {
+  readonly permission: RestAlertPermission | null;
+  readonly declined: boolean;
+  readonly request: () => void;
+}
+
+/** Tracks the system permission, refreshed whenever the app comes back to the foreground, and the in-app postponement. */
+export function useRestAlertAccess(): RestAlertAccess {
   const [permission, setPermission] = useState<RestAlertPermission | null>(null);
-  const [explaining, setExplaining] = useState(false);
   const { data: settingsRows } = useLiveQuery(db().select({ declinedAt: settings.restAlertsDeclinedAt }).from(settings));
   const declined = (settingsRows[0]?.declinedAt ?? null) !== null;
 
@@ -46,6 +51,19 @@ export function useRestAlert(request: RestAlertRequest | null): RestAlertPrompt 
       subscription.remove();
     };
   }, []);
+
+  const request = (): void => {
+    updateSettings({ restAlertsDeclinedAt: null });
+    requestRestAlerts().then(setPermission, reportFailure);
+  };
+
+  return { permission, declined, request };
+}
+
+/** The body is frozen when a rest starts, so adjusting the next set does not reschedule; changing the rest length does. */
+export function useRestAlert(request: RestAlertRequest | null): RestAlertPrompt {
+  const { permission, declined, request: requestAccess } = useRestAlertAccess();
+  const [explaining, setExplaining] = useState(false);
 
   useEffect(() => cancelRestAlert, []);
 
@@ -71,7 +89,7 @@ export function useRestAlert(request: RestAlertRequest | null): RestAlertPrompt 
 
   const allow = (): void => {
     setExplaining(false);
-    requestRestAlerts().then(setPermission, reportFailure);
+    requestAccess();
   };
 
   const later = (): void => {

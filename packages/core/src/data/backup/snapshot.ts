@@ -67,9 +67,9 @@ export class InvalidSnapshotError extends CorruptedBackupError {
   }
 }
 
-/** Agent permissions and the bridge pairing belong to this device: importing a backup never grants an agent access. */
+/** Agent permissions, the bridge pairing and the rest notification choice belong to this device: importing a backup never grants an agent access. */
 export function keepLocalAccess(incoming: SettingsValues, local: SettingsValues): SettingsValues {
-  return { ...incoming, agentCanReadBody: local.agentCanReadBody, agentCanWrite: local.agentCanWrite, agentCanReadPhotos: local.agentCanReadPhotos, bridgeHost: local.bridgeHost };
+  return { ...incoming, agentCanReadBody: local.agentCanReadBody, agentCanWrite: local.agentCanWrite, agentCanReadPhotos: local.agentCanReadPhotos, bridgeHost: local.bridgeHost, restAlertsDeclinedAt: local.restAlertsDeclinedAt };
 }
 
 export function buildSnapshot(db: ObnixeDatabase, createdAt: EpochMs, photos: readonly PhotoFile[] = []): Snapshot {
@@ -94,9 +94,9 @@ const settingsSchema = z.object({
   remindersExportedAt: z.int().nullable(),
   agentChangesSeenAt: z.int().nullable(),
   bridgeHost: z.string().nullable(),
-  restAlertsDeclinedAt: z.int().nullable(),
+  restAlertsDeclinedAt: z.custom<EpochMs>((value) => Number.isInteger(value)).nullable(),
   updatedAt: z.int(),
-}) satisfies z.ZodType<Omit<SettingsValues, "remindersExportedAt" | "agentChangesSeenAt" | "restAlertsDeclinedAt" | "updatedAt">, unknown>;
+}) satisfies z.ZodType<Omit<SettingsValues, "remindersExportedAt" | "agentChangesSeenAt" | "updatedAt">, unknown>;
 
 export function parseSnapshotSettings(raw: unknown): SettingsValues {
   const parsed = settingsSchema.safeParse(raw);

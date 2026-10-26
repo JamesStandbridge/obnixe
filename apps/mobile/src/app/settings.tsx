@@ -13,6 +13,7 @@ import { megabytes, weekdayList } from "@/features/data/format";
 import { formatTimeOfDay } from "@/format/dates";
 import { BackButton, Chevron } from "@/features/data/parts";
 import { MassUnitSheet, RemindersSheet, massUnitLabels } from "@/features/data/PreferenceSheets";
+import { RestAlertsRow } from "@/features/data/RestAlertsRow";
 import { updateSettings } from "@/data/settings";
 import { SportsSheet } from "@/features/data/SportsSheet";
 import { TrashSheet, useTrash } from "@/features/data/TrashSheet";
@@ -103,6 +104,10 @@ export default function Settings() {
             onPress={() => setSheet("zones")}
             last
           />
+        </Section>
+
+        <Section title="Séances">
+          <RestAlertsRow />
         </Section>
 
         <Section title="Affichage">
