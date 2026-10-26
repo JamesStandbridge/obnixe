@@ -6,6 +6,7 @@ import { createTestContext } from "../testing.ts";
 import { revert } from "../undo.ts";
 import { checkInAnswerMutations, checkInZoneMutations, todayCheckIn } from "./checkin.ts";
 import type { CheckInContext } from "./checkin.ts";
+import { zonePainHistory } from "./pain.ts";
 import { clampReminderMinutes, reminderDays, reminderMask, remindersIcs, toggleReminderDay } from "./reminders.ts";
 import { at, Seeder, userActor } from "./testing.ts";
 import { agentChangesSince, estimatedSlotSeconds, finishOpenSessionMutations, openSession, resumeDeadlineDate, todayNotices, trackedZones, variantPlan } from "./today.ts";
@@ -109,9 +110,25 @@ describe("notices", () => {
     const checkInId = seed.checkIn("2026-10-25", 4, [{ zone: "shoulder_right", level: "discomfort" }]);
     const zones = trackedZones(seed.context.db, { today: d("2026-10-25"), checkInId });
     expect(zones.map((zone) => [zone.zone, zone.latest?.level ?? null, zone.latest?.localDate ?? null, zone.todayLevel])).toEqual([
-      ["knee_right", null, null, null],
       ["shoulder_right", "stop", "2026-10-24", "discomfort"],
+      ["knee_right", null, null, null],
     ]);
+  });
+});
+
+describe("zone pain history", () => {
+  it("lists session and check-in pain for the zones, skipping calm, cleared and trashed reports", () => {
+    seed.session({ sport: "strength", date: "2026-10-20", pains: [{ zone: "shoulder_right", level: "discomfort" }] });
+    seed.session({ sport: "strength", date: "2026-10-21", pains: [{ zone: "shoulder_right", level: "stop" }], deleted: true });
+    seed.session({ sport: "run", date: "2026-10-22", pains: [{ zone: "knee_right", level: "stop" }] });
+    seed.checkIn("2026-10-23", 3, [{ zone: "shoulder_right", level: "stop" }, { zone: "knee_left", level: "discomfort" }]);
+    seed.checkIn("2026-10-24", 3, [{ zone: "shoulder_right", level: "none" }]);
+    expect(zonePainHistory(seed.context.db, ["shoulder_right", "knee_right"]).map((event) => [event.zone, event.localDate, event.level, event.source])).toEqual([
+      ["shoulder_right", "2026-10-20", "discomfort", "session"],
+      ["knee_right", "2026-10-22", "stop", "session"],
+      ["shoulder_right", "2026-10-23", "stop", "check_in"],
+    ]);
+    expect(zonePainHistory(seed.context.db, [])).toEqual([]);
   });
 });
 

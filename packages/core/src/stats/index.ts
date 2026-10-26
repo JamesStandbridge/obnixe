@@ -3,6 +3,7 @@ export * from "./checkin.ts";
 export * from "./dates.ts";
 export * from "./exercise.ts";
 export * from "./indicators.ts";
+export * from "./pain.ts";
 export * from "./reminders.ts";
 export * from "./series.ts";
 export * from "./sessions.ts";

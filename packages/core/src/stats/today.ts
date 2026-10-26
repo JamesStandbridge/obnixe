@@ -243,7 +243,7 @@ export function trackedZones(db: ObnixeDatabase, options: TrackedZoneOptions): T
   const zones: ZoneKey[] = open.map((row) => row.zone);
   for (const report of [...reports].reverse()) if (report.level !== "none" && !zones.includes(report.zone)) zones.push(report.zone);
   for (const report of todays) if (!zones.includes(report.zone)) zones.push(report.zone);
-  return zones.map((zone) => {
+  const tracked: TrackedZone[] = zones.map((zone) => {
     const earlier = reports.filter((report) => report.zone === zone && report.level !== "none" && !(options.checkInId !== null && report.checkInId === options.checkInId));
     const latest = earlier[earlier.length - 1];
     const todayReport = todays.find((report) => report.zone === zone);
@@ -254,4 +254,21 @@ export function trackedZones(db: ObnixeDatabase, options: TrackedZoneOptions): T
       todayReportId: todayReport?.id ?? null,
     };
   });
+  return tracked.sort((left, right) => severity(right) - severity(left));
+}
+
+function severity(zone: TrackedZone): number {
+  const level = zone.latest?.level;
+  switch (level) {
+    case "stop":
+      return 2;
+    case "discomfort":
+      return 1;
+    case undefined:
+      return 0;
+    default: {
+      const unreachable: never = level;
+      throw new Error(`Unhandled pain level ${String(unreachable)}`);
+    }
+  }
 }
