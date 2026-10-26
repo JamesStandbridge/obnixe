@@ -166,6 +166,12 @@ describe("MCP surface", () => {
       "report_pain",
       "log_weigh_in",
       "log_measurements",
+      "update_session",
+      "update_strength_session",
+      "delete_session",
+      "update_exercise",
+      "merge_exercises",
+      "set_program_status",
     ]);
     const history = tools.find((tool) => tool.name === "get_history");
     expect(history?.inputSchema.required).toEqual(["from", "to"]);

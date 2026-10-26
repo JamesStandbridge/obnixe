@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { hostname } from "node:os";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { toolContracts, toolNames } from "@obnixe/core/agent/wire";
+import { destructiveTools, toolContracts, toolNames } from "@obnixe/core/agent/wire";
 import type { ToolName } from "@obnixe/core/agent/wire";
 import type { PhoneEndpoint } from "./phone.ts";
 
@@ -47,7 +47,7 @@ function register(server: McpServer, endpoint: PhoneEndpoint, name: ToolName): v
       title: contract.title,
       description: contract.description,
       inputSchema: contract.input,
-      annotations: { title: contract.title, readOnlyHint: isRead, destructiveHint: false, idempotentHint: isRead, openWorldHint: false },
+      annotations: { title: contract.title, readOnlyHint: isRead, destructiveHint: destructiveTools.has(name), idempotentHint: isRead, openWorldHint: false },
     },
     async (args: Readonly<Record<string, unknown>>): Promise<CallToolResult> => {
       const outcome = await endpoint.callTool(name, args);

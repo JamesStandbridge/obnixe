@@ -99,6 +99,13 @@ const strengthSetInput = z
   })
   .describe("Reps for load_reps and bodyweight_reps exercises, durationSeconds for duration exercises.");
 
+const strengthExercisesInput = z
+  .array(z.object({ exercise: exerciseReference, newExercise: newExercise.optional(), note: shortText.optional(), sets: z.array(strengthSetInput).min(1).max(20) }))
+  .min(1)
+  .max(30);
+
+const sessionId = z.string().min(1).describe("Session id from get_history.");
+
 export const toolContracts = {
   list_sports: {
     name: "list_sports",
@@ -113,7 +120,7 @@ export const toolContracts = {
     name: "get_history",
     title: "Training history",
     description:
-      "Return the sessions of a date range (max 366 days), newest first: sport, status, start time, duration in seconds, catalog values, effort, sensation, enjoyment, notes, program slot, strength exercises with every set (loadGrams in grams, reps, durationSeconds, rir), itemized entries (e.g. climbing problems) and pain reports.",
+      "Return the sessions of a date range (max 366 days), newest first: id (for update_session, update_strength_session and delete_session), sport, status, start time, duration in seconds, catalog values, effort, sensation, enjoyment, notes, program slot, strength exercises with every set (loadGrams in grams, reps, durationSeconds, rir), itemized entries (e.g. climbing problems) and pain reports.",
     kind: "read",
     permissions: [],
     input: z.object({ ...range, sport: z.enum(sportKeys).optional().describe("Only this sport.") }).refine(rangeRule.check, rangeRule.params),
@@ -147,7 +154,8 @@ export const toolContracts = {
   list_programs: {
     name: "list_programs",
     title: "Programs",
-    description: "List training programs with status (draft, active, archived), latest version number, name and sessions per week.",
+    description:
+      "List training programs with status (draft, active, archived), latest version number, name and sessions per week. Change the status with set_program_status.",
     kind: "read",
     permissions: [],
     input: z.object({}),
@@ -164,7 +172,8 @@ export const toolContracts = {
   list_exercises: {
     name: "list_exercises",
     title: "Exercises",
-    description: "List strength exercises with id, name, measure, equipment, load step in grams and the body zones they load.",
+    description:
+      "List strength exercises with id, name, measure, equipment, load step in grams and the body zones they load. Edit one with update_exercise, fold duplicates with merge_exercises.",
     kind: "read",
     permissions: [],
     input: z.object({
@@ -175,7 +184,7 @@ export const toolContracts = {
   create_exercise: {
     name: "create_exercise",
     title: "Create exercise",
-    description: "Create a strength exercise. Fails if an exercise with the same name already exists. The user can undo it from the phone.",
+    description: "Create a strength exercise. Fails if an exercise with the same name already exists; edit that one with update_exercise instead. The user can undo it from the phone.",
     kind: "write",
     permissions: ["write"],
     input: z.object({
@@ -190,7 +199,7 @@ export const toolContracts = {
     name: "upsert_program",
     title: "Create or revise a program",
     description:
-      "Create a program (omit programId; it starts as a draft) or publish a new immutable version of an existing one. Send the complete program: every slot, variant and item of the new version. Reuse lineageIds from get_program for what stays the same, omit them for new elements; anything left out is removed from the new version. Unknown exercises named in items are created. The user sees 'summary' in the app and can undo the change.",
+      "Create a program (omit programId; it starts as a draft, activate it with set_program_status) or publish a new immutable version of an existing one. Send the complete program: every slot, variant and item of the new version. Reuse lineageIds from get_program for what stays the same, omit them for new elements; anything left out is removed from the new version. Unknown exercises named in items are created. The user sees 'summary' in the app and can undo the change.",
     kind: "write",
     permissions: ["write"],
     input: z.object({
@@ -206,7 +215,7 @@ export const toolContracts = {
     name: "log_activity",
     title: "Log an activity",
     description:
-      "Record a completed past session of any sport except strength (use log_strength_session). Values and items are validated against the sport catalog from list_sports. The user can undo it from the phone.",
+      "Record a completed past session of any sport except strength (use log_strength_session). Values and items are validated against the sport catalog from list_sports. Correct an existing session with update_session instead of logging it again. The user can undo it from the phone.",
     kind: "write",
     permissions: ["write"],
     input: z.object({
@@ -226,16 +235,13 @@ export const toolContracts = {
     name: "log_strength_session",
     title: "Log a strength session",
     description:
-      "Record a completed past strength session with its exercises and sets, in order. Unknown exercises are created. The user can undo it from the phone.",
+      "Record a completed past strength session with its exercises and sets, in order. Unknown exercises are created. Correct an existing session with update_strength_session instead of logging it again. The user can undo it from the phone.",
     kind: "write",
     permissions: ["write"],
     input: z.object({
       startedAt: dateTime,
       durationSeconds: z.int().min(60).max(21_600).describe("Session duration in seconds."),
-      exercises: z
-        .array(z.object({ exercise: exerciseReference, newExercise: newExercise.optional(), note: shortText.optional(), sets: z.array(strengthSetInput).min(1).max(20) }))
-        .min(1)
-        .max(30),
+      exercises: strengthExercisesInput,
       effort: z.enum(efforts).optional(),
       sensation: z.enum(sensations).optional(),
       enjoyment: z.int().min(1).max(5).optional(),
@@ -331,12 +337,91 @@ export const toolContracts = {
       createMissingKinds: z.boolean().optional(),
     }),
   },
+  update_session: {
+    name: "update_session",
+    title: "Correct a session",
+    description:
+      "Correct a completed session of any sport: start time, duration, title, note, effort, sensation, enjoyment and, for sports other than strength, the catalog values and itemized entries. Only the fields you send change; send null to clear title, note, effort, sensation or enjoyment. 'values' replaces all session values and 'items' replaces all entries, so send complete objects (start from get_history). Strength exercises and sets are corrected with update_strength_session. Sessions still open on the phone cannot be edited. The user can undo it from the phone.",
+    kind: "write",
+    permissions: ["write"],
+    input: z.object({
+      sessionId,
+      startedAt: dateTime.optional(),
+      durationSeconds: z.int().min(60).max(86_400).optional().describe("Active duration in seconds, pauses excluded. Kept when omitted, also when startedAt moves."),
+      values: fieldValues.optional().describe("Complete session values replacing the current ones, keyed by catalog field key (see list_sports). Not for strength sessions."),
+      items: z.array(fieldValues).max(200).optional().describe("Complete list of itemized entries replacing the current ones, in order, for sports with items (e.g. climbing problems)."),
+      effort: z.enum(efforts).nullable().optional(),
+      sensation: z.enum(sensations).nullable().optional(),
+      enjoyment: z.int().min(1).max(5).nullable().optional(),
+      title: shortText.max(80).nullable().optional(),
+      note: shortText.nullable().optional(),
+    }),
+  },
+  update_strength_session: {
+    name: "update_strength_session",
+    title: "Correct strength exercises",
+    description:
+      "Replace the exercise and set list of a completed strength session. Send the complete corrected list, every exercise with every set in order, same shape as log_strength_session (start from get_history); anything left out is removed. Unknown exercises are created. Exercises that stay keep their program prescription, set times and pain anchors. Time, notes and feelings are corrected with update_session. Sessions still open on the phone cannot be edited. The user can undo it from the phone.",
+    kind: "write",
+    permissions: ["write"],
+    input: z.object({ sessionId, exercises: strengthExercisesInput }),
+  },
+  delete_session: {
+    name: "delete_session",
+    title: "Delete a session",
+    description:
+      "Move a session of any sport to the phone's trash, where it stays restorable for 30 days, exactly like deleting it in the app. Sessions still open on the phone cannot be deleted. The user can undo it from the phone.",
+    kind: "write",
+    permissions: ["write"],
+    input: z.object({ sessionId }),
+  },
+  update_exercise: {
+    name: "update_exercise",
+    title: "Edit an exercise",
+    description:
+      "Edit a strength exercise: rename it (names are unique, case and accent insensitive), change equipment, load step or body zones, archive or unarchive it. The measure can only change while no logged session or program uses the exercise. Only the fields you send change. The user can undo it from the phone.",
+    kind: "write",
+    permissions: ["write"],
+    input: z.object({
+      exercise: exerciseReference,
+      name: shortText.max(80).optional().describe("New name in French."),
+      measure: newExercise.shape.measure.optional(),
+      equipment: z.enum(equipments).optional(),
+      loadStepGrams: z.int().min(1).max(50_000).nullable().optional().describe("Smallest load increment in grams; null removes it. Not allowed for duration exercises."),
+      zones: z.array(z.enum(zoneKeys)).max(6).optional().describe("Complete list of body zones this exercise loads, replacing the current ones; [] removes them all."),
+      archived: z.boolean().optional().describe("true hides the exercise from pickers while keeping its history, false brings it back."),
+    }),
+  },
+  merge_exercises: {
+    name: "merge_exercises",
+    title: "Merge exercises",
+    description:
+      "Fold a duplicate strength exercise into a target with the same measure: logged sessions move to the target, the duplicate's body zones are added to the target, and the duplicate is archived and redirected to the target, so its name and id keep resolving to the target. Published program versions are immutable and keep the duplicate in their items; workouts started from them use the target, and the next upsert_program version uses the target. The user can undo it from the phone.",
+    kind: "write",
+    permissions: ["write"],
+    input: z.object({
+      duplicate: exerciseReference.describe("Exercise to fold, by id or exact name."),
+      target: exerciseReference.describe("Exercise that remains, by id or exact name."),
+    }),
+  },
+  set_program_status: {
+    name: "set_program_status",
+    title: "Activate or archive a program",
+    description:
+      "Activate a draft or archived program, or archive a program. Only one program is active at a time: activating archives the current active program. Programs never go back to draft. The user can undo it from the phone.",
+    kind: "write",
+    permissions: ["write"],
+    input: z.object({ programId: z.string().min(1), status: z.enum(["active", "archived"]) }),
+  },
 } as const satisfies Record<string, ToolContract>;
 
 export type ToolName = keyof typeof toolContracts;
 export type ToolInput<N extends ToolName> = z.infer<(typeof toolContracts)[N]["input"]>;
 
 export const toolNames = Object.keys(toolContracts) as [ToolName, ...ToolName[]];
+
+/** Writes that overwrite or remove existing data rather than add to it; MCP clients may ask the user before running them. */
+export const destructiveTools: ReadonlySet<ToolName> = new Set<ToolName>(["update_session", "update_strength_session", "delete_session", "update_exercise", "merge_exercises"]);
 
 export function isToolName(name: string): name is ToolName {
   return Object.hasOwn(toolContracts, name);

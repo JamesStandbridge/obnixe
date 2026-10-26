@@ -36,6 +36,10 @@ export function trashItems(db: ObnixeDatabase): readonly TrashItem[] {
   return items.sort((left, right) => (right.row.deletedAt ?? 0) - (left.row.deletedAt ?? 0));
 }
 
+export function trashMutation(table: TrashableTable, id: Id, now: EpochMs): Mutation {
+  return { kind: "update", table, key: id, patch: { deletedAt: now } } as Mutation;
+}
+
 export function restoreMutation(item: TrashItem): Mutation {
   return { kind: "update", table: item.table, key: item.row.id, patch: { deletedAt: null } } as Mutation;
 }

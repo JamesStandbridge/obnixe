@@ -13,7 +13,7 @@ it("runs under node type stripping and serves MCP over stdio", async () => {
   const client = new Client({ name: "codex-mcp-client", version: "1.0.0" });
   await client.connect(transport);
   const { tools } = await client.listTools();
-  expect(tools).toHaveLength(18);
+  expect(tools).toHaveLength(24);
   const result = await client.callTool({ name: "list_programs", arguments: {} });
   expect(result.isError).toBe(true);
   await client.close();
