@@ -15,7 +15,18 @@ import type { PhoneLinkStatus, PhonePairing, PhoneRevocation, RejectionReason } 
 import type { ConnectionEndReason, EpochMs, Id } from "@obnixe/schema";
 import { db, environment } from "@/data/database";
 import { bridgeUrl } from "@/features/agent/host";
-import { deletePairing, deleteRevocation, readDeviceId, readPairing, readRevocation, savePairing, saveRevocation } from "@/features/agent/trust";
+import {
+  deleteForgottenNotice,
+  deletePairing,
+  deleteRevocation,
+  readDeviceId,
+  readForgottenNotice,
+  readPairing,
+  readRevocation,
+  saveForgottenNotice,
+  savePairing,
+  saveRevocation,
+} from "@/features/agent/trust";
 import { deviceTimeZone } from "@/format/dates";
 
 export type NetworkState = "idle" | "dialing" | "reachable" | "unreachable";
@@ -83,6 +94,7 @@ export class AgentLink {
   private host: string | null;
   private pairing: PhonePairing | null;
   private revocation: PhoneRevocation | null;
+  private forgottenNotice: string | null;
   private current: LinkView;
   private spare: PairingCode | null = null;
   private socket: WebSocket | null = null;
@@ -98,6 +110,7 @@ export class AgentLink {
     this.deviceId = readDeviceId(randomBytes);
     this.pairing = readPairing();
     this.revocation = readRevocation();
+    this.forgottenNotice = readForgottenNotice();
     this.current = this.openingView();
   }
 
@@ -272,6 +285,10 @@ export class AgentLink {
         return;
       case "open":
         this.retries = 0;
+        if (this.forgottenNotice !== null) {
+          this.forgottenNotice = null;
+          deleteForgottenNotice();
+        }
         if (session.connectionId !== null) this.setView({ kind: "connected", connectionId: session.connectionId, since: environment.now() });
         return;
       case "closed":
@@ -323,13 +340,19 @@ export class AgentLink {
         else this.rotateCode();
         return;
       case "unknown":
-      case "revoked":
+      case "revoked": {
         // Rejections are not authenticated: the stored pairing is only replaced by a successful code pairing.
+        const refused = this.pairing;
         this.pairing = null;
         this.listener.onKnownMac(null);
-        this.listener.onNotice("forgotten");
+        if (refused !== null && refused.pairingId !== this.forgottenNotice) {
+          this.forgottenNotice = refused.pairingId;
+          saveForgottenNotice(refused.pairingId);
+          this.listener.onNotice("forgotten");
+        }
         this.rotateCode();
         return;
+      }
       case "version":
         this.listener.onNotice("version");
         return;

@@ -6,6 +6,7 @@ const options: SecureStore.SecureStoreOptions = { keychainAccessible: SecureStor
 const deviceKey = "obnixe.agent.device";
 const pairingKey = "obnixe.agent.pairing";
 const revocationKey = "obnixe.agent.revocation";
+const forgottenKey = "obnixe.agent.forgotten";
 
 function remove(key: string): void {
   SecureStore.deleteItemAsync(key, options).catch((error: unknown) => ErrorUtils.getGlobalHandler()(error, false));
@@ -43,4 +44,17 @@ export function saveRevocation(revocation: PhoneRevocation): void {
 
 export function deleteRevocation(): void {
   remove(revocationKey);
+}
+
+/** Pairing id the "forgotten" notice was last shown for, so a bridge refusing the same pairing again stays quiet. */
+export function readForgottenNotice(): string | null {
+  return SecureStore.getItem(forgottenKey, options);
+}
+
+export function saveForgottenNotice(pairingId: string): void {
+  SecureStore.setItem(forgottenKey, pairingId, options);
+}
+
+export function deleteForgottenNotice(): void {
+  remove(forgottenKey);
 }
