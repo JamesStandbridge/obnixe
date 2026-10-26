@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState } from "react-native";
 import { closeDanglingConnections } from "@obnixe/core";
+import type { PairingInvite } from "@obnixe/core";
 import type { ConnectionEndReason } from "@obnixe/schema";
 import { db } from "@/data/database";
 import { AgentLink } from "@/features/agent/link";
@@ -13,6 +14,8 @@ export interface AgentLinkControls {
   readonly end: (reason: ConnectionEndReason) => void;
   readonly restart: () => void;
   readonly forget: () => void;
+  readonly join: (invite: PairingInvite) => void;
+  readonly cancelJoin: () => void;
 }
 
 export function useAgentLink(host: string | null, onNotice: (notice: LinkNotice) => void): AgentLinkControls {
@@ -50,5 +53,7 @@ export function useAgentLink(host: string | null, onNotice: (notice: LinkNotice)
   const end = useCallback((reason: ConnectionEndReason) => linkRef.current?.end(reason), []);
   const restart = useCallback(() => linkRef.current?.start(), []);
   const forget = useCallback(() => linkRef.current?.forget(), []);
-  return { view, knownMac, end, restart, forget };
+  const join = useCallback((invite: PairingInvite) => linkRef.current?.join(invite), []);
+  const cancelJoin = useCallback(() => linkRef.current?.cancelJoin(), []);
+  return { view, knownMac, end, restart, forget, join, cancelJoin };
 }

@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { Platform, Pressable, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { CallTag } from "@obnixe/core";
-import { ControlButton, SheetButton } from "@/ui/Button";
+import { ControlButton, PrimaryButton, SheetButton } from "@/ui/Button";
 import { Switch } from "@/ui/Controls";
 import { Icon } from "@/ui/icons/Icon";
 import { IconButton, TextField } from "@/ui/Inputs";
@@ -120,13 +120,58 @@ export function CodePanel({ code, remainingSeconds }: CodePanelProps) {
   );
 }
 
-export function PairingSteps() {
+interface ScanIntroProps {
+  readonly onScan: () => void;
+}
+
+export function ScanIntro({ onScan }: ScanIntroProps) {
+  const { colors } = useTheme();
+  return (
+    <View style={styles.scan}>
+      <Text tone="secondary" style={styles.scanText}>
+        Sur le Mac, lance <Text style={[styles.command, { backgroundColor: colors.surface }]}>obnixe-bridge pair</Text> : un QR code s'affiche. Le téléphone s'y relie sans rien saisir.
+      </Text>
+      <PrimaryButton label="Scanner le QR code du Mac" onPress={onScan} />
+    </View>
+  );
+}
+
+interface ManualToggleProps {
+  readonly open: boolean;
+  readonly onPress: () => void;
+}
+
+export function ManualToggle({ open, onPress }: ManualToggleProps) {
+  const { colors } = useTheme();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ expanded: open }}
+      accessibilityLabel="Saisir l'adresse, sans caméra, avec un code"
+      onPress={onPress}
+      style={({ pressed }) => [styles.manual, { borderTopColor: colors.line }, pressed && { backgroundColor: colors.surface }]}
+    >
+      <View style={styles.rowMain}>
+        <Text variant="bodyStrong">Saisir l'adresse</Text>
+        <Text variant="small" tone="secondary">
+          sans caméra, avec un code à 6 chiffres
+        </Text>
+      </View>
+      <Icon name={open ? "collapse" : "expand"} size={16} color={colors.text3} />
+    </Pressable>
+  );
+}
+
+interface PairingStepsProps {
+  readonly code: string;
+}
+
+export function PairingSteps({ code }: PairingStepsProps) {
   const { colors } = useTheme();
   const steps: readonly ReactNode[] = [
     <>
-      Sur le Mac, lance <Text style={[styles.command, { backgroundColor: colors.surface }]}>obnixe-bridge pair</Text>
+      Sur le Mac, lance <Text style={[styles.command, { backgroundColor: colors.surface }]}>obnixe-bridge pair {code}</Text>
     </>,
-    "Saisis ce code dans le terminal",
     "Garde cet écran ouvert pendant la connexion",
   ];
   return (
@@ -166,7 +211,7 @@ export function Dot({ network }: DotProps) {
 }
 
 function networkLabel(network: NetworkState, host: string | null): string {
-  if (host === null) return "Indique l'adresse du Mac";
+  if (host === null) return "Indique l'adresse IP du Mac";
   switch (network) {
     case "reachable":
       return `${isTailscaleHost(host) ? "Tailscale actif" : "Mac joignable"} · ${host}`;
@@ -366,6 +411,34 @@ interface ResumePanelProps {
   readonly network: NetworkState;
 }
 
+interface JoinPanelProps {
+  readonly mac: string;
+  readonly network: NetworkState;
+  readonly host: string | null;
+}
+
+export function JoinPanel({ mac, network, host }: JoinPanelProps) {
+  const { colors } = useTheme();
+  const lost = network === "unreachable";
+  return (
+    <View
+      style={[styles.status, { backgroundColor: colors.surface, borderLeftColor: lost ? colors.warn : colors.text3 }]}
+      accessible
+      accessibilityLabel={lost ? `${mac} introuvable` : `Connexion à ${mac}`}
+      accessibilityLiveRegion="polite"
+    >
+      <View style={styles.statusHeader}>
+        <Dot network={network} />
+        <Text style={styles.statusEyebrow}>{lost ? "Mac introuvable" : "Appairage…"}</Text>
+      </View>
+      <Text style={styles.statusTitle}>{mac}</Text>
+      <Text variant="small" tone="secondary">
+        {lost ? "Mets le téléphone sur le même Wi-Fi que le Mac, ou active Tailscale. Nouvel essai dans un instant." : host === null ? "QR code lu" : `QR code lu, essai de ${host}`}
+      </Text>
+    </View>
+  );
+}
+
 export function ResumePanel({ mac, network }: ResumePanelProps) {
   const { colors } = useTheme();
   return (
@@ -404,7 +477,7 @@ export function ForgetMac({ mac, onPress }: ForgetMacProps) {
       <View style={styles.rowMain}>
         <Text variant="bodyStrong">Oublier ce Mac</Text>
         <Text variant="small" tone="secondary">
-          {mac} demandera un nouveau code
+          il faudra scanner un nouveau QR code
         </Text>
       </View>
     </Pressable>
@@ -420,7 +493,7 @@ interface ForgetMacSheetProps {
 
 export function ForgetMacSheet({ open, mac, onClose, onConfirm }: ForgetMacSheetProps) {
   return (
-    <Sheet open={open} title={`Oublier ${mac} ?`} context="Le téléphone ne s'y reconnectera plus tout seul. Pour relier un agent, il faudra saisir un nouveau code." onClose={onClose}>
+    <Sheet open={open} title={`Oublier ${mac} ?`} context="Le téléphone ne s'y reconnectera plus tout seul. Pour relier un agent, il faudra scanner un nouveau QR code." onClose={onClose}>
       <SheetButton label="Oublier ce Mac" onPress={onConfirm} style={styles.sheetButton} />
     </Sheet>
   );
@@ -443,11 +516,11 @@ export function HostSheet({ open, host, onClose, onSave }: HostSheetProps) {
     if (normalized !== null) onSave(normalized);
   };
   return (
-    <Sheet open={open} title="Adresse du Mac" context="Nom Tailscale ou adresse IP du Mac où tourne obnixe-bridge." onClose={onClose}>
+    <Sheet open={open} title="Adresse du Mac" context="Adresse IP du Mac sur le Wi-Fi ou sur Tailscale, listée par obnixe-bridge pair. Une fois relié, le téléphone suit seul ses changements d'adresse." onClose={onClose}>
       <TextField
         value={draft}
         onChangeText={setDraft}
-        placeholder="macbook.tail3c2.ts.net"
+        placeholder="192.168.1.24"
         autoCapitalize="none"
         autoCorrect={false}
         keyboardType="url"
@@ -475,7 +548,10 @@ const styles = StyleSheet.create({
   codeGroup: { fontFamily: fonts.figure800, fontSize: 76, lineHeight: 70, letterSpacing: 1.5 },
   expiry: { fontSize: 15, lineHeight: 20 },
   expiryClock: { fontFamily: fonts.figure700, fontSize: 17 },
-  steps: { marginTop: 16 },
+  steps: { marginTop: 12 },
+  scan: { marginTop: 14, gap: 16 },
+  scanText: { lineHeight: 23 },
+  manual: { marginTop: 20, borderTopWidth: 1, minHeight: 56, paddingVertical: 10, flexDirection: "row", alignItems: "center", gap: 12 },
   step: { flexDirection: "row", gap: 10, paddingVertical: 10 },
   stepNumber: { width: 24, fontFamily: fonts.figure700, fontSize: 15, lineHeight: 22 },
   stepText: { flex: 1, lineHeight: 22 },

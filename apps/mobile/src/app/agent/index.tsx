@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { router } from "expo-router";
 import { callTag, changeCount, connectionRecap, revertState } from "@obnixe/core";
-import type { RevertIndex } from "@obnixe/core";
+import type { InviteErrorReason, RevertIndex } from "@obnixe/core";
 import type { EpochMs, Id } from "@obnixe/schema";
 import { environment } from "@/data/database";
 import { deviceTimeZone, formatTimeAt } from "@/format/dates";
@@ -18,17 +18,23 @@ import {
   Heading,
   HistoryLink,
   HostSheet,
+  JoinPanel,
+  ManualToggle,
   NetworkLine,
   PairingSteps,
   ResumePanel,
+  ScanIntro,
   StatusPanel,
   bottomPanelHeight,
 } from "@/features/agent/components";
+import { usePairingRequests } from "@/features/agent/invites";
+import type { PairingRequest } from "@/features/agent/invites";
 import type { LinkNotice, LinkView } from "@/features/agent/link";
 import { saveBridgeHost, setPermission, useAgentSettings, useAgentTotals, useCalls, useConnection, usePhotoCount, useRevertIndex } from "@/features/agent/queries";
 import type { AgentSettings, CallRow } from "@/features/agent/queries";
 import { useAgentLink } from "@/features/agent/useAgentLink";
 import { useToggleChange } from "@/features/agent/useToggleChange";
+import { LinkButton } from "@/ui/Button";
 import { Section, Screen } from "@/ui/Layout";
 import { useSnackbar } from "@/ui/SnackbarHost";
 import { Text } from "@/ui/Text";
@@ -36,6 +42,10 @@ import { goBack } from "@/ui/navigation";
 
 function openLog(): void {
   router.push("/agent/log");
+}
+
+function openScanner(): void {
+  router.push("/agent/scan");
 }
 
 function useSecondsUntil(deadline: number | null): number {
@@ -56,22 +66,51 @@ function activeWrites(calls: readonly CallRow[], index: RevertIndex): number {
 interface PairingProps {
   readonly view: Extract<LinkView, { kind: "pairing" }>;
   readonly settings: AgentSettings;
+  readonly manual: boolean;
+  readonly onToggleManual: () => void;
   readonly onEditHost: () => void;
 }
 
-function Pairing({ view, settings, onEditHost }: PairingProps) {
-  const remaining = useSecondsUntil(view.expiresAt);
+function Pairing({ view, settings, manual, onToggleManual, onEditHost }: PairingProps) {
+  const remaining = useSecondsUntil(manual ? view.expiresAt : null);
   const totals = useAgentTotals();
   const photoCount = usePhotoCount();
   const detail = totals.connections === 0 ? "Aucune connexion pour l'instant" : `${plural(totals.connections, "connexion", "connexions")} · ${changeCount(totals.writes)}`;
   return (
     <>
       <Heading title="Relie Cursor à ton suivi" />
-      <CodePanel code={view.code} remainingSeconds={remaining} />
-      <PairingSteps />
-      <NetworkLine network={view.network} host={settings.bridgeHost} onPress={onEditHost} />
+      <ScanIntro onScan={openScanner} />
+      <ManualToggle open={manual} onPress={onToggleManual} />
+      {manual ? (
+        <>
+          <NetworkLine network={view.network} host={view.host} onPress={onEditHost} />
+          {view.host === null ? null : (
+            <>
+              <CodePanel code={view.code} remainingSeconds={remaining} />
+              <PairingSteps code={view.code} />
+            </>
+          )}
+        </>
+      ) : null}
       <AgentPermissions settings={settings} connected={false} photoCount={photoCount} onChange={setPermission} />
       <HistoryLink detail={detail} onPress={openLog} />
+    </>
+  );
+}
+
+interface JoiningProps {
+  readonly view: Extract<LinkView, { kind: "joining" }>;
+  readonly settings: AgentSettings;
+  readonly onEditHost: () => void;
+}
+
+function Joining({ view, settings, onEditHost }: JoiningProps) {
+  const photoCount = usePhotoCount();
+  return (
+    <>
+      <JoinPanel mac={view.mac} network={view.network} host={view.host} />
+      {view.network === "unreachable" ? <NetworkLine network={view.network} host={view.host} onPress={onEditHost} /> : null}
+      <AgentPermissions settings={settings} connected={false} photoCount={photoCount} onChange={setPermission} />
     </>
   );
 }
@@ -88,7 +127,8 @@ function Resuming({ view, settings, onEditHost, onForget }: ResumingProps) {
   return (
     <>
       <ResumePanel mac={view.mac} network={view.network} />
-      <NetworkLine network={view.network} host={settings.bridgeHost} onPress={onEditHost} />
+      <NetworkLine network={view.network} host={view.host} onPress={onEditHost} />
+      {view.network === "unreachable" ? <LinkButton label="Scanner le QR code du Mac" onPress={openScanner} style={styles.rescan} /> : null}
       <AgentPermissions settings={settings} connected={false} photoCount={photoCount} onChange={setPermission} />
       <HistoryLink detail="connexions précédentes" onPress={openLog} />
       <ForgetMac mac={view.mac} onPress={onForget} />
@@ -184,9 +224,24 @@ function noticeText(notice: LinkNotice): string {
     case "version":
       return "Mets à jour obnixe-bridge sur le Mac";
     case "forgotten":
-      return "Le Mac ne reconnaît plus ce téléphone, saisis le nouveau code";
+      return "Le Mac ne reconnaît plus ce téléphone, scanne un nouveau QR code";
+    case "invite_refused":
+      return "QR code expiré ou déjà utilisé, relance obnixe-bridge pair";
     default: {
       const unreachable: never = notice;
+      return unreachable;
+    }
+  }
+}
+
+function invalidInviteText(reason: InviteErrorReason): string {
+  switch (reason) {
+    case "format":
+      return "Ce QR code ne vient pas d'obnixe-bridge";
+    case "version":
+      return "QR code trop récent, mets à jour Obnixe";
+    default: {
+      const unreachable: never = reason;
       return unreachable;
     }
   }
@@ -196,12 +251,14 @@ function bottomLabel(view: LinkView, knownMac: string | null): string {
   switch (view.kind) {
     case "pairing":
       return "Annuler l'appairage";
+    case "joining":
+      return "Annuler";
     case "resuming":
       return "Annuler la reconnexion";
     case "connected":
       return "Couper la connexion";
     case "disconnected":
-      return knownMac === null ? "Générer un nouveau code" : "Reconnecter";
+      return knownMac === null ? "Relier un Mac" : "Reconnecter";
     default: {
       const unreachable: never = view;
       return unreachable;
@@ -214,14 +271,33 @@ export default function Agent() {
   const notify = useSnackbar();
   const [editingHost, setEditingHost] = useState(false);
   const [forgetting, setForgetting] = useState(false);
+  const [manual, setManual] = useState(settings.bridgeHost !== null);
   const [sheetMac, setSheetMac] = useState("");
-  const onNotice = useCallback(
-    (notice: LinkNotice) => {
-      notify({ text: noticeText(notice), aboveTabBar: false, extraOffset: bottomPanelHeight });
+  const say = useCallback(
+    (text: string) => {
+      notify({ text, aboveTabBar: false, extraOffset: bottomPanelHeight });
     },
     [notify],
   );
-  const { view, knownMac, end, restart, forget } = useAgentLink(settings.bridgeHost, onNotice);
+  const onNotice = useCallback((notice: LinkNotice) => say(noticeText(notice)), [say]);
+  const { view, knownMac, end, restart, forget, join, cancelJoin } = useAgentLink(settings.bridgeHost, onNotice);
+  usePairingRequests((request: PairingRequest) => {
+    switch (request.kind) {
+      case "invite":
+        join(request.invite);
+        return;
+      case "invalid":
+        say(invalidInviteText(request.reason));
+        return;
+      case "manual":
+        setManual(true);
+        return;
+      default: {
+        const unreachable: never = request;
+        throw new Error(`Unhandled pairing request ${JSON.stringify(unreachable)}`);
+      }
+    }
+  });
   const askForget = (): void => {
     if (knownMac === null) return;
     setSheetMac(knownMac);
@@ -233,6 +309,9 @@ export default function Agent() {
       case "pairing":
       case "resuming":
         goBack("/");
+        return;
+      case "joining":
+        cancelJoin();
         return;
       case "connected":
         end("user");
@@ -251,7 +330,10 @@ export default function Agent() {
     <View style={styles.root}>
       <Screen bottomInset={120}>
         <AgentAppBar onBack={() => goBack("/")} />
-        {view.kind === "pairing" ? <Pairing view={view} settings={settings} onEditHost={() => setEditingHost(true)} /> : null}
+        {view.kind === "pairing" ? (
+          <Pairing view={view} settings={settings} manual={manual} onToggleManual={() => setManual((open) => !open)} onEditHost={() => setEditingHost(true)} />
+        ) : null}
+        {view.kind === "joining" ? <Joining view={view} settings={settings} onEditHost={() => setEditingHost(true)} /> : null}
         {view.kind === "resuming" ? <Resuming view={view} settings={settings} onEditHost={() => setEditingHost(true)} onForget={askForget} /> : null}
         {view.kind === "connected" ? <Connected connectionId={view.connectionId} settings={settings} knownMac={knownMac} onForget={askForget} /> : null}
         {view.kind === "disconnected" ? <Disconnected connectionId={view.connectionId} at={view.at} knownMac={knownMac} onForget={askForget} /> : null}
@@ -283,4 +365,5 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   summary: { marginTop: 8, lineHeight: 23 },
   empty: { paddingVertical: 14 },
+  rescan: { alignSelf: "flex-start", marginLeft: -10 },
 });

@@ -38,6 +38,7 @@ function Navigator() {
           <Stack.Protected guard={firstLaunch} redirectTo="/">
             <Stack.Screen name="welcome" />
           </Stack.Protected>
+          <Stack.Screen name="agent/scan" options={{ presentation: "fullScreenModal", animation: "slide_from_bottom" }} />
         </Stack>
       </SnackbarHost>
     </>
