@@ -18,6 +18,7 @@ export interface NextSlot {
 
 interface RotationEvent {
   readonly slotLineageId: Id;
+  readonly position: number | null;
   readonly at: EpochMs;
 }
 
@@ -32,7 +33,7 @@ export function currentProgram(db: ObnixeDatabase): CurrentProgram | null {
 
 export function lastRotationEvent(db: ObnixeDatabase, programId: Id): RotationEvent | null {
   const done = db
-    .select({ slotLineageId: programSlot.lineageId, at: session.startedAt })
+    .select({ slotLineageId: programSlot.lineageId, position: programSlot.position, at: session.startedAt })
     .from(session)
     .innerJoin(programSlot, eq(session.slotId, programSlot.id))
     .innerJoin(programVersion, eq(programSlot.versionId, programVersion.id))
@@ -45,16 +46,39 @@ export function lastRotationEvent(db: ObnixeDatabase, programId: Id): RotationEv
     .where(eq(rotationSkip.programId, programId))
     .orderBy(desc(rotationSkip.skippedAt))
     .get();
-  if (done === undefined) return skipped ?? null;
-  if (skipped === undefined) return done;
-  return skipped.at > done.at ? skipped : done;
+  if (skipped !== undefined && (done === undefined || skipped.at > done.at)) return { ...skipped, position: lineagePosition(db, programId, skipped.slotLineageId) };
+  return done ?? null;
+}
+
+function lineagePosition(db: ObnixeDatabase, programId: Id, lineageId: Id): number | null {
+  const slot = db
+    .select({ position: programSlot.position })
+    .from(programSlot)
+    .innerJoin(programVersion, eq(programSlot.versionId, programVersion.id))
+    .where(and(eq(programVersion.programId, programId), eq(programSlot.lineageId, lineageId)))
+    .orderBy(desc(programVersion.number))
+    .get();
+  return slot?.position ?? null;
+}
+
+/** Index of the slot standing for the last rotation event: its lineage, or else the slot nearest to the position that lineage had. */
+function lastIndexOf(slots: readonly ProgramSlot[], event: RotationEvent | null): number {
+  if (event === null) return -1;
+  const same = slots.findIndex((slot) => slot.lineageId === event.slotLineageId);
+  const position = event.position;
+  if (same !== -1 || position === null) return same;
+  let nearest = -1;
+  slots.forEach((slot, index) => {
+    const best = slots[nearest];
+    if (best === undefined || Math.abs(slot.position - position) < Math.abs(best.position - position)) nearest = index;
+  });
+  return nearest;
 }
 
 export function nextSlot(db: ObnixeDatabase): NextSlot | null {
   const current = currentProgram(db);
   if (current === null || current.slots.length === 0) return null;
-  const event = lastRotationEvent(db, current.program.id);
-  const lastIndex = event === null ? -1 : current.slots.findIndex((slot) => slot.lineageId === event.slotLineageId);
+  const lastIndex = lastIndexOf(current.slots, lastRotationEvent(db, current.program.id));
   const index = (lastIndex + 1) % current.slots.length;
   const slot = current.slots[index];
   if (slot === undefined) return null;

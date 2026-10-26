@@ -92,4 +92,32 @@ describe("nextSlot", () => {
     expect(next?.slot.lineageId).toBe("A");
     expect(next?.after?.lineageId).toBe("B");
   });
+
+  it("continues from the old position when the last slot was removed from the program", () => {
+    const programId = context.env.newId();
+    write([{ kind: "insert", table: "program", row: { id: programId, status: "active" } }]);
+    const first = publish(programId, 1, ["A", "B", "C"]);
+    complete(first.slotIds[1] as Id);
+    publish(programId, 2, ["A", "D", "C"]);
+    expect(nextSlot(context.db)?.slot.lineageId).toBe("C");
+  });
+
+  it("continues from the position a skipped lineage had in its latest version", () => {
+    const programId = context.env.newId();
+    write([{ kind: "insert", table: "program", row: { id: programId, status: "active" } }]);
+    publish(programId, 1, ["A", "B", "C", "D"]);
+    context.advance(3_600_000);
+    write([{ kind: "insert", table: "rotation_skip", row: { id: context.env.newId(), programId, slotLineageId: "C" as Id, skippedAt: context.env.now(), localDate: "2026-10-25" as LocalDate } }]);
+    publish(programId, 2, ["A", "B", "E", "D"]);
+    expect(nextSlot(context.db)?.slot.lineageId).toBe("D");
+  });
+
+  it("wraps around when the old position is past the end of the new version", () => {
+    const programId = context.env.newId();
+    write([{ kind: "insert", table: "program", row: { id: programId, status: "active" } }]);
+    const first = publish(programId, 1, ["A", "B", "C", "D"]);
+    complete(first.slotIds[3] as Id);
+    publish(programId, 2, ["A", "B"]);
+    expect(nextSlot(context.db)?.slot.lineageId).toBe("A");
+  });
 });
