@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "36a6e43c-dbe0-40dd-8e38-640a2810f9ef",
+  "id": "01c12f0b-6bea-4219-aa85-47b34d20158d",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "check_in": {
@@ -2578,6 +2578,13 @@
         "agent_changes_seen_at": {
           "name": "agent_changes_seen_at",
           "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "bridge_host": {
+          "name": "bridge_host",
+          "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
