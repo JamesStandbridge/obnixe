@@ -236,7 +236,7 @@ describe("writes", () => {
   });
 });
 
-describe("exercises created with a strength session", () => {
+describe("exercises created along a session or a program", () => {
   beforeEach(() => allow({ agentCanWrite: true }));
 
   interface Write {
@@ -317,6 +317,61 @@ describe("exercises created with a strength session", () => {
     toggle(logged);
     expect(sessionCount()).toBe(1);
     expect(context.db.select().from(strengthSet).all()).toHaveLength(2);
+  });
+
+  function program(programId: Id | null, items: readonly Record<string, unknown>[]): Write {
+    ok("upsert_program", {
+      ...(programId === null ? {} : { programId }),
+      name: "Jambes",
+      sessionsPerWeek: 1,
+      summary: programId === null ? "Programme jambes" : "Programme jambes révisé",
+      slots: [{ name: "Séance", sport: "strength", variants: [{ name: "Salle", items }] }],
+    });
+    const written = calls().at(-1);
+    if (written?.changesetId == null) throw new Error("No program write");
+    return { changesetId: written.changesetId, summary: written.summary };
+  }
+
+  function latestItems(programId: Id): string[] {
+    return ok<ProgramTree>("get_program", { programId }).latest.slots.flatMap((slot) => slot.variants.flatMap((variant) => variant.items.map((item) => item.exercise)));
+  }
+
+  const newLunges = { exercise: "Fentes", newExercise: { measure: "load_reps", equipment: "dumbbell" }, sets: 3, repsMin: 8, repsMax: 10 };
+
+  it("undoes a new program and its new exercises together, and redoes both", () => {
+    const created = program(null, [newLunges]);
+    toggle(created);
+    expect(exerciseNames()).toEqual([]);
+    expect(context.db.select().from(programVersion).all()).toHaveLength(0);
+
+    toggle(created);
+    expect(exerciseNames()).toEqual(["Fentes"]);
+    expect(context.db.select().from(programVersion).all()).toHaveLength(1);
+  });
+
+  it("keeps the exercises of an undone program revision, still used by that immutable version", () => {
+    ok("create_exercise", { name: "Squat", measure: "load_reps", equipment: "barbell" });
+    const squat = { exercise: "Squat", sets: 3, repsMin: 5, repsMax: 8 };
+    const { programId } = ok<{ programId: Id }>("upsert_program", { name: "Jambes", sessionsPerWeek: 1, summary: "Programme jambes", slots: [{ name: "Séance", sport: "strength", variants: [{ name: "Salle", items: [squat] }] }] });
+    const revision = program(programId, [squat, newLunges]);
+    expect(latestItems(programId)).toEqual(["Squat", "Fentes"]);
+
+    toggle(revision);
+    expect(latestItems(programId)).toEqual(["Squat"]);
+    expect(exerciseNames()).toEqual(["Fentes", "Squat"]);
+
+    toggle(revision);
+    expect(latestItems(programId)).toEqual(["Squat", "Fentes"]);
+    expect(exerciseNames()).toEqual(["Fentes", "Squat"]);
+  });
+
+  it("keeps a program's new exercise once a logged session reuses it", () => {
+    const created = program(null, [newLunges]);
+    ok("log_strength_session", { startedAt: "2026-10-22T18:00:00+02:00", durationSeconds: 1800, exercises: [lunges] });
+    toggle(created);
+    expect(exerciseNames()).toEqual(["Fentes"]);
+    expect(context.db.select().from(programVersion).all()).toHaveLength(0);
+    expect(sessionCount()).toBe(1);
   });
 
   it("refuses the whole redo when the exercises cannot come back", () => {
@@ -509,7 +564,7 @@ describe("upsert_program", () => {
     if (creation?.changesetId == null) throw new Error("Missing creation");
     expect(toggleChange(context.db, context.env, user, creation.changesetId, creation.summary).publishedVersion).toBe(false);
     expect(context.db.select().from(programSlot).all()).toHaveLength(0);
-    expect(context.db.select().from(exercise).all()).toHaveLength(2);
+    expect(context.db.select().from(exercise).all()).toHaveLength(0);
     expect(ok<{ programs: unknown[] }>("list_programs", {}).programs).toEqual([]);
   });
 });

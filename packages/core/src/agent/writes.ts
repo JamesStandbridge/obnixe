@@ -161,8 +161,8 @@ export function upsertProgram(db: ObnixeDatabase, env: AgentEnvironment, actor: 
     });
   });
 
-  commitExercises(db, env, actor, plan);
-  const changesetId = commit(db, env, { actor, summary: input.summary, revertsId: null, mutations });
+  const companionId = commitExercises(db, env, actor, plan);
+  const changesetId = commit(db, env, { actor, summary: input.summary, revertsId: null, companionId, mutations });
   return {
     kind: "write",
     summary: input.summary,
