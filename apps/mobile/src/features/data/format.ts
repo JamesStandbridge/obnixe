@@ -1,11 +1,10 @@
 import { localDateOf } from "@obnixe/core";
 import type { WeekdayIndex } from "@obnixe/core";
-import type { EpochMs, LocalDate } from "@obnixe/schema";
+import type { EpochMs } from "@obnixe/schema";
 import { deviceTimeZone } from "@/format/dates";
 
 const weekdayNames = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"] as const;
 const monthNames = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"] as const;
-const shortMonthNames = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."] as const;
 const shortWeekdays: Readonly<Record<WeekdayIndex, string>> = { 0: "lun", 1: "mar", 2: "mer", 3: "jeu", 4: "ven", 5: "sam", 6: "dim" };
 export const weekdayInitials: Readonly<Record<WeekdayIndex, string>> = { 0: "L", 1: "M", 2: "M", 3: "J", 4: "V", 5: "S", 6: "D" };
 export const weekdayLabels: Readonly<Record<WeekdayIndex, string>> = { 0: "lundi", 1: "mardi", 2: "mercredi", 3: "jeudi", 4: "vendredi", 5: "samedi", 6: "dimanche" };
@@ -20,16 +19,6 @@ export function longDateTime(instant: EpochMs): string {
 export function dayMonth(instant: EpochMs): string {
   const date = new Date(instant);
   return `${date.getDate() === 1 ? "1er" : date.getDate()} ${monthNames[date.getMonth()]}`;
-}
-
-export function shortDate(instant: EpochMs): string {
-  const date = new Date(instant);
-  return `${date.getDate()} ${shortMonthNames[date.getMonth()]}`;
-}
-
-export function shortLocalDate(day: LocalDate): string {
-  const [, month, date] = day.split("-").map(Number);
-  return `${date ?? 1} ${shortMonthNames[(month ?? 1) - 1]}`;
 }
 
 export function fileStamp(instant: EpochMs): string {

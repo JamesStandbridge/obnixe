@@ -7,8 +7,7 @@ import type { Backup, EpochMs, MassUnit } from "@obnixe/schema";
 import { db, environment } from "@/data/database";
 import { write } from "@/data/write";
 import { restoreReplaced } from "@/features/data/backup";
-import { shortDate, shortLocalDate } from "@/features/data/format";
-import { deviceTimeZone } from "@/format/dates";
+import { deviceTimeZone, shortDate } from "@/format/dates";
 import { useDatabaseVersion } from "@/features/data/useDatabaseVersion";
 import { LinkButton } from "@/ui/Button";
 import { Choices } from "@/ui/Inputs";
@@ -36,17 +35,17 @@ function massLabel(grams: number, unit: MassUnit): string {
 function itemTitle(item: TrashItem, unit: MassUnit): string {
   switch (item.table) {
     case "session":
-      return `${item.row.title ?? sports[item.row.sport].label} · ${shortLocalDate(item.row.localDate)}`;
+      return `${item.row.title ?? sports[item.row.sport].label} · ${shortDate(item.row.localDate)}`;
     case "weigh_in":
-      return `Pesée ${massLabel(item.row.grams, unit)} · ${shortLocalDate(item.row.localDate)}`;
+      return `Pesée ${massLabel(item.row.grams, unit)} · ${shortDate(item.row.localDate)}`;
     case "measurement":
-      return `Mensuration · ${shortLocalDate(item.row.localDate)}`;
+      return `Mensuration · ${shortDate(item.row.localDate)}`;
     case "photo":
-      return `Photo · ${shortLocalDate(item.row.localDate)}`;
+      return `Photo · ${shortDate(item.row.localDate)}`;
     case "check_in":
-      return `Forme du jour · ${shortLocalDate(item.row.localDate)}`;
+      return `Forme du jour · ${shortDate(item.row.localDate)}`;
     case "pain_report":
-      return `${zones[item.row.zone].label} · ${shortLocalDate(item.row.localDate)}`;
+      return `${zones[item.row.zone].label} · ${shortDate(item.row.localDate)}`;
     default: {
       const unreachable: never = item;
       throw new Error(`Unhandled trash item ${JSON.stringify(unreachable)}`);
@@ -134,7 +133,7 @@ export function TrashSheet({ open, massUnit, onClose }: TrashSheetProps) {
         {replaced.map((row) => (
           <View key={row.id} style={[styles.row, { borderTopColor: colors.line }]}>
             <View style={styles.main}>
-              <Text variant="bodyStrong">Données remplacées · {shortDate(row.createdAt)}</Text>
+              <Text variant="bodyStrong">Données remplacées · {shortDate(localDateOf(row.createdAt, deviceTimeZone()))}</Text>
               <Text variant="small" tone="secondary">
                 avant un import · {remaining(row.createdAt + trashRetentionMs, now)}
               </Text>

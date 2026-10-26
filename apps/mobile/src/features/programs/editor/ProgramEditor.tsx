@@ -22,11 +22,11 @@ import {
   validateDraft,
 } from "@obnixe/core";
 import type { DraftItem, DraftSlot, ProgramDraft, PublishedBase, LatestZonePain } from "@obnixe/core";
-import { exercise as exerciseTable, program, programVersion, sports } from "@obnixe/schema";
+import { program, programVersion, sports } from "@obnixe/schema";
 import type { Exercise, Id, MassUnit, ProgramStatus, SportKey, ZoneKey } from "@obnixe/schema";
 import { db, environment } from "@/data/database";
 import { useUndoableWrite, write } from "@/data/write";
-import { useEnabledSports, useExerciseCatalog, useRevision, useZonePain } from "@/features/programs/data";
+import { useEnabledSports, readExercise, useExerciseCatalog, useRevision, useZonePain } from "@/features/programs/data";
 import { useMassUnit } from "@/data/settings";
 import type { ExerciseCatalog } from "@/features/programs/data";
 import { authorLabel, changeCountLabel, issueMessage, summarizeChanges } from "@/features/programs/format";
@@ -109,10 +109,6 @@ function nextStrengthName(draft: ProgramDraft): string {
   const used = new Set(draft.slots.map((slot) => slot.name.trim()));
   for (const letter of "ABCDEFGHIJKLMNOPQRSTUVWXYZ") if (!used.has(`Séance ${letter}`)) return `Séance ${letter}`;
   return `Séance ${draft.slots.length + 1}`;
-}
-
-function readExercise(id: Id): Exercise | null {
-  return db().select().from(exerciseTable).where(eq(exerciseTable.id, id)).get() ?? null;
 }
 
 interface ProgramEditorProps {

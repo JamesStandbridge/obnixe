@@ -1,4 +1,5 @@
 import type { ConnectionEndReason, Id } from "@obnixe/schema";
+import { sameBytes } from "../bytes.ts";
 import type { ConnectionPeer } from "./connection.ts";
 import {
   ProtocolError,
@@ -19,7 +20,6 @@ import {
   protocolVersion,
   publicKeyBytes,
   rpcErrorCodes,
-  sameBytes,
   sharedSecret,
 } from "./protocol.ts";
 import type { BridgeMessage, Frame, PairingSecrets, PairingTranscript, PhoneMessage, RandomBytes, RejectionReason, ToolOutcome } from "./protocol.ts";
@@ -61,6 +61,7 @@ export class PhoneSession {
   private readonly options: PhoneSessionOptions;
   private state: SessionState = { kind: "challenge" };
   private opened: Id | null = null;
+  private proofSent = false;
   private lastReceivedAt: number;
 
   constructor(options: PhoneSessionOptions) {
@@ -71,6 +72,11 @@ export class PhoneSession {
   /** Connection opened through this session, kept after the session closes so callers can record how it ended. */
   get connectionId(): Id | null {
     return this.opened;
+  }
+
+  /** True once a code-derived proof left the phone: the code can then be cracked offline and must not be reused. */
+  get codeExposed(): boolean {
+    return this.proofSent;
   }
 
   get isClosed(): boolean {
@@ -170,6 +176,7 @@ export class PhoneSession {
     if (this.state.kind !== "waiting") throw new ProtocolError("Unexpected commit");
     const commitment = decodeBytes(frame.commitment, proofBytes);
     this.state.commitment = commitment;
+    this.proofSent = true;
     this.send({ type: "proof", proof: toBase64(phoneProof(this.state.secrets, commitment)) });
   }
 

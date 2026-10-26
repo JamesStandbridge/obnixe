@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { useMigrations } from "drizzle-orm/expo-sqlite/migrator";
 import migrations from "@obnixe/schema/migrations";
-import { ensureSettings, eraseDatabase, openDatabase } from "@/data/database";
+import { ensureSettings, setDatabaseAside, openDatabase } from "@/data/database";
 import type { AppDatabase } from "@/data/database";
 import { LinkButton } from "@/ui/Button";
 import { MenuItem } from "@/ui/Inputs";
@@ -27,7 +27,7 @@ export function DatabaseGate({ children }: DatabaseGateProps) {
   }, [generation]);
 
   const erase = async (): Promise<void> => {
-    await eraseDatabase();
+    await setDatabaseAside();
     setDatabase(null);
     setError(null);
     setGeneration((value) => value + 1);
@@ -88,18 +88,18 @@ function UnreadableDatabase({ error, onErase }: UnreadableDatabaseProps) {
       {confirming ? (
         <>
           <Text variant="body">
-            Séances, programmes, mesures et réglages enregistrés sur cet appareil seront perdus. Si tu as une sauvegarde, importe-la ensuite depuis l'accueil.
+            L'app repart de zéro. Une copie de la base illisible reste sur l'appareil, elle n'est plus utilisée. Si tu as une sauvegarde, importe-la ensuite depuis l'accueil.
           </Text>
           {failure === null ? null : (
             <Text variant="small" tone="secondary" selectable>
-              Effacement impossible : {failure}
+              Rien n'a été modifié : {failure}
             </Text>
           )}
-          <MenuItem label={erasing ? "Effacement…" : "Effacer définitivement"} destructive onPress={erasing ? () => undefined : erase} />
+          <MenuItem label={erasing ? "Mise de côté…" : "Mettre de côté et repartir"} destructive onPress={erasing ? () => undefined : erase} />
           <LinkButton label="Garder les données" disabled={erasing} onPress={() => setConfirming(false)} />
         </>
       ) : (
-        <LinkButton label="Effacer les données de cet appareil" onPress={() => setConfirming(true)} />
+        <LinkButton label="Repartir de zéro" onPress={() => setConfirming(true)} />
       )}
     </StartupError>
   );

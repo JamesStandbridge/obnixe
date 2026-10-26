@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import type { Id } from "@obnixe/schema";
+import { sameBytes } from "../bytes.ts";
 import { Utf8Error, fromBase64, fromUtf8, toBase64 } from "./encoding.ts";
 import {
   ProtocolError,
@@ -17,7 +18,6 @@ import {
   parsePhoneMessage,
   phoneProof,
   protocolVersion,
-  sameBytes,
   sharedSecret,
 } from "./protocol.ts";
 import type { EphemeralKeyPair, Frame, PairingSecrets, PairingTranscript } from "./protocol.ts";
@@ -324,6 +324,15 @@ describe("PhoneSession", () => {
     expect(target.session.isClosed).toBe(true);
     expect(target.session.connectionId).toBe("connection-1");
     expect(target.closed).toBe(true);
+  });
+
+  it("marks the code exposed once its proof has left the phone", async () => {
+    const target = harness(code);
+    const bridge = simulatedBridge();
+    const hello = await helloFrom(target, bridge);
+    expect(target.session.codeExposed).toBe(false);
+    await proofFrom(target, commitTo(await bridgeSecrets(bridge, hello, code)));
+    expect(target.session.codeExposed).toBe(true);
   });
 
   it("refuses sealed frames before pairing", async () => {

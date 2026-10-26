@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import { StyleSheet, View } from "react-native";
-import { router, useFocusEffect } from "expo-router";
+import { useFocusEffect } from "expo-router";
 import { callTag, historyTitle, readsLine, revertState } from "@obnixe/core";
 import type { RevertIndex } from "@obnixe/core";
 import type { AgentConnection } from "@obnixe/schema";
@@ -13,11 +13,7 @@ import type { ToggleTarget } from "@/features/agent/useToggleChange";
 import { Section, Screen } from "@/ui/Layout";
 import { Text } from "@/ui/Text";
 import { useTheme } from "@/ui/theme";
-
-function goBack(): void {
-  if (router.canGoBack()) router.back();
-  else router.replace("/agent");
-}
+import { goBack } from "@/ui/navigation";
 
 interface ConnectionSectionProps {
   readonly connection: AgentConnection;
@@ -87,7 +83,7 @@ export default function AgentLog() {
   return (
     <View style={styles.root}>
       <Screen>
-        <AgentAppBar onBack={goBack} />
+        <AgentAppBar onBack={() => goBack("/agent")} />
         <Heading title="Activité des agents" />
         {connections.length === 0 ? (
           <Text tone="secondary" style={styles.empty}>

@@ -1,7 +1,7 @@
 import { drizzle } from "drizzle-orm/expo-sqlite";
 import type { ExpoSQLiteDatabase } from "drizzle-orm/expo-sqlite";
 import { getRandomValues } from "expo-crypto";
-import { deleteDatabaseAsync, openDatabaseAsync } from "expo-sqlite";
+import { backupDatabaseAsync, deleteDatabaseAsync, openDatabaseAsync } from "expo-sqlite";
 import type { SQLiteDatabase } from "expo-sqlite";
 import { createIdFactory, schema, settings } from "@obnixe/schema";
 import type { EpochMs } from "@obnixe/schema";
@@ -29,11 +29,18 @@ export async function openDatabase(): Promise<AppDatabase> {
   return current;
 }
 
-export async function eraseDatabase(): Promise<void> {
-  const sqlite = connection;
+/** Copies the database to a dated file before deleting it, so a failed migration never destroys the only copy. */
+export async function setDatabaseAside(): Promise<void> {
+  const source = connection ?? (await openDatabaseAsync(databaseName));
   connection = null;
   current = null;
-  if (sqlite !== null) await sqlite.closeAsync();
+  const copy = await openDatabaseAsync(`obnixe-unreadable-${Date.now()}.db`);
+  try {
+    await backupDatabaseAsync({ sourceDatabase: source, destDatabase: copy });
+  } finally {
+    await copy.closeAsync();
+    await source.closeAsync();
+  }
   await deleteDatabaseAsync(databaseName);
 }
 

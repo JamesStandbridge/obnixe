@@ -29,11 +29,7 @@ import { useToggleChange } from "@/features/agent/useToggleChange";
 import { Section, Screen } from "@/ui/Layout";
 import { useSnackbar } from "@/ui/SnackbarHost";
 import { Text } from "@/ui/Text";
-
-function goBack(): void {
-  if (router.canGoBack()) router.back();
-  else router.replace("/");
-}
+import { goBack } from "@/ui/navigation";
 
 function openLog(): void {
   router.push("/agent/log");
@@ -183,7 +179,7 @@ export default function Agent() {
   const bottomAction = (): void => {
     switch (view.kind) {
       case "pairing":
-        goBack();
+        goBack("/");
         return;
       case "connected":
         end("user");
@@ -201,7 +197,7 @@ export default function Agent() {
   return (
     <View style={styles.root}>
       <Screen bottomInset={120}>
-        <AgentAppBar onBack={goBack} />
+        <AgentAppBar onBack={() => goBack("/")} />
         {view.kind === "pairing" ? <Pairing view={view} settings={settings} onEditHost={() => setEditingHost(true)} /> : null}
         {view.kind === "connected" ? <Connected connectionId={view.connectionId} settings={settings} /> : null}
         {view.kind === "disconnected" ? <Disconnected connectionId={view.connectionId} at={view.at} /> : null}

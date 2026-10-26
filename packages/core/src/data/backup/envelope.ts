@@ -8,6 +8,7 @@ import { decodeUtf8, encodeUtf8, InvalidUtf8Error } from "../utf8.ts";
 import { packSnapshot, unpackSnapshot } from "./container.ts";
 import { backupSchemaVersion, CorruptedBackupError } from "./snapshot.ts";
 import type { Snapshot } from "./snapshot.ts";
+import { sameBytes } from "../../bytes.ts";
 
 const magic = encodeUtf8("OBNIXE");
 const formatVersion = 1;
@@ -185,13 +186,6 @@ export function readBackupHeader(bytes: Uint8Array): BackupHeader {
   const { header } = envelope(bytes);
   assertSupportedVersions(header.schemaVersion, header.catalogVersion);
   return header;
-}
-
-function sameBytes(left: Uint8Array, right: Uint8Array): boolean {
-  if (left.length !== right.length) return false;
-  let difference = 0;
-  for (let index = 0; index < left.length; index += 1) difference |= (left[index] ?? 0) ^ (right[index] ?? 0);
-  return difference === 0;
 }
 
 function decrypt(key: Uint8Array, nonce: Uint8Array, associatedData: Uint8Array, ciphertext: Uint8Array): Uint8Array {

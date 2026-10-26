@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { desc } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { useLiveQuery } from "drizzle-orm/expo-sqlite";
 import {
   enabledSports,
@@ -92,4 +92,8 @@ export function useEnabledSports(revision: string): readonly SportKey[] {
 export function worstPain(exerciseZones: readonly ZoneKey[], pain: ReadonlyMap<ZoneKey, LatestZonePain>): LatestZonePain | null {
   const reports = exerciseZones.map((zone) => pain.get(zone)).filter((value): value is LatestZonePain => value !== undefined);
   return reports.find((report) => report.level === "stop") ?? reports[0] ?? null;
+}
+
+export function readExercise(id: Id): Exercise | null {
+  return db().select().from(exercise).where(eq(exercise.id, id)).get() ?? null;
 }

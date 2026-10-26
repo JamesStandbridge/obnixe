@@ -234,6 +234,10 @@ export class AgentLink {
       return;
     }
     if (this.current.kind !== "pairing") return;
+    if (session.codeExposed) {
+      this.rotateCode();
+      return;
+    }
     this.setNetwork("unreachable");
     this.redial = setTimeout(() => {
       this.redial = null;

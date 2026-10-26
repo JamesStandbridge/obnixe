@@ -23,7 +23,7 @@ import { undo, useUndoableWrite, write } from "@/data/write";
 import { effortLabels, formatDay, formatLongDate, formatMass, formatTime, sensationPhrases } from "@/features/training/format";
 import { capitalize, lowerFirst, sessionTitle, zoneLabel } from "@/format/labels";
 import { formatClock, formatLongClock } from "@/format/durations";
-import { goBack, Message } from "@/features/training/Message";
+import { Message } from "@/features/training/Message";
 import { DateSheet } from "@/features/training/detail/DateSheet";
 import type { SessionTiming } from "@/features/training/detail/DateSheet";
 import { EditSheet } from "@/features/training/detail/EditSheet";
@@ -46,6 +46,7 @@ import { useSnackbar } from "@/ui/SnackbarHost";
 import { Text } from "@/ui/Text";
 import { useTheme } from "@/ui/theme";
 import { fonts } from "@/ui/tokens";
+import { goBack } from "@/ui/navigation";
 
 interface DetailData {
   readonly report: SessionReport;
@@ -284,7 +285,7 @@ function Detail({ data }: DetailProps) {
       message: "Séance supprimée · dans la corbeille 30 jours",
       aboveTabBar: true,
     });
-    goBack();
+    goBack("/");
   };
 
   const revertEntry = (entry: HistoryEntry): void => {
@@ -310,7 +311,7 @@ function Detail({ data }: DetailProps) {
     <>
       <Screen>
         <View style={styles.appbar}>
-          <IconButton icon="back" label="Retour" edge="start" onPress={goBack} />
+          <IconButton icon="back" label="Retour" edge="start" onPress={() => goBack("/")} />
           <Text style={styles.appbarContext} tone="secondary">
             Journal
           </Text>

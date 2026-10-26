@@ -12,24 +12,20 @@ export function deviceTimeZone(): string {
   return /^(UTC|[A-Z][A-Za-z_]+(\/[A-Za-z0-9_+-]+){1,2})$/.test(zone) ? zone : "UTC";
 }
 
-/** "08:05" for minutes since midnight. */
 export function formatTimeOfDay(minutes: number): string {
   return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
 }
 
-/** "08:05" on the wall clock of `timeZone`. */
 export function formatTimeAt(at: EpochMs, timeZone: string): string {
   return formatTimeOfDay(localTimeOf(at, timeZone).minutes);
 }
 
-/** "Vendredi 23 octobre" on the calendar of `timeZone`. */
 export function weekdayTitle(at: EpochMs, timeZone: string): string {
   const date = localDateOf(at, timeZone);
   const { day, month } = dateParts(date);
   return capitalize(`${weekdayLong[weekdayIndex(date)]} ${day === 1 ? "1er" : day} ${monthLong[month - 1]}`);
 }
 
-/** "3 oct." */
 export function shortDate(date: LocalDate): string {
   const { month, day } = dateParts(date);
   return `${day} ${monthShort[month - 1]}`;

@@ -1,12 +1,10 @@
 import { useEffect, useState } from "react";
 import { StyleSheet, View } from "react-native";
-import { eq } from "drizzle-orm";
 import { exerciseUsage, planRestoreExercise } from "@obnixe/core";
-import { exercise as exerciseTable } from "@obnixe/schema";
 import type { Exercise, Id } from "@obnixe/schema";
 import { db } from "@/data/database";
 import { write } from "@/data/write";
-import { useExerciseCatalog, useRevision, useZonePain } from "@/features/programs/data";
+import { readExercise, useExerciseCatalog, useRevision, useZonePain } from "@/features/programs/data";
 import { ExerciseForm } from "@/features/programs/exercises/ExerciseForm";
 import { ExercisePicker } from "@/features/programs/exercises/ExercisePicker";
 import { useMassUnit } from "@/data/settings";
@@ -15,10 +13,6 @@ import { LinkButton } from "@/ui/Button";
 type Step = { readonly kind: "pick"; readonly query: string } | { readonly kind: "form"; readonly exerciseId: Id | null; readonly name: string; readonly query: string };
 
 const initialStep: Step = { kind: "pick", query: "" };
-
-function readExercise(id: Id): Exercise | null {
-  return db().select().from(exerciseTable).where(eq(exerciseTable.id, id)).get() ?? null;
-}
 
 interface AddExerciseProps {
   readonly open: boolean;
