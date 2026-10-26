@@ -1,9 +1,5 @@
-import { AppBar, Screen } from "@/ui/Layout";
+import { JournalScreen } from "@/features/stats/JournalScreen";
 
 export default function Journal() {
-  return (
-    <Screen>
-      <AppBar title="Journal" />
-    </Screen>
-  );
+  return <JournalScreen />;
 }
