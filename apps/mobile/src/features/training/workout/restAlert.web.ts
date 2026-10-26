@@ -5,6 +5,8 @@ export interface RestAlert {
   readonly body: string;
 }
 
+export function configureRestAlerts(): void {}
+
 export async function restAlertPermission(): Promise<RestAlertPermission> {
   return "denied";
 }
@@ -13,8 +15,6 @@ export async function requestRestAlerts(): Promise<RestAlertPermission> {
   return "denied";
 }
 
-export async function scheduleRestAlert(_alert: RestAlert): Promise<string> {
-  return "";
-}
+export function scheduleRestAlert(_alert: RestAlert): void {}
 
-export async function cancelRestAlert(_id: string): Promise<void> {}
+export function cancelRestAlert(): void {}

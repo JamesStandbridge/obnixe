@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "b4cf8bc9-f1ab-4595-9e95-af0f1d61add4",
+  "id": "6993aa16-8b75-487a-afb1-ba5d7930d576",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "check_in": {
@@ -2593,6 +2593,13 @@
         "bridge_host": {
           "name": "bridge_host",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "rest_alerts_declined_at": {
+          "name": "rest_alerts_declined_at",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false

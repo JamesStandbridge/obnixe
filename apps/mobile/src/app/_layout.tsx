@@ -13,6 +13,7 @@ import { hideAsync, preventAutoHideAsync } from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { DatabaseGate } from "@/data/DatabaseGate";
 import { useAppLaunch } from "@/features/data/launch";
+import { configureRestAlerts } from "@/features/training/workout/restAlert";
 import { SnackbarHost } from "@/ui/SnackbarHost";
 import { StartupError } from "@/ui/StartupError";
 import { ThemeProvider, useTheme } from "@/ui/theme";
@@ -20,6 +21,7 @@ import { ThemeProvider, useTheme } from "@/ui/theme";
 export { RouteError as ErrorBoundary } from "@/ui/RouteError";
 
 void preventAutoHideAsync();
+configureRestAlerts();
 
 function Navigator() {
   const { name, colors } = useTheme();

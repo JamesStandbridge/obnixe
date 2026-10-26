@@ -19,10 +19,20 @@ export interface RestAlert {
 }
 
 const channelId = "rest";
+const identifier = "rest-end";
 
-setNotificationHandler({
-  handleNotification: async () => ({ shouldShowBanner: false, shouldShowList: false, shouldPlaySound: false, shouldSetBadge: false }),
-});
+let pending: Promise<void> = Promise.resolve();
+
+/** Schedule and cancel calls run one after the other so a late cancel never removes a newer rest. */
+function enqueue(task: () => Promise<void>): void {
+  pending = pending.then(task).catch((error: unknown) => ErrorUtils.getGlobalHandler()(error, false));
+}
+
+export function configureRestAlerts(): void {
+  setNotificationHandler({
+    handleNotification: async () => ({ shouldShowBanner: false, shouldShowList: false, shouldPlaySound: false, shouldSetBadge: false }),
+  });
+}
 
 function permissionOf(status: NotificationPermissionsStatus): RestAlertPermission {
   if (status.granted) return "granted";
@@ -44,14 +54,18 @@ export async function requestRestAlerts(): Promise<RestAlertPermission> {
   return permissionOf(await requestPermissionsAsync({ ios: { allowAlert: true, allowSound: true, allowBadge: false } }));
 }
 
-export async function scheduleRestAlert(alert: RestAlert): Promise<string> {
-  await ensureChannel();
-  return scheduleNotificationAsync({
-    content: { title: "Repos terminé", body: alert.body, sound: true },
-    trigger: { type: SchedulableTriggerInputTypes.DATE, date: alert.endsAt, channelId },
+/** The fixed identifier makes each schedule replace the previous one, even one left by a killed app. */
+export function scheduleRestAlert(alert: RestAlert): void {
+  enqueue(async () => {
+    await ensureChannel();
+    await scheduleNotificationAsync({
+      identifier,
+      content: { title: "Repos terminé", body: alert.body, sound: true },
+      trigger: { type: SchedulableTriggerInputTypes.DATE, date: alert.endsAt, channelId },
+    });
   });
 }
 
-export async function cancelRestAlert(id: string): Promise<void> {
-  await cancelScheduledNotificationAsync(id);
+export function cancelRestAlert(): void {
+  enqueue(() => cancelScheduledNotificationAsync(identifier));
 }

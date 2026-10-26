@@ -94,8 +94,9 @@ const settingsSchema = z.object({
   remindersExportedAt: z.int().nullable(),
   agentChangesSeenAt: z.int().nullable(),
   bridgeHost: z.string().nullable(),
+  restAlertsDeclinedAt: z.int().nullable(),
   updatedAt: z.int(),
-}) satisfies z.ZodType<Omit<SettingsValues, "remindersExportedAt" | "agentChangesSeenAt" | "updatedAt">, unknown>;
+}) satisfies z.ZodType<Omit<SettingsValues, "remindersExportedAt" | "agentChangesSeenAt" | "restAlertsDeclinedAt" | "updatedAt">, unknown>;
 
 export function parseSnapshotSettings(raw: unknown): SettingsValues {
   const parsed = settingsSchema.safeParse(raw);
