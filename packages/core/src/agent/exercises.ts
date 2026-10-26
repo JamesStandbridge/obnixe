@@ -1,4 +1,4 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNotNull, isNull } from "drizzle-orm";
 import { exercise, exerciseNameKey } from "@obnixe/schema";
 import type { Equipment, Exercise, ExerciseMeasure, Id } from "@obnixe/schema";
 import type { Environment, ObnixeDatabase } from "../database.ts";
@@ -7,9 +7,11 @@ import type { NewRow } from "../writer.ts";
 const maxMergeDepth = 16;
 
 export function findExercise(db: ObnixeDatabase, reference: string): Exercise | undefined {
+  const nameKey = exerciseNameKey(reference);
   let found =
     db.select().from(exercise).where(eq(exercise.id, reference as Id)).get() ??
-    db.select().from(exercise).where(and(eq(exercise.nameKey, exerciseNameKey(reference)), isNull(exercise.mergedIntoId))).get();
+    db.select().from(exercise).where(and(eq(exercise.nameKey, nameKey), isNull(exercise.mergedIntoId))).get() ??
+    db.select().from(exercise).where(and(eq(exercise.nameKey, nameKey), isNotNull(exercise.mergedIntoId))).orderBy(desc(exercise.updatedAt)).get();
   for (let depth = 0; found?.mergedIntoId != null && depth < maxMergeDepth; depth += 1) {
     found = db.select().from(exercise).where(eq(exercise.id, found.mergedIntoId)).get();
   }
