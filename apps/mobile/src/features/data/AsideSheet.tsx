@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import { StyleSheet, View } from "react-native";
-import { deleteAsideCopy, listAsideCopies, shareAsideCopy } from "@/features/data/asideCopies";
+import { deleteAsideCopy, listAsideCopies, shareAsideCopy, shareSeparately } from "@/features/data/asideCopies";
 import type { AsideCopy } from "@/features/data/asideCopies";
 import { fileSize, longDateTime } from "@/features/data/format";
 import { capitalize } from "@/format/labels";
@@ -21,6 +21,11 @@ export function useAsideCopies(): AsideCopies {
   return { copies, refresh };
 }
 
+interface SeparateShare {
+  readonly copy: AsideCopy;
+  readonly fileCount: number;
+}
+
 interface AsideSheetProps {
   readonly open: boolean;
   readonly aside: AsideCopies;
@@ -31,21 +36,47 @@ export function AsideSheet({ open, aside, onClose }: AsideSheetProps) {
   const { colors } = useTheme();
   const [confirming, setConfirming] = useState<AsideCopy | null>(null);
   const [sharing, setSharing] = useState<string | null>(null);
+  const [separate, setSeparate] = useState<SeparateShare | null>(null);
 
   const close = (): void => {
     setConfirming(null);
+    setSeparate(null);
     onClose();
   };
 
-  const share = (copy: AsideCopy): void => {
+  const run = (copy: AsideCopy, task: () => Promise<void>): void => {
     setSharing(copy.name);
-    shareAsideCopy(copy)
+    task()
       .catch((error: unknown) => ErrorUtils.getGlobalHandler()(error, false))
       .finally(() => {
         aside.refresh();
         setSharing(null);
       });
   };
+
+  const share = (copy: AsideCopy): void =>
+    run(copy, async () => {
+      const outcome = await shareAsideCopy(copy);
+      if (outcome.kind === "separate") setSeparate({ copy, fileCount: outcome.fileCount });
+    });
+
+  if (separate !== null) {
+    return (
+      <Sheet open={open} title={`${separate.fileCount} fichiers à garder ensemble`} context="Cette copie ne peut pas être réunie en un seul fichier. Partage-les tous vers le même dossier, sans les renommer." onClose={close}>
+        <View style={styles.confirm}>
+          <MenuItem
+            label={`Partager les ${separate.fileCount} fichiers`}
+            detail="Un partage par fichier"
+            onPress={() => {
+              setSeparate(null);
+              run(separate.copy, () => shareSeparately(separate.copy));
+            }}
+          />
+          <MenuItem label="Retour" onPress={() => setSeparate(null)} />
+        </View>
+      </Sheet>
+    );
+  }
 
   if (confirming !== null) {
     return (

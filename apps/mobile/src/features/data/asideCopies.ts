@@ -40,17 +40,29 @@ function pathOf(file: File): string {
   return decodeURIComponent(file.uri.replace(/^file:\/\//, ""));
 }
 
-/** Folds the copy and its write-ahead log into one standalone database file. */
+function deleteWithCompanions(name: string): void {
+  for (const file of filesOf(name)) file.delete();
+}
+
+/** Folds a duplicate of the copy and its write-ahead log into one standalone file, leaving the copy itself untouched. */
 async function standalone(copy: AsideCopy): Promise<File> {
   const directory = exportDirectory();
   directory.create({ idempotent: true, intermediates: true });
   const target = new File(directory, copy.name);
   if (target.exists) target.delete();
-  const database = await openDatabaseAsync(copy.name);
+  const duplicate = `obnixe-export-${Date.now()}.db`;
   try {
-    await database.execAsync(`VACUUM INTO '${pathOf(target).replace(/'/g, "''")}'`);
+    new File(sqliteDirectory(), copy.name).copy(new File(sqliteDirectory(), duplicate));
+    const log = new File(sqliteDirectory(), `${copy.name}-wal`);
+    if (log.exists) log.copy(new File(sqliteDirectory(), `${duplicate}-wal`));
+    const database = await openDatabaseAsync(duplicate);
+    try {
+      await database.execAsync(`VACUUM INTO '${pathOf(target).replace(/'/g, "''")}'`);
+    } finally {
+      await database.closeAsync();
+    }
   } finally {
-    await database.closeAsync();
+    deleteWithCompanions(duplicate);
   }
   return target;
 }
@@ -59,24 +71,34 @@ async function shareFile(file: File, title: string): Promise<void> {
   await shareAsync(file.uri, { mimeType: "application/vnd.sqlite3", UTI: "public.database", dialogTitle: title });
 }
 
-/** A copy SQLite cannot open is shared file by file, so its write-ahead log still travels with it. */
-export async function shareAsideCopy(copy: AsideCopy): Promise<void> {
+export type ShareOutcome = { readonly kind: "shared" } | { readonly kind: "separate"; readonly fileCount: number };
+
+/** A copy SQLite cannot open comes back as its separate files, which must be shared together for the log to stay with the database. */
+export async function shareAsideCopy(copy: AsideCopy): Promise<ShareOutcome> {
   const files = filesOf(copy.name);
   if (files.length <= 1) {
     await shareFile(new File(sqliteDirectory(), copy.name), copy.name);
-    return;
+    return { kind: "shared" };
   }
   let target: File;
   try {
     target = await standalone(copy);
   } catch (error) {
     if (!(error instanceof CodedError)) throw error;
-    for (const file of files) await shareFile(file, file.name);
-    return;
+    return { kind: "separate", fileCount: files.length };
   }
-  await shareFile(target, copy.name);
+  try {
+    await shareFile(target, copy.name);
+  } finally {
+    if (target.exists) target.delete();
+  }
+  return { kind: "shared" };
+}
+
+export async function shareSeparately(copy: AsideCopy): Promise<void> {
+  for (const file of filesOf(copy.name)) await shareFile(file, file.name);
 }
 
 export function deleteAsideCopy(copy: AsideCopy): void {
-  for (const file of filesOf(copy.name)) file.delete();
+  deleteWithCompanions(copy.name);
 }
