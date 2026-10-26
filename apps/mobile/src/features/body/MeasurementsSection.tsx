@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
-import { DuplicateKindError, EmptyKindLabelError, measurementsOverview, planKindArchive, planMeasurement, planMeasurementKind, planTrash } from "@obnixe/core";
-import type { Id, Measurement, MeasurementKind } from "@obnixe/schema";
+import { DuplicateKindError, EmptyKindLabelError, epochAt, measurementsOverview, planKindArchive, planMeasurement, planMeasurementKind, planTrash } from "@obnixe/core";
+import type { Id, LocalDate, Measurement, MeasurementKind } from "@obnixe/schema";
 import { db, environment } from "@/data/database";
 import { useUndoableWrite, write } from "@/data/write";
 import { deviceTimeZone, formatDayMonth, formatNumber, formatRelativeDay, formatSigned, todayLocal } from "@/features/activity/format";
@@ -23,7 +23,7 @@ interface MeasurementsSectionProps {
 type MeasureSheet =
   | { readonly kind: "none" }
   | { readonly kind: "list" }
-  | { readonly kind: "pad"; readonly kindId: Id; readonly back: "list" | "history" }
+  | { readonly kind: "pad"; readonly kindId: Id; readonly date: LocalDate; readonly back: "list" | "history" }
   | { readonly kind: "new" }
   | { readonly kind: "history"; readonly kindId: Id };
 
@@ -65,7 +65,7 @@ export function MeasurementsSection({ kinds, measurements }: MeasurementsSection
     try {
       const plan = planMeasurementKind(db(), environment, value);
       write(`Mensuration : ${value.trim()}`, [plan.mutation]);
-      setSheet({ kind: "pad", kindId: plan.kindId, back: "list" });
+      setSheet({ kind: "pad", kindId: plan.kindId, date: today, back: "list" });
     } catch (error) {
       if (error instanceof DuplicateKindError) {
         setLabelError("Existe déjà");
@@ -80,7 +80,12 @@ export function MeasurementsSection({ kinds, measurements }: MeasurementsSection
   };
 
   const padKind = sheet.kind === "pad" ? kindOf(sheet.kindId) : undefined;
-  const padCurrent = sheet.kind === "pad" ? (todayOf(sheet.kindId) ?? overview.kinds.find((summary) => summary.kind.id === sheet.kindId)?.latest ?? null) : null;
+  const padCurrent =
+    sheet.kind !== "pad"
+      ? null
+      : sheet.date === today
+        ? (todayOf(sheet.kindId) ?? overview.kinds.find((summary) => summary.kind.id === sheet.kindId)?.latest ?? null)
+        : (live.find((row) => row.kindId === sheet.kindId && row.localDate === sheet.date) ?? null);
   const historyKind = sheet.kind === "history" ? kindOf(sheet.kindId) : undefined;
   const history = sheet.kind === "history" ? live.filter((row) => row.kindId === sheet.kindId).sort((left, right) => right.localDate.localeCompare(left.localDate)) : [];
 
@@ -117,7 +122,7 @@ export function MeasurementsSection({ kinds, measurements }: MeasurementsSection
                 key={summary.kind.id}
                 accessibilityRole="button"
                 accessibilityLabel={`${summary.kind.label}, ${done === undefined ? "à mesurer" : `${centimeters(done.millimeters)} cm aujourd'hui`}`}
-                onPress={() => setSheet({ kind: "pad", kindId: summary.kind.id, back: "list" })}
+                onPress={() => setSheet({ kind: "pad", kindId: summary.kind.id, date: today, back: "list" })}
                 style={({ pressed }) => [styles.measureRow, { borderTopColor: colors.line }, pressed && { backgroundColor: colors.surfacePress }]}
               >
                 <Text style={styles.measureLabel} numberOfLines={1}>
@@ -162,7 +167,7 @@ export function MeasurementsSection({ kinds, measurements }: MeasurementsSection
 
       <PadSheet
         open={sheet.kind === "pad"}
-        title={padKind?.label ?? ""}
+        title={sheet.kind === "pad" && sheet.date !== today ? `${padKind?.label ?? ""} · ${formatRelativeDay(sheet.date, today).toLowerCase()}` : (padKind?.label ?? "")}
         mode="number"
         unit="cm"
         decimals={1}
@@ -172,7 +177,8 @@ export function MeasurementsSection({ kinds, measurements }: MeasurementsSection
           if (sheet.kind !== "pad") return;
           const millimeters = result.kind === "value" ? Math.round(result.value * 10) : (padCurrent?.millimeters ?? null);
           if (millimeters !== null) {
-            const plan = planMeasurement(db(), environment, { kindId: sheet.kindId, millimeters, occurredAt: environment.now(), timeZone });
+            const occurredAt = sheet.date === today ? environment.now() : epochAt({ date: sheet.date, minutes: 8 * 60 }, timeZone);
+            const plan = planMeasurement(db(), environment, { kindId: sheet.kindId, millimeters, occurredAt, timeZone });
             write(`Mensuration : ${padKind?.label ?? ""}`, [plan.mutation]);
           }
           setSheet(sheet.back === "list" ? { kind: "list" } : { kind: "history", kindId: sheet.kindId });
@@ -183,15 +189,22 @@ export function MeasurementsSection({ kinds, measurements }: MeasurementsSection
       <Sheet open={sheet.kind === "history"} title={historyKind?.label ?? ""} context={history.length === 0 ? "Aucune mesure" : `${history.length} mesure${history.length > 1 ? "s" : ""}`} onClose={() => setSheet({ kind: "none" })}>
         {history.slice(0, 24).map((row) => (
           <View key={row.id} style={[styles.historyRow, { borderTopColor: colors.line }]}>
-            <Text variant="bodyStrong" style={styles.historyDate}>
-              {formatRelativeDay(row.localDate, today)}
-            </Text>
-            <Text variant="value">
-              {centimeters(row.millimeters)}
-              <Text variant="caption" tone="secondary">
-                {" cm"}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`${formatRelativeDay(row.localDate, today)}, ${centimeters(row.millimeters)} cm, corriger`}
+              onPress={() => setSheet({ kind: "pad", kindId: row.kindId, date: row.localDate, back: "history" })}
+              style={({ pressed }) => [styles.historyEntry, pressed && { backgroundColor: colors.surfacePress }]}
+            >
+              <Text variant="bodyStrong" style={styles.historyDate}>
+                {formatRelativeDay(row.localDate, today)}
               </Text>
-            </Text>
+              <Text variant="value">
+                {centimeters(row.millimeters)}
+                <Text variant="caption" tone="secondary">
+                  {" cm"}
+                </Text>
+              </Text>
+            </Pressable>
             <LinkButton
               label="Supprimer"
               onPress={() => {
@@ -201,7 +214,7 @@ export function MeasurementsSection({ kinds, measurements }: MeasurementsSection
             />
           </View>
         ))}
-        {sheet.kind === "history" ? <SheetButton label="Mesurer aujourd'hui" style={styles.confirm} onPress={() => setSheet({ kind: "pad", kindId: sheet.kindId, back: "history" })} /> : null}
+        {sheet.kind === "history" ? <SheetButton label="Mesurer aujourd'hui" style={styles.confirm} onPress={() => setSheet({ kind: "pad", kindId: sheet.kindId, date: today, back: "history" })} /> : null}
         {sheet.kind === "history" && historyKind !== undefined ? (
           <View style={styles.archive}>
             <LinkButton
@@ -229,6 +242,7 @@ const styles = StyleSheet.create({
   error: { marginTop: 6 },
   suggestions: { marginTop: 12 },
   historyRow: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 52, borderTopWidth: 1 },
+  historyEntry: { flex: 1, flexDirection: "row", alignItems: "center", gap: 12, minHeight: 52 },
   historyDate: { flex: 1 },
   archive: { alignItems: "center", marginTop: 8 },
 });
