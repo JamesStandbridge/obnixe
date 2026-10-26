@@ -8,7 +8,7 @@ import type { TestContext } from "../testing.ts";
 import { revert } from "../undo.ts";
 import { commit } from "../writer.ts";
 import type { Mutation } from "../writer.ts";
-import { emphasisQuantity, enabledSports, fromStored, isFreeSport, quantityUnit, toStored } from "./catalog.ts";
+import { emphasisQuantity, fromStored, isFreeSport, quantityUnit, toStored } from "./catalog.ts";
 import type { QuantityField } from "./catalog.ts";
 import { addDays, daysBetween } from "../stats/dates.ts";
 import { parseGrade } from "../stats/indicators.ts";
@@ -76,13 +76,6 @@ describe("catalog helpers", () => {
     expect(isFreeSport("yoga")).toBe(true);
     expect(isFreeSport("climb")).toBe(false);
     expect(isFreeSport("strength")).toBe(false);
-  });
-
-  it("enables every sport without preferences and follows preferences otherwise", () => {
-    expect(enabledSports([])).toEqual(Object.keys(sports));
-    const at = context.env.now();
-    const preference = (sport: "run" | "swim" | "yoga", enabled: boolean, position: number) => ({ sport, enabled, position, createdAt: at, updatedAt: at });
-    expect(enabledSports([preference("yoga", true, 0), preference("run", true, 1), preference("swim", false, 2)])).toEqual(["yoga", "run"]);
   });
 
   it("chooses dimension-aware display units", () => {

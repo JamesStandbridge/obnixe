@@ -12,6 +12,7 @@ import { Stack } from "expo-router";
 import { hideAsync, preventAutoHideAsync } from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { DatabaseGate } from "@/data/DatabaseGate";
+import { useAppLaunch } from "@/features/data/launch";
 import { SnackbarHost } from "@/ui/SnackbarHost";
 import { StartupError } from "@/ui/StartupError";
 import { ThemeProvider, useTheme } from "@/ui/theme";
@@ -20,6 +21,7 @@ void preventAutoHideAsync();
 
 function Navigator() {
   const { name, colors } = useTheme();
+  const { firstLaunch } = useAppLaunch();
   useEffect(() => {
     void hideAsync();
   }, []);
@@ -28,7 +30,12 @@ function Navigator() {
       <StatusBar style={name === "dark" ? "light" : "dark"} />
       <SnackbarHost>
         <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
-          <Stack.Screen name="(tabs)" />
+          <Stack.Protected guard={!firstLaunch} redirectTo="/welcome">
+            <Stack.Screen name="(tabs)" />
+          </Stack.Protected>
+          <Stack.Protected guard={firstLaunch} redirectTo="/">
+            <Stack.Screen name="welcome" />
+          </Stack.Protected>
         </Stack>
       </SnackbarHost>
     </>

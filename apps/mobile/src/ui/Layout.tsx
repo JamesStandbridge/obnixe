@@ -1,5 +1,6 @@
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import type { ReactNode } from "react";
+import type { StyleProp, ViewStyle } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Text } from "@/ui/Text";
 import { useTheme } from "@/ui/theme";
@@ -31,13 +32,19 @@ interface AppBarProps {
   readonly title: string;
   readonly leading?: ReactNode;
   readonly trailing?: ReactNode;
+  readonly variant?: "title" | "context";
 }
 
-export function AppBar({ title, leading, trailing }: AppBarProps) {
+export function AppBar({ title, leading, trailing, variant = "title" }: AppBarProps) {
   return (
     <View style={styles.appbar}>
       {leading}
-      <Text variant="title" accessibilityRole="header" style={styles.appbarTitle}>
+      <Text
+        variant={variant === "title" ? "title" : "label"}
+        tone={variant === "title" ? "primary" : "secondary"}
+        accessibilityRole="header"
+        style={styles.appbarTitle}
+      >
         {title}
       </Text>
       {trailing}
@@ -49,12 +56,13 @@ interface SectionProps {
   readonly title: string;
   readonly action?: ReactNode;
   readonly children: ReactNode;
+  readonly style?: StyleProp<ViewStyle>;
 }
 
-export function Section({ title, action, children }: SectionProps) {
+export function Section({ title, action, children, style }: SectionProps) {
   const { colors } = useTheme();
   return (
-    <View style={styles.section}>
+    <View style={[styles.section, style]}>
       <View style={[styles.sectionHead, { borderBottomColor: colors.line }]}>
         <Text variant="sectionTitle" tone="secondary" accessibilityRole="header">
           {title}

@@ -1,5 +1,5 @@
-import { sportKeys, sports } from "@obnixe/schema";
-import type { Dimension, FieldDefinition, MassUnit, SportDefinition, SportKey, SportPreference } from "@obnixe/schema";
+import { sports } from "@obnixe/schema";
+import type { Dimension, FieldDefinition, MassUnit, SportDefinition, SportKey } from "@obnixe/schema";
 
 export type QuantityField = Extract<FieldDefinition, { readonly type: "quantity" }>;
 export type ChoiceField = Extract<FieldDefinition, { readonly type: "choice" }>;
@@ -19,15 +19,6 @@ export function sportOf(key: SportKey): SportDefinition {
 export function isFreeSport(key: SportKey): boolean {
   const sport: SportDefinition = sports[key];
   return sport.archetype === "continuous" && sport.retired !== true;
-}
-
-export function enabledSports(preferences: readonly SportPreference[]): SportKey[] {
-  const active = sportKeys.filter((key) => (sports[key] as SportDefinition).retired !== true);
-  if (preferences.length === 0) return active;
-  const known = new Map(preferences.map((preference) => [preference.sport, preference]));
-  return active
-    .filter((key) => known.get(key)?.enabled === true)
-    .sort((left, right) => (known.get(left)?.position ?? 0) - (known.get(right)?.position ?? 0));
 }
 
 export function massUnitOf(unit: MassUnit): QuantityUnit {
