@@ -31,6 +31,7 @@ import {
 } from "./protocol.ts";
 import type { BridgeMessage, Frame, HandshakeSecrets, PairingSecrets, PairingTranscript, PhoneMessage, RandomBytes, RejectionReason, ToolOutcome } from "./protocol.ts";
 import { toBase64 } from "./encoding.ts";
+import { phoneHostsSchema } from "./hosts.ts";
 
 export type PhoneLinkStatus = "proving" | "waiting" | "resuming" | "open" | "closed";
 
@@ -44,10 +45,22 @@ const phonePairingSchema = z.object({
   bridgeId: z.string(),
   bridgeName: z.string(),
   secret: z.string(),
+  hosts: phoneHostsSchema,
+  lastHost: z.string().nullable(),
+  relay: z.object({ url: z.string(), room: z.string() }).nullable(),
 });
 
-/** Long-term trust the phone keeps for one bridge after a code pairing; every field but the name is base64. */
+/**
+ * Long-term trust the phone keeps for one bridge after a pairing; ids and secret are base64. `hosts` are the addresses
+ * the bridge last announced, `lastHost` the one that last reached it, `relay` the rendezvous of a QR pairing, if any.
+ */
 export type PhonePairing = z.infer<typeof phonePairingSchema>;
+
+/** What a pairing session learns; the caller adds how it reached the bridge. */
+export type LearnedPairing = Omit<PhonePairing, "lastHost" | "relay">;
+
+/** Secret the phone pairs with: its own displayed code, or the token of a scanned QR code bound to the bridge that issued it. */
+export type PhoneSecret = { readonly kind: "code"; readonly code: string } | { readonly kind: "token"; readonly token: Uint8Array; readonly bridgeId: string };
 
 const phoneRevocationSchema = z.object({
   bridgeId: z.string(),
@@ -89,12 +102,13 @@ export interface PhoneSessionHandlers {
   readonly onClient: (connectionId: Id, client: string) => void;
   readonly onCall: (connectionId: Id, tool: string, args: Readonly<Record<string, unknown>>) => ToolOutcome;
   readonly onRejected: (reason: RejectionReason) => void;
-  readonly onPaired: (pairing: PhonePairing) => void;
+  readonly onPaired: (pairing: LearnedPairing) => void;
+  readonly onHosts: (hosts: readonly string[]) => void;
   readonly onRevocationSent: (revocation: PhoneRevocation) => void;
 }
 
 export interface PhoneSessionOptions {
-  readonly code: string;
+  readonly secret: PhoneSecret;
   readonly device: string;
   readonly deviceId: string;
   readonly pairing: PhonePairing | null;
@@ -105,7 +119,7 @@ export interface PhoneSessionOptions {
   readonly handlers: PhoneSessionHandlers;
 }
 
-interface LearnedPairing {
+interface DerivedPairing {
   readonly pairingId: string;
   readonly bridgeId: string;
   readonly secret: string;
@@ -143,12 +157,12 @@ function readySecrets(derived: DerivedSecrets): PairingSecrets {
   }
 }
 
-/** Phone side of the bridge link: pairs with a code or resumes a trusted pairing, then serves sealed JSON-RPC requests from the bridge. */
+/** Phone side of the bridge link: pairs with a code or a QR token, or resumes a trusted pairing, then serves sealed JSON-RPC requests from the bridge. */
 export class PhoneSession {
   private readonly options: PhoneSessionOptions;
   private state: SessionState = { kind: "challenge" };
   private opened: Id | null = null;
-  private learned: LearnedPairing | null = null;
+  private learned: DerivedPairing | null = null;
   private proofSent = false;
   private queue: Promise<void> = Promise.resolve();
   private lastReceivedAt: number;
@@ -163,7 +177,7 @@ export class PhoneSession {
     return this.opened;
   }
 
-  /** True once a code-derived proof left the phone: the code can then be cracked offline and must not be reused. */
+  /** True once a secret-derived proof left the phone: a code can then be cracked offline and must not be reused. */
   get codeExposed(): boolean {
     return this.proofSent;
   }
@@ -257,6 +271,8 @@ export class PhoneSession {
       return;
     }
     const bridgeId = decodeBytes(frame.bridge, identityBytes);
+    const secret = this.options.secret;
+    if (secret.kind === "token" && !sameBytes(decodeBytes(secret.bridgeId, identityBytes), bridgeId)) throw new ProtocolError("This bridge did not issue the scanned QR code");
     const revocation = this.options.revocation;
     if (revocation !== null && sameBytes(decodeBytes(revocation.bridgeId), bridgeId)) {
       this.send({ type: "revoke", pairing: revocation.pairingId, proof: revocation.proof });
@@ -283,12 +299,13 @@ export class PhoneSession {
     this.send({
       type: "hello",
       version: protocolVersion,
+      secret: secret.kind,
       device: transcript.device,
       deviceId: this.options.deviceId,
       nonce: toBase64(transcript.phoneNonce),
       key: toBase64(transcript.phoneKey),
     });
-    const secrets = settledSecrets(derivePairingSecrets(this.options.code, transcript, shared));
+    const secrets = settledSecrets(derivePairingSecrets(secret, transcript, shared));
     this.state = { kind: "waiting", secrets, bridgeId: frame.bridge, commitment: null };
     this.options.handlers.onStatus("waiting");
   }
@@ -330,7 +347,7 @@ export class PhoneSession {
     if (this.state !== state) return;
     const proof = decodeBytes(frame.proof, proofBytes);
     const opened = sameBytes(commitBridgeProof(decodeBytes(frame.opening, openingBytes), proof), commitment);
-    if (!opened || !sameBytes(proof, bridgeProof(secrets))) throw new ProtocolError("The bridge could not prove it knows the code");
+    if (!opened || !sameBytes(proof, bridgeProof(secrets))) throw new ProtocolError("The bridge could not prove it knows the pairing secret");
     this.learned = { pairingId: toBase64(secrets.pairingId), bridgeId: state.bridgeId, secret: toBase64(secrets.pairingSecret) };
     this.state = { kind: "open", channel: new SealedChannel(secrets.sessionKeys.toBridge, secrets.sessionKeys.toPhone) };
   }
@@ -352,13 +369,17 @@ export class PhoneSession {
         this.opened ??= this.options.handlers.onOpen(message.params);
         const learned = this.learned;
         this.learned = null;
-        if (learned !== null) this.options.handlers.onPaired({ ...learned, bridgeName: message.params.host });
+        if (learned !== null) this.options.handlers.onPaired({ ...learned, bridgeName: message.params.host, hosts: message.params.hosts });
+        else this.options.handlers.onHosts(message.params.hosts);
         this.reply(state, { jsonrpc: "2.0", id: message.id, result: { connectionId: this.opened } });
         this.options.handlers.onStatus("open");
         return;
       }
       case "session.client":
         if (this.opened !== null) this.options.handlers.onClient(this.opened, message.params.client);
+        return;
+      case "session.hosts":
+        this.options.handlers.onHosts(message.params.hosts);
         return;
       case "ping":
         return;

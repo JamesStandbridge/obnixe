@@ -26,7 +26,7 @@ import {
 } from "./protocol.ts";
 import type { EphemeralKeyPair, Frame, HandshakeSecrets, PairingSecrets, PairingTranscript, RejectionReason } from "./protocol.ts";
 import { PhoneSession, parsePhonePairing, phoneRevocation } from "./session.ts";
-import type { PhoneLinkStatus, PhonePairing, PhoneRevocation } from "./session.ts";
+import type { LearnedPairing, PhoneLinkStatus, PhonePairing, PhoneRevocation, PhoneSecret } from "./session.ts";
 
 const bytes = (length: number): Uint8Array => new Uint8Array(randomBytes(length));
 
@@ -70,6 +70,7 @@ describe("pairing code", () => {
 });
 
 const code = "482917";
+const macHosts = ["192.168.1.24:7429", "100.101.12.7:7429"];
 
 type ChallengeFrame = Extract<Frame, { type: "challenge" }>;
 type HelloFrame = Extract<Frame, { type: "hello" }>;
@@ -109,9 +110,10 @@ function transcriptOf(bridge: SimulatedBridge, hello: HelloFrame | ResumeFrame):
   };
 }
 
-function bridgeSecrets(bridge: SimulatedBridge, hello: HelloFrame, typed: string): Promise<PairingSecrets> {
+function bridgeSecrets(bridge: SimulatedBridge, hello: HelloFrame, typed: string | Uint8Array): Promise<PairingSecrets> {
   const transcript = transcriptOf(bridge, hello);
-  return derivePairingSecrets(typed, transcript, sharedSecret(bridge.keyPair.secretKey, transcript.phoneKey));
+  const secret = typeof typed === "string" ? ({ kind: "code", code: typed } as const) : ({ kind: "token", token: typed } as const);
+  return derivePairingSecrets(secret, transcript, sharedSecret(bridge.keyPair.secretKey, transcript.phoneKey));
 }
 
 function commitTo(secrets: PairingSecrets): Commitment {
@@ -128,7 +130,8 @@ interface Harness {
   readonly sent: Frame[];
   readonly statuses: PhoneLinkStatus[];
   readonly calls: string[];
-  readonly paired: PhonePairing[];
+  readonly paired: LearnedPairing[];
+  readonly hosts: (readonly string[])[];
   readonly rejections: RejectionReason[];
   readonly revocationsSent: PhoneRevocation[];
   readonly closed: boolean;
@@ -137,18 +140,20 @@ interface Harness {
 interface Trust {
   readonly pairing?: PhonePairing;
   readonly revocation?: PhoneRevocation;
+  readonly secret?: PhoneSecret;
 }
 
 function harness(phoneCode: string, trust: Trust = {}): Harness {
   const sent: Frame[] = [];
   const statuses: PhoneLinkStatus[] = [];
   const calls: string[] = [];
-  const paired: PhonePairing[] = [];
+  const paired: LearnedPairing[] = [];
+  const hosts: (readonly string[])[] = [];
   const rejections: RejectionReason[] = [];
   const revocationsSent: PhoneRevocation[] = [];
   const state = { closed: false };
   const session = new PhoneSession({
-    code: phoneCode,
+    secret: trust.secret ?? { kind: "code", code: phoneCode },
     device: "iPhone",
     deviceId,
     pairing: trust.pairing ?? null,
@@ -167,6 +172,7 @@ function harness(phoneCode: string, trust: Trust = {}): Harness {
       },
       onRejected: (reason) => rejections.push(reason),
       onPaired: (pairing) => paired.push(pairing),
+      onHosts: (announced) => hosts.push(announced),
       onRevocationSent: (revocation) => revocationsSent.push(revocation),
     },
   });
@@ -176,6 +182,7 @@ function harness(phoneCode: string, trust: Trust = {}): Harness {
     statuses,
     calls,
     paired,
+    hosts,
     rejections,
     revocationsSent,
     get closed() {
@@ -223,20 +230,20 @@ describe("pairing handshake", () => {
   it("pairs with the right code and agrees on session keys", async () => {
     const target = harness(code);
     const { channel } = await pair(target);
-    await target.session.receive(encodeFrame(channel.seal({ jsonrpc: "2.0", id: 1, method: "session.open", params: { client: "Cursor", host: "MacBook Pro" } })));
+    await target.session.receive(encodeFrame(channel.seal({ jsonrpc: "2.0", id: 1, method: "session.open", params: { client: "Cursor", host: "MacBook Pro", hosts: macHosts } })));
     expect(parsePhoneMessage(channel.open(lastSent(target, "sealed")))).toEqual({ jsonrpc: "2.0", id: 1, result: { connectionId: "connection-1" } });
   });
 
   it("keeps a recorded transcript sealed from an observer who knows the code", async () => {
     const target = harness(code);
     const { channel, bridge, hello } = await pair(target);
-    await target.session.receive(encodeFrame(channel.seal({ jsonrpc: "2.0", id: 1, method: "session.open", params: { client: "Cursor", host: "MacBook Pro" } })));
+    await target.session.receive(encodeFrame(channel.seal({ jsonrpc: "2.0", id: 1, method: "session.open", params: { client: "Cursor", host: "MacBook Pro", hosts: macHosts } })));
     const recorded = lastSent(target, "sealed");
     const transcript = transcriptOf(bridge, hello);
     const observer = generateEphemeralKeyPair(bytes);
     const guesses = [sharedSecret(observer.secretKey, transcript.phoneKey), sharedSecret(observer.secretKey, transcript.bridgeKey), new Uint8Array(32)];
     for (const guess of guesses) {
-      const secrets = await derivePairingSecrets(code, transcript, guess);
+      const secrets = await derivePairingSecrets({ kind: "code", code }, transcript, guess);
       expect(() => new SealedChannel(secrets.sessionKeys.toPhone, secrets.sessionKeys.toBridge).open(recorded)).toThrow(ProtocolError);
       expect(sameBytes(bridgeProof(secrets), bridgeProof(await bridgeSecrets(bridge, hello, code)))).toBe(false);
     }
@@ -296,7 +303,7 @@ describe("pairing handshake", () => {
   });
 });
 
-const openSession = { jsonrpc: "2.0", id: 1, method: "session.open", params: { client: "Cursor", host: "MacBook Pro" } } as const;
+const openSession = { jsonrpc: "2.0", id: 1, method: "session.open", params: { client: "Cursor", host: "MacBook Pro", hosts: macHosts } } as const;
 
 interface TrustedPair {
   readonly pairing: PhonePairing;
@@ -308,9 +315,9 @@ async function trustedPair(): Promise<TrustedPair> {
   const { channel, secrets } = await pair(target);
   expect(target.paired).toEqual([]);
   await target.session.receive(encodeFrame(channel.seal(openSession)));
-  const [pairing] = target.paired;
-  if (pairing === undefined) throw new Error("Expected a stored pairing");
-  return { pairing, secrets };
+  const [learned] = target.paired;
+  if (learned === undefined) throw new Error("Expected a stored pairing");
+  return { pairing: { ...learned, lastHost: null, relay: null }, secrets };
 }
 
 async function resumeFrom(target: Harness, bridge: SimulatedBridge): Promise<ResumeFrame> {
@@ -326,8 +333,17 @@ function bridgeResumeSecrets(bridge: SimulatedBridge, resume: ResumeFrame, pairi
 describe("trusted resume", () => {
   it("stores a pairing bound to the bridge and the device once a code pairing opens", async () => {
     const { pairing, secrets } = await trustedPair();
-    expect(pairing).toEqual({ pairingId: toBase64(secrets.pairingId), bridgeId: toBase64(bridgeId), bridgeName: "MacBook Pro", secret: toBase64(secrets.pairingSecret) });
+    expect(pairing).toEqual({
+      pairingId: toBase64(secrets.pairingId),
+      bridgeId: toBase64(bridgeId),
+      bridgeName: "MacBook Pro",
+      secret: toBase64(secrets.pairingSecret),
+      hosts: macHosts,
+      lastHost: null,
+      relay: null,
+    });
     expect(parsePhonePairing(JSON.stringify(pairing))).toEqual(pairing);
+    expect(parsePhonePairing(JSON.stringify({ ...pairing, hosts: ["not a host"] }))).toBeNull();
     expect(parsePhonePairing("{")).toBeNull();
 
     const other = harness(code);
@@ -358,7 +374,13 @@ describe("trusted resume", () => {
     expect(parsePhoneMessage(channel.open(lastSent(target, "sealed")))).toEqual({ jsonrpc: "2.0", id: 1, result: { connectionId: "connection-1" } });
     expect(target.statuses.at(-1)).toBe("open");
     expect(target.paired).toEqual([]);
+    expect(target.hosts).toEqual([macHosts]);
     expect(target.session.codeExposed).toBe(false);
+
+    const moved = ["192.168.1.31:7429", "100.101.12.7:7429"];
+    await target.session.receive(encodeFrame(channel.seal({ jsonrpc: "2.0", method: "session.hosts", params: { hosts: moved } })));
+    expect(target.hosts).toEqual([macHosts, moved]);
+    await expect(target.session.receive(encodeFrame(channel.seal({ jsonrpc: "2.0", method: "session.hosts", params: { hosts: ["8.8.8.8"] } })))).rejects.toThrow(ProtocolError);
   });
 
   it("fails both proofs when the secrets differ", async () => {
@@ -435,6 +457,44 @@ describe("trusted resume", () => {
   });
 });
 
+describe("token pairing", () => {
+  const token = bytes(32);
+  const tokenSecret: PhoneSecret = { kind: "token", token, bridgeId: toBase64(bridgeId) };
+
+  it("pairs with the QR token through the same commit, proof and welcome", async () => {
+    const target = harness(code, { secret: tokenSecret });
+    const bridge = simulatedBridge();
+    const hello = await helloFrom(target, bridge);
+    expect(hello.secret).toBe("token");
+    const secrets = await bridgeSecrets(bridge, hello, token);
+    const commitment = commitTo(secrets);
+    expect(sameBytes(await proofFrom(target, commitment), phoneProof(secrets, commitment.commitment))).toBe(true);
+    await target.session.receive(encodeFrame(welcomeFor(secrets, commitment)));
+    const channel = new SealedChannel(secrets.sessionKeys.toPhone, secrets.sessionKeys.toBridge);
+    await target.session.receive(encodeFrame(channel.seal(openSession)));
+    expect(target.paired).toEqual([{ pairingId: toBase64(secrets.pairingId), bridgeId: toBase64(bridgeId), bridgeName: "MacBook Pro", secret: toBase64(secrets.pairingSecret), hosts: macHosts }]);
+    expect(JSON.stringify(target.sent)).not.toContain(toBase64(token));
+  });
+
+  it("fails with another token or with a code that happens to match its text", async () => {
+    for (const wrong of [bytes(32), toBase64(token)]) {
+      const target = harness(code, { secret: tokenSecret });
+      const bridge = simulatedBridge();
+      const hello = await helloFrom(target, bridge);
+      const secrets = await bridgeSecrets(bridge, hello, wrong);
+      const commitment = commitTo(secrets);
+      expect(sameBytes(await proofFrom(target, commitment), phoneProof(secrets, commitment.commitment))).toBe(false);
+      await expect(target.session.receive(encodeFrame(welcomeFor(secrets, commitment)))).rejects.toThrow(ProtocolError);
+    }
+  });
+
+  it("only answers the bridge that issued the QR code", async () => {
+    const target = harness(code, { secret: tokenSecret });
+    await expect(target.session.receive(encodeFrame(challengeOf(simulatedBridge(bytes(16)))))).rejects.toThrow(ProtocolError);
+    expect(target.sent).toEqual([]);
+  });
+});
+
 describe("sealed channel", () => {
   const keys = { toPhone: bytes(32), toBridge: bytes(32) };
 
@@ -475,7 +535,7 @@ describe("PhoneSession", () => {
     const target = harness(code);
     const { channel } = await pair(target);
     expect(target.statuses).toEqual(["proving", "waiting"]);
-    await target.session.receive(encodeFrame(channel.seal({ jsonrpc: "2.0", id: 1, method: "session.open", params: { client: "Cursor", host: "MacBook Pro" } })));
+    await target.session.receive(encodeFrame(channel.seal({ jsonrpc: "2.0", id: 1, method: "session.open", params: { client: "Cursor", host: "MacBook Pro", hosts: macHosts } })));
     expect(target.session.connectionId).toBe("connection-1");
     expect(parsePhoneMessage(channel.open(lastSent(target, "sealed")))).toEqual({ jsonrpc: "2.0", id: 1, result: { connectionId: "connection-1" } });
     await target.session.receive(encodeFrame(channel.seal({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "list_sports", arguments: {} } })));
@@ -490,7 +550,7 @@ describe("PhoneSession", () => {
   it("answers and closes with reason error when a tool handler throws", async () => {
     const target = harness(code);
     const { channel } = await pair(target);
-    await target.session.receive(encodeFrame(channel.seal({ jsonrpc: "2.0", id: 1, method: "session.open", params: { client: "Cursor", host: "MacBook Pro" } })));
+    await target.session.receive(encodeFrame(channel.seal({ jsonrpc: "2.0", id: 1, method: "session.open", params: { client: "Cursor", host: "MacBook Pro", hosts: macHosts } })));
     channel.open(lastSent(target, "sealed"));
     await expect(target.session.receive(encodeFrame(channel.seal({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "explode", arguments: {} } })))).rejects.toThrow(RangeError);
     const [reply, goodbye] = target.sent.slice(-2);

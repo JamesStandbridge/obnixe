@@ -66,6 +66,20 @@ export function toBase64(bytes: Uint8Array): string {
   return output;
 }
 
+/** Unpadded base64url (RFC 4648 section 5), the encoding used inside URLs. */
+export function toBase64Url(bytes: Uint8Array): string {
+  return toBase64(bytes).replace(/=+$/, "").replace(/\+/g, "-").replace(/\//g, "_");
+}
+
+/** Strict unpadded base64url decoding: rejects padding, foreign characters and non-canonical trailing bits. */
+export function fromBase64Url(text: string): Uint8Array {
+  if (!/^[A-Za-z0-9_-]*$/.test(text) || text.length % 4 === 1) throw new Base64Error();
+  const standard = text.replace(/-/g, "+").replace(/_/g, "/");
+  const bytes = fromBase64(standard.padEnd(Math.ceil(standard.length / 4) * 4, "="));
+  if (toBase64Url(bytes) !== text) throw new Base64Error();
+  return bytes;
+}
+
 export function fromBase64(text: string): Uint8Array {
   if (text.length % 4 !== 0) throw new Base64Error();
   const padding = text.endsWith("==") ? 2 : text.endsWith("=") ? 1 : 0;

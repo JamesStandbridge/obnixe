@@ -8,8 +8,9 @@ import { concatBytes, utf8ToBytes } from "@noble/hashes/utils.js";
 import { z } from "zod";
 import { connectionEndReasons } from "@obnixe/schema";
 import { Base64Error, Utf8Error, fromBase64, fromUtf8, toBase64 } from "./encoding.ts";
+import { phoneHostsSchema } from "./hosts.ts";
 
-export const protocolVersion = 2;
+export const protocolVersion = 3;
 export const defaultPhonePort = 7429;
 export const defaultControlPort = 7430;
 export const pairingCodeTtlMs = 5 * 60_000;
@@ -35,9 +36,12 @@ export type RejectionReason = (typeof rejectionReasons)[number];
 
 const device = z.string().min(1).max(64);
 
+export const pairingSecretKinds = ["code", "token"] as const;
+export type PairingSecretKind = (typeof pairingSecretKinds)[number];
+
 const frameSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("challenge"), version: z.int(), bridge: base64, nonce: base64, key: base64 }),
-  z.object({ type: z.literal("hello"), version: z.int(), device, deviceId: base64, nonce: base64, key: base64 }),
+  z.object({ type: z.literal("hello"), version: z.int(), secret: z.enum(pairingSecretKinds), device, deviceId: base64, nonce: base64, key: base64 }),
   z.object({ type: z.literal("commit"), commitment: base64 }),
   z.object({ type: z.literal("proof"), proof: base64 }),
   z.object({ type: z.literal("welcome"), opening: base64, proof: base64 }),
@@ -52,10 +56,13 @@ const frameSchema = z.discriminatedUnion("type", [
  * Plaintext frames exchanged on the phone WebSocket.
  *
  * 1. bridge -> phone `challenge` with its persistent bridge id, a random nonce and an ephemeral X25519 public key.
- * 2. Code pairing: phone -> bridge `hello` with its persistent device id, its own nonce and ephemeral X25519 public key.
- *    Both sides derive, per pairing attempt, HKDF(ECDH secret || scrypt(code, transcript hash), transcript hash) into two
- *    proof keys, two session keys and the long-term pairing secret.
- * 3. When `obnixe-bridge pair` posts the code typed by the user, the bridge sends `commit`: a hash of a random opening and
+ * 2. Pairing: phone -> bridge `hello` with the kind of shared secret it holds, its persistent device id, its own nonce and
+ *    ephemeral X25519 public key. The secret is either a 6-digit code shown by the phone and typed on the Mac, or the
+ *    one-time token of the QR code shown by the bridge. Both sides derive, per pairing attempt, HKDF(ECDH secret || secret
+ *    key, transcript hash) into two proof keys, two session keys and the long-term pairing secret; the secret key is
+ *    scrypt(code, transcript hash) for a code and HMAC(token, transcript hash) for a token, which needs no stretching.
+ * 3. When `obnixe-bridge pair` posts the code typed by the user, or as soon as a token hello arrives while the bridge
+ *    holds a live token, the bridge sends `commit`: a hash of a random opening and
  *    of its own proof. The phone answers `proof`, an HMAC over the transcript and the commitment. Only a matching proof
  *    earns `welcome`, which reveals the opening and the bridge proof. The commitment is sent before the bridge sees the
  *    phone proof, so a fake bridge that cracks the code offline afterwards cannot open it; a fake phone must answer before
@@ -68,7 +75,9 @@ const frameSchema = z.discriminatedUnion("type", [
  *    ephemeral keys keep past sessions sealed if the secret later leaks.
  * 5. A phone that forgot a bridge sends `revoke` with a token derived from the deleted secret on its next challenge from
  *    that bridge, before its `hello`, so the bridge drops the pairing too.
- * 6. Every later message is a `sealed` JSON-RPC payload with a strictly increasing per-direction sequence number.
+ * 6. Every later message is a `sealed` JSON-RPC payload with a strictly increasing per-direction sequence number. The
+ *    bridge lists the addresses it listens on in `session.open` and again in `session.hosts` when they change, so the
+ *    phone can find it later without the user typing an address.
  */
 export type Frame = z.infer<typeof frameSchema>;
 export type SealedFrame = Extract<Frame, { type: "sealed" }>;
@@ -122,9 +131,10 @@ const sessionOpenResultSchema = z.object({ connectionId: z.string() });
 export type SessionOpenResult = z.infer<typeof sessionOpenResultSchema>;
 
 const bridgeMessageSchema = z.discriminatedUnion("method", [
-  z.object({ jsonrpc: jsonRpc, id: z.int(), method: z.literal("session.open"), params: z.object({ client: z.string(), host: z.string() }) }),
+  z.object({ jsonrpc: jsonRpc, id: z.int(), method: z.literal("session.open"), params: z.object({ client: z.string(), host: z.string(), hosts: phoneHostsSchema }) }),
   z.object({ jsonrpc: jsonRpc, id: z.int(), method: z.literal("tools/call"), params: z.object({ name: z.string(), arguments: z.record(z.string(), z.unknown()) }) }),
   z.object({ jsonrpc: jsonRpc, method: z.literal("session.client"), params: z.object({ client: z.string() }) }),
+  z.object({ jsonrpc: jsonRpc, method: z.literal("session.hosts"), params: z.object({ hosts: phoneHostsSchema }) }),
   z.object({ jsonrpc: jsonRpc, method: z.literal("ping") }),
 ]);
 
@@ -259,11 +269,27 @@ function splitHandshake(hash: Uint8Array, material: Uint8Array): HandshakeSecret
   };
 }
 
-/** Derives the proof, session and pairing keys of one code pairing attempt; `shared` is the X25519 secret between the two ephemeral keys. */
-export async function derivePairingSecrets(code: string, transcript: PairingTranscript, shared: Uint8Array): Promise<PairingSecrets> {
+/** What both sides know before pairing: the code typed on the Mac, or the token carried by the QR code. */
+export type PairingSecret = { readonly kind: "code"; readonly code: string } | { readonly kind: "token"; readonly token: Uint8Array };
+
+function pairingSecretKey(secret: PairingSecret, hash: Uint8Array): Promise<Uint8Array> {
+  switch (secret.kind) {
+    case "code":
+      return scryptAsync(utf8ToBytes(secret.code), concatBytes(utf8ToBytes("obnixe-pair"), hash), scryptCost);
+    case "token":
+      return Promise.resolve(hmac(sha256, secret.token, concatBytes(utf8ToBytes("obnixe-token"), hash)));
+    default: {
+      const unreachable: never = secret;
+      throw new Error(`Unhandled pairing secret ${JSON.stringify(unreachable)}`);
+    }
+  }
+}
+
+/** Derives the proof, session and pairing keys of one pairing attempt; `shared` is the X25519 secret between the two ephemeral keys. */
+export async function derivePairingSecrets(secret: PairingSecret, transcript: PairingTranscript, shared: Uint8Array): Promise<PairingSecrets> {
   const hash = transcriptHash(transcript);
-  const codeKey = await scryptAsync(utf8ToBytes(code), concatBytes(utf8ToBytes("obnixe-pair"), hash), scryptCost);
-  const material = hkdf(sha256, concatBytes(shared, codeKey), hash, utf8ToBytes("obnixe-session"), 128 + pairingSecretBytes);
+  const secretKey = await pairingSecretKey(secret, hash);
+  const material = hkdf(sha256, concatBytes(shared, secretKey), hash, utf8ToBytes(`obnixe-session-${secret.kind}`), 128 + pairingSecretBytes);
   return {
     ...splitHandshake(hash, material),
     pairingId: sha256(concatBytes(utf8ToBytes("obnixe-pairing-id"), hash)).slice(0, identityBytes),

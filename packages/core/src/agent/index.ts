@@ -5,6 +5,8 @@ export * from "./encoding.ts";
 export * from "./environment.ts";
 export * from "./format.ts";
 export * from "./history.ts";
+export * from "./hosts.ts";
+export * from "./invite.ts";
 export * from "./present.ts";
 export * from "./protocol.ts";
 export * from "./session.ts";
