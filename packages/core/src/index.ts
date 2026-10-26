@@ -8,3 +8,4 @@ export * from "./body/index.ts";
 export * from "./stats/index.ts";
 export * from "./agent/index.ts";
 export * from "./training/index.ts";
+export * from "./programs/index.ts";
