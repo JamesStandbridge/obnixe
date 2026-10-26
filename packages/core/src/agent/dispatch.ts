@@ -7,6 +7,7 @@ import { DependentRowsError, DuplicateRowError, RowNotFoundError } from "../writ
 import type { Actor } from "../writer.ts";
 import { isConnectionOpen, readPermissions } from "./connection.ts";
 import { isToolName, toolContracts } from "./contract.ts";
+import { deleteSession, mergeExercises, setProgramStatus, updateExercise, updateSession, updateStrengthSession } from "./edits.ts";
 import type { ToolInput, ToolName } from "./contract.ts";
 import { PermissionDeniedError, ToolInputError, hasPermission } from "./environment.ts";
 import type { AgentEnvironment, ToolResult } from "./environment.ts";
@@ -29,6 +30,12 @@ const handlers: { readonly [N in ToolName]: Handler<N> } = {
   upsert_program: upsertProgram,
   log_activity: logActivity,
   log_strength_session: logStrengthSession,
+  update_session: updateSession,
+  update_strength_session: updateStrengthSession,
+  delete_session: deleteSession,
+  update_exercise: updateExercise,
+  merge_exercises: mergeExercises,
+  set_program_status: setProgramStatus,
 };
 
 export interface AgentCallRequest {

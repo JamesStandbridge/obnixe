@@ -11,16 +11,16 @@ import { findExercise, newExerciseRow, planExercises } from "./exercises.ts";
 import type { ExercisePlan, ResolvedExercise } from "./exercises.ts";
 import { frenchDay, frenchDistance, frenchDuration, plural } from "./format.ts";
 
-const futureToleranceMs = 5 * 60_000;
+export const futureToleranceMs = 5 * 60_000;
 
-function commitExercises(db: ObnixeDatabase, env: AgentEnvironment, actor: Actor, plan: ExercisePlan): void {
+export function commitExercises(db: ObnixeDatabase, env: AgentEnvironment, actor: Actor, plan: ExercisePlan): void {
   if (plan.created.length === 0) return;
   const names = plan.created.map((row) => row.name).join(", ");
   const summary = plan.created.length === 1 ? `Exercice ajouté · ${names}` : `Exercices ajoutés · ${names}`;
   commit(db, env, { actor, summary, revertsId: null, mutations: plan.created.map((row) => ({ kind: "insert", table: "exercise", row })) });
 }
 
-function resolved(plan: ExercisePlan, reference: string): ResolvedExercise {
+export function resolved(plan: ExercisePlan, reference: string): ResolvedExercise {
   const found = plan.resolved.get(reference);
   if (found === undefined) throw new Error(`Exercise '${reference}' was not planned`);
   return found;
@@ -171,7 +171,7 @@ export function upsertProgram(db: ObnixeDatabase, env: AgentEnvironment, actor: 
   };
 }
 
-interface SessionTiming {
+export interface SessionTiming {
   readonly startedAt: EpochMs;
   readonly endedAt: EpochMs;
   readonly localDate: LocalDate;
@@ -217,7 +217,7 @@ function sessionRow(env: AgentEnvironment, sport: NewRow<"session">["sport"], ti
   };
 }
 
-function spread(timing: SessionTiming, index: number, count: number): EpochMs {
+export function spread(timing: SessionTiming, index: number, count: number): EpochMs {
   return Math.round(timing.startedAt + ((timing.endedAt - timing.startedAt) * (index + 1)) / (count + 1)) as EpochMs;
 }
 
@@ -253,9 +253,9 @@ export function logActivity(db: ObnixeDatabase, env: AgentEnvironment, actor: Ac
   return { kind: "write", summary, changesetId, data: { sessionId: row.id, localDate: timing.localDate } };
 }
 
-type StrengthSetInput = ToolInput<"log_strength_session">["exercises"][number]["sets"][number];
+export type StrengthSetInput = ToolInput<"log_strength_session">["exercises"][number]["sets"][number];
 
-function validateSet(set: StrengthSetInput, target: ResolvedExercise, where: string): void {
+export function validateSet(set: StrengthSetInput, target: ResolvedExercise, where: string): void {
   switch (target.measure) {
     case "load_reps":
       if (set.reps === undefined || set.loadGrams === undefined || set.durationSeconds !== undefined) throw new ToolInputError(`${where}: '${target.name}' needs loadGrams and reps.`);
