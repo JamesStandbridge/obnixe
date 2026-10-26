@@ -6,6 +6,7 @@ import { enabledSports, weekdaysOf } from "@obnixe/core";
 import { settings, sportPreference, sports, zones } from "@obnixe/schema";
 import type { Theme } from "@obnixe/schema";
 import { db } from "@/data/database";
+import { AsideSheet, useAsideCopies } from "@/features/data/AsideSheet";
 import { BackupPanel } from "@/features/data/BackupPanel";
 import { storageBytes } from "@/features/data/files";
 import { megabytes, weekdayList } from "@/features/data/format";
@@ -20,7 +21,7 @@ import { Segmented } from "@/ui/Controls";
 import { AppBar, Row, Screen, Section } from "@/ui/Layout";
 import { Text } from "@/ui/Text";
 
-type OpenSheet = "sports" | "zones" | "unit" | "reminders" | "trash" | null;
+type OpenSheet = "sports" | "zones" | "unit" | "reminders" | "trash" | "aside" | null;
 
 const themeOptions: readonly { readonly value: Theme; readonly label: string }[] = [
   { value: "dark", label: "Sombre" },
@@ -49,6 +50,7 @@ export default function Settings() {
   const tracked = useTrackedZones();
   const trash = useTrash();
   const bytes = useStorageBytes();
+  const aside = useAsideCopies();
   const current = settingsRows[0];
   const shown = enabledSports(preferences);
   const reminderDays = weekdaysOf(current?.reminderWeekdays ?? 0);
@@ -63,6 +65,18 @@ export default function Settings() {
         <Section title="Stockage">
           <Row title="Importer une sauvegarde" trailing={<Chevron />} onPress={() => router.push("/import")} />
           <Row title="Corbeille" detail="30 jours" value={String(trash.items.length + trash.replaced.length)} trailing={<Chevron />} onPress={() => setSheet("trash")} />
+          {aside.copies.length === 0 ? null : (
+            <Row
+              title="Copies mises de côté"
+              detail="bases illisibles au démarrage"
+              value={String(aside.copies.length)}
+              trailing={<Chevron />}
+              onPress={() => {
+                aside.refresh();
+                setSheet("aside");
+              }}
+            />
+          )}
           <Row title="Espace utilisé" detail="sur ce téléphone" {...(bytes === null ? {} : { value: megabytes(bytes), valueDetail: "Mo" })} trailing={<View style={styles.chevronSpace} />} />
           <Row
             title="Rappels dans l'agenda"
@@ -119,6 +133,7 @@ export default function Settings() {
       <MassUnitSheet open={sheet === "unit"} value={current?.massUnit ?? "kg"} onClose={close} />
       <RemindersSheet open={sheet === "reminders"} weekdays={current?.reminderWeekdays ?? 0} minutes={current?.reminderMinutes ?? 18 * 60 + 30} onClose={close} />
       <TrashSheet open={sheet === "trash"} massUnit={current?.massUnit ?? "kg"} onClose={close} />
+      <AsideSheet open={sheet === "aside"} aside={aside} onClose={close} />
     </>
   );
 }
