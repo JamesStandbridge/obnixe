@@ -85,7 +85,9 @@ export function moveSportMutations(preferences: readonly SportPreference[], spor
   return mutationsFor(before, renumbered(ordered));
 }
 
-export function initialSportMutations(selected: ReadonlySet<SportKey>): Mutation[] {
-  const ordered = [...sportKeys.filter((sport) => selected.has(sport)), ...sportKeys.filter((sport) => !selected.has(sport) && !isRetired(sport))];
+/** Records every sport once, in the offered order with the selected ones first; sports missing from `offered` follow in catalog order. */
+export function initialSportMutations(offered: readonly SportKey[], selected: ReadonlySet<SportKey>): Mutation[] {
+  const all = [...offered, ...sportKeys.filter((sport) => !offered.includes(sport) && !isRetired(sport))];
+  const ordered = [...all.filter((sport) => selected.has(sport)), ...all.filter((sport) => !selected.has(sport))];
   return ordered.map((sport, position) => ({ kind: "insert", table: "sport_preference", row: { sport, enabled: selected.has(sport), position } }));
 }

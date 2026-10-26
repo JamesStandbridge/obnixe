@@ -1,6 +1,6 @@
 import { asc, eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
-import { backup, journaledTables, painReport, session, sportPreference, strengthEntry, strengthSet, weighIn, zoneTracking } from "@obnixe/schema";
+import { backup, journaledTables, sportKeys, painReport, session, sportPreference, strengthEntry, strengthSet, weighIn, zoneTracking } from "@obnixe/schema";
 import type { EpochMs, Id, LocalDate, SportPreference } from "@obnixe/schema";
 import { createTestContext } from "../testing.ts";
 import type { TestContext } from "../testing.ts";
@@ -35,7 +35,7 @@ describe("foreign keys", () => {
 describe("first launch", () => {
   it("needs neither sport preferences nor sessions", () => {
     expect(isFirstLaunch(launchCounts(context.db))).toBe(true);
-    make.write(initialSportMutations(new Set(["run"])));
+    make.write(initialSportMutations(sportKeys, new Set(["run"])));
     expect(isFirstLaunch(launchCounts(context.db))).toBe(false);
     expect(isFirstLaunch({ sportPreferences: 0, sessions: 3 })).toBe(false);
   });
@@ -45,7 +45,7 @@ describe("sports", () => {
   const preferences = (): SportPreference[] => context.db.select().from(sportPreference).all();
 
   it("records every catalog sport with the chosen ones first", () => {
-    make.write(initialSportMutations(new Set(["climb", "strength"])));
+    make.write(initialSportMutations(["strength", "run", "climb", "hike", "swim", "bike"], new Set(["climb", "strength"])));
     expect(sportChoices(preferences()).map((choice) => [choice.sport, choice.enabled])).toEqual([
       ["strength", true],
       ["climb", true],
@@ -64,7 +64,7 @@ describe("sports", () => {
   });
 
   it("appends a newly enabled sport after the enabled ones", () => {
-    make.write(initialSportMutations(new Set(["strength", "run"])));
+    make.write(initialSportMutations(sportKeys, new Set(["strength", "run"])));
     make.write(setSportEnabledMutations(preferences(), "yoga", true, new Set()));
     expect(sportChoices(preferences()).slice(0, 3).map((choice) => choice.sport)).toEqual(["strength", "run", "yoga"]);
     make.write(setSportEnabledMutations(preferences(), "strength", false, new Set()));
@@ -81,13 +81,13 @@ describe("sports", () => {
     ]);
     const locked = lockedSports(context.db);
     expect([...locked]).toEqual(["strength"]);
-    make.write(initialSportMutations(new Set(["strength", "run"])));
+    make.write(initialSportMutations(sportKeys, new Set(["strength", "run"])));
     expect(() => setSportEnabledMutations(preferences(), "strength", false, locked)).toThrow(SportLockedError);
     expect(setSportEnabledMutations(preferences(), "run", false, locked)).toEqual([{ kind: "update", table: "sport_preference", key: "run", patch: { enabled: false, position: 1 } }]);
   });
 
   it("moves enabled sports within the enabled ones", () => {
-    make.write(initialSportMutations(new Set(["strength", "run", "climb"])));
+    make.write(initialSportMutations(sportKeys, new Set(["strength", "run", "climb"])));
     make.write(moveSportMutations(preferences(), "climb", -1));
     expect(sportChoices(preferences()).slice(0, 3).map((choice) => choice.sport)).toEqual(["strength", "climb", "run"]);
     expect(moveSportMutations(preferences(), "strength", -1)).toEqual([]);

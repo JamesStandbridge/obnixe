@@ -14,7 +14,11 @@ interface ButtonProps {
   readonly style?: StyleProp<ViewStyle>;
 }
 
-export function PrimaryButton({ label, onPress, disabled = false, icon, style }: ButtonProps) {
+interface PrimaryButtonProps extends ButtonProps {
+  readonly compact?: boolean;
+}
+
+export function PrimaryButton({ label, onPress, disabled = false, icon, style, compact = false }: PrimaryButtonProps) {
   const { colors } = useTheme();
   const press = usePressScale(0.98);
   return (
@@ -28,13 +32,14 @@ export function PrimaryButton({ label, onPress, disabled = false, icon, style }:
         onPressOut={press.onPressOut}
         style={({ pressed }) => [
           styles.primary,
+          compact && styles.primaryCompact,
           disabled
             ? { backgroundColor: colors.surface, borderColor: colors.controlBorder, borderWidth: layout.borderControl }
             : { backgroundColor: pressed ? colors.actPress : colors.actBg },
         ]}
       >
         {icon}
-        <Text variant="bodyStrong" tone={disabled ? "primary" : "act"} style={styles.primaryLabel}>
+        <Text variant="bodyStrong" tone={disabled ? "primary" : "act"} style={[styles.primaryLabel, compact && styles.primaryCompactLabel]}>
           {label}
         </Text>
       </Pressable>
@@ -113,6 +118,8 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   primaryLabel: { fontFamily: fonts.text700, fontSize: 18 },
+  primaryCompact: { minHeight: 56 },
+  primaryCompactLabel: { fontSize: 17 },
   sheet: { minHeight: 56, paddingHorizontal: 16, borderRadius: radii.panel, alignItems: "center", justifyContent: "center" },
   sheetLabel: { fontFamily: fonts.text700, fontSize: 17 },
   control: {
