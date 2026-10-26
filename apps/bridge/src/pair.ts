@@ -29,15 +29,15 @@ export async function postPairingCode(controlPort: number, code: string): Promis
 function describe(result: PairResult): string {
   switch (result.kind) {
     case "paired":
-      return `Connecté à ${result.device}. ${result.client} peut utiliser Obnixe tant que l'écran Agent reste ouvert.`;
+      return `Connected to ${result.device}. ${result.client} can use Obnixe while the Agent screen stays open.`;
     case "no_phone":
-      return "Aucun téléphone en attente. Ouvre l'écran Agent dans Obnixe et vérifie l'adresse du Mac.";
+      return "No phone is waiting. Open the Agent screen in Obnixe and check the Mac address it dials.";
     case "bad_code":
-      return result.remaining > 0 ? `Code refusé. Encore ${result.remaining} essai${result.remaining > 1 ? "s" : ""}.` : "Code refusé. Génère un nouveau code sur le téléphone.";
+      return result.remaining > 0 ? `Code refused. ${result.remaining} attempt${result.remaining > 1 ? "s" : ""} left.` : "Code refused. Generate a new code on the phone.";
     case "invalid_code":
-      return "Le code fait 6 chiffres.";
+      return "The code has 6 digits.";
     case "failed":
-      return `Appairage interrompu : ${result.message}`;
+      return `Pairing interrupted: ${result.message}`;
     default: {
       const unreachable: never = result;
       throw new Error(`Unhandled pair result ${JSON.stringify(unreachable)}`);
@@ -59,17 +59,17 @@ export async function runPair(options: PairCommandOptions): Promise<number> {
     for (;;) {
       if (code === undefined) {
         if (prompt === null) {
-          write("Indique le code : obnixe-bridge pair 482917");
+          write("Pass the code: obnixe-bridge pair 482917");
           return 2;
         }
-        code = await prompt.question("Code affiché sur le téléphone : ");
+        code = await prompt.question("Code shown on the phone: ");
       }
       let result: PairResult;
       try {
         result = await postPairingCode(options.controlPort, code);
       } catch (error) {
         if (error instanceof BridgeUnreachableError) {
-          write("Le bridge ne tourne pas. Lance Cursor ou Codex avec le serveur MCP obnixe, puis réessaie.");
+          write("The bridge is not running. Start Cursor or Codex with the obnixe MCP server, then retry.");
           return 1;
         }
         throw error;

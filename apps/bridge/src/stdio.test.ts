@@ -7,7 +7,7 @@ it("runs under node type stripping and serves MCP over stdio", async () => {
   const transport = new StdioClientTransport({
     command: process.execPath,
     args: ["--experimental-strip-types", "--disable-warning=ExperimentalWarning", fileURLToPath(new URL("./main.ts", import.meta.url))],
-    env: { ...process.env, OBNIXE_PHONE_PORT: "0", OBNIXE_CONTROL_PORT: "0" } as Record<string, string>,
+    env: { ...process.env, OBNIXE_PHONE_HOST: "127.0.0.1", OBNIXE_PHONE_PORT: "0", OBNIXE_CONTROL_PORT: "0" } as Record<string, string>,
     stderr: "pipe",
   });
   const client = new Client({ name: "codex-mcp-client", version: "1.0.0" });

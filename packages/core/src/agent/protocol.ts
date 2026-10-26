@@ -1,4 +1,5 @@
 import { chacha20poly1305 } from "@noble/ciphers/chacha.js";
+import { x25519 } from "@noble/curves/ed25519.js";
 import { hkdf } from "@noble/hashes/hkdf.js";
 import { hmac } from "@noble/hashes/hmac.js";
 import { scryptAsync } from "@noble/hashes/scrypt.js";
@@ -16,6 +17,9 @@ export const maxPairingAttempts = 5;
 export const heartbeatIntervalMs = 15_000;
 export const heartbeatTimeoutMs = 45_000;
 export const nonceBytes = 32;
+export const publicKeyBytes = 32;
+export const proofBytes = 32;
+export const openingBytes = 32;
 
 const scryptCost = { N: 2 ** 14, r: 8, p: 1, dkLen: 32 } as const;
 const sealedAad = utf8ToBytes("obnixe-sealed-v1");
@@ -28,9 +32,11 @@ export const rejectionReasons = ["code", "expired", "replaced", "version"] as co
 export type RejectionReason = (typeof rejectionReasons)[number];
 
 const frameSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("challenge"), version: z.int(), nonce: base64 }),
-  z.object({ type: z.literal("hello"), version: z.int(), device: z.string().min(1).max(64), nonce: base64, proof: base64 }),
-  z.object({ type: z.literal("welcome"), proof: base64 }),
+  z.object({ type: z.literal("challenge"), version: z.int(), nonce: base64, key: base64 }),
+  z.object({ type: z.literal("hello"), version: z.int(), device: z.string().min(1).max(64), nonce: base64, key: base64 }),
+  z.object({ type: z.literal("commit"), commitment: base64 }),
+  z.object({ type: z.literal("proof"), proof: base64 }),
+  z.object({ type: z.literal("welcome"), opening: base64, proof: base64 }),
   z.object({ type: z.literal("rejected"), reason: z.enum(rejectionReasons) }),
   z.object({ type: z.literal("sealed"), seq: z.int().nonnegative(), box: base64 }),
 ]);
@@ -38,10 +44,14 @@ const frameSchema = z.discriminatedUnion("type", [
 /**
  * Plaintext frames exchanged on the phone WebSocket.
  *
- * 1. bridge -> phone `challenge` with a random nonce.
- * 2. phone -> bridge `hello` with its own nonce and an HMAC proof keyed by scrypt(code, nonces); the raw code never travels.
- * 3. The bridge holds the hello until `obnixe-bridge pair` posts the code typed by the user on the control port, then
- *    answers `welcome` with its own proof (or `rejected`). Both sides derive directional ChaCha20-Poly1305 keys with HKDF.
+ * 1. bridge -> phone `challenge` with a random nonce and an ephemeral X25519 public key.
+ * 2. phone -> bridge `hello` with its own nonce and ephemeral X25519 public key. Both sides derive, per pairing attempt,
+ *    HKDF(ECDH secret || scrypt(code, transcript hash), transcript hash) into two proof keys and two session keys.
+ * 3. When `obnixe-bridge pair` posts the code typed by the user, the bridge sends `commit`: a hash of a random opening and
+ *    of its own proof. The phone answers `proof`, an HMAC over the transcript and the commitment. Only a matching proof
+ *    earns `welcome`, which reveals the opening and the bridge proof. The commitment is sent before the bridge sees the
+ *    phone proof, so a fake bridge that cracks the code offline afterwards cannot open it; a fake phone must answer before
+ *    the reveal, so it gets one online guess per attempt. The raw code never travels.
  * 4. Every later message is a `sealed` JSON-RPC payload with a strictly increasing per-direction sequence number.
  */
 export type Frame = z.infer<typeof frameSchema>;
@@ -157,34 +167,37 @@ export function isPairingCode(text: string): boolean {
   return /^\d{6}$/.test(text);
 }
 
+export interface EphemeralKeyPair {
+  readonly secretKey: Uint8Array;
+  readonly publicKey: Uint8Array;
+}
+
+export function generateEphemeralKeyPair(randomBytes: RandomBytes): EphemeralKeyPair {
+  const secretKey = randomBytes(32);
+  return { secretKey, publicKey: x25519.getPublicKey(secretKey) };
+}
+
+export function sharedSecret(secretKey: Uint8Array, peerPublicKey: Uint8Array): Uint8Array {
+  try {
+    return x25519.getSharedSecret(secretKey, peerPublicKey);
+  } catch (error) {
+    if (error instanceof Error && error.message === "invalid private or public key received") throw new ProtocolError("The peer sent an invalid public key");
+    throw error;
+  }
+}
+
 export interface PairingTranscript {
   readonly bridgeNonce: Uint8Array;
+  readonly bridgeKey: Uint8Array;
   readonly phoneNonce: Uint8Array;
+  readonly phoneKey: Uint8Array;
   readonly device: string;
 }
 
-function transcriptBytes(transcript: PairingTranscript): Uint8Array {
-  return concatBytes(utf8ToBytes(`obnixe-v${protocolVersion}`), transcript.bridgeNonce, transcript.phoneNonce, utf8ToBytes(transcript.device));
-}
-
-export function derivePairingKey(code: string, transcript: PairingTranscript): Promise<Uint8Array> {
-  const salt = concatBytes(utf8ToBytes("obnixe-pair"), transcript.bridgeNonce, transcript.phoneNonce);
-  return scryptAsync(utf8ToBytes(code), salt, scryptCost);
-}
-
-export function helloProof(pairingKey: Uint8Array, transcript: PairingTranscript): Uint8Array {
-  return hmac(sha256, pairingKey, concatBytes(utf8ToBytes("hello"), transcriptBytes(transcript)));
-}
-
-export function welcomeProof(pairingKey: Uint8Array, transcript: PairingTranscript): Uint8Array {
-  return hmac(sha256, pairingKey, concatBytes(utf8ToBytes("welcome"), transcriptBytes(transcript)));
-}
-
-export function sameBytes(left: Uint8Array, right: Uint8Array): boolean {
-  if (left.length !== right.length) return false;
-  let difference = 0;
-  for (let index = 0; index < left.length; index += 1) difference |= (left[index] ?? 0) ^ (right[index] ?? 0);
-  return difference === 0;
+export function transcriptHash(transcript: PairingTranscript): Uint8Array {
+  return sha256(
+    concatBytes(utf8ToBytes(`obnixe-v${protocolVersion}`), transcript.bridgeNonce, transcript.bridgeKey, transcript.phoneNonce, transcript.phoneKey, utf8ToBytes(transcript.device)),
+  );
 }
 
 export interface SessionKeys {
@@ -192,9 +205,43 @@ export interface SessionKeys {
   readonly toBridge: Uint8Array;
 }
 
-export function deriveSessionKeys(pairingKey: Uint8Array, transcript: PairingTranscript): SessionKeys {
-  const material = hkdf(sha256, pairingKey, transcriptBytes(transcript), utf8ToBytes("obnixe-session"), 64);
-  return { toPhone: material.slice(0, 32), toBridge: material.slice(32, 64) };
+export interface PairingSecrets {
+  readonly transcriptHash: Uint8Array;
+  readonly phoneProofKey: Uint8Array;
+  readonly bridgeProofKey: Uint8Array;
+  readonly sessionKeys: SessionKeys;
+}
+
+/** Derives the proof and session keys of one pairing attempt; `shared` is the X25519 secret between the two ephemeral keys. */
+export async function derivePairingSecrets(code: string, transcript: PairingTranscript, shared: Uint8Array): Promise<PairingSecrets> {
+  const hash = transcriptHash(transcript);
+  const codeKey = await scryptAsync(utf8ToBytes(code), concatBytes(utf8ToBytes("obnixe-pair"), hash), scryptCost);
+  const material = hkdf(sha256, concatBytes(shared, codeKey), hash, utf8ToBytes("obnixe-session"), 128);
+  return {
+    transcriptHash: hash,
+    phoneProofKey: material.slice(0, 32),
+    bridgeProofKey: material.slice(32, 64),
+    sessionKeys: { toPhone: material.slice(64, 96), toBridge: material.slice(96, 128) },
+  };
+}
+
+export function bridgeProof(secrets: PairingSecrets): Uint8Array {
+  return hmac(sha256, secrets.bridgeProofKey, concatBytes(utf8ToBytes("welcome"), secrets.transcriptHash));
+}
+
+export function phoneProof(secrets: PairingSecrets, commitment: Uint8Array): Uint8Array {
+  return hmac(sha256, secrets.phoneProofKey, concatBytes(utf8ToBytes("hello"), secrets.transcriptHash, commitment));
+}
+
+export function commitBridgeProof(opening: Uint8Array, proof: Uint8Array): Uint8Array {
+  return sha256(concatBytes(utf8ToBytes("obnixe-commit"), opening, proof));
+}
+
+export function sameBytes(left: Uint8Array, right: Uint8Array): boolean {
+  if (left.length !== right.length) return false;
+  let difference = 0;
+  for (let index = 0; index < left.length; index += 1) difference |= (left[index] ?? 0) ^ (right[index] ?? 0);
+  return difference === 0;
 }
 
 function sequenceNonce(sequence: number): Uint8Array {

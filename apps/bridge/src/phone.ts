@@ -1,34 +1,43 @@
 import { createServer } from "node:http";
-import type { Server } from "node:http";
+import type { IncomingMessage, Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { WebSocketServer } from "ws";
 import type { RawData, WebSocket } from "ws";
 import {
   ProtocolError,
   SealedChannel,
+  bridgeProof,
+  commitBridgeProof,
   decodeBytes,
   decodeFrame,
-  derivePairingKey,
-  deriveSessionKeys,
+  derivePairingSecrets,
   encodeFrame,
+  generateEphemeralKeyPair,
   heartbeatIntervalMs,
-  helloProof,
   isPairingCode,
   maxPairingAttempts,
   nonceBytes,
+  openingBytes,
   pairingCodeTtlMs,
   parsePhoneMessage,
   parseSessionOpenResult,
   parseToolOutcome,
+  phoneProof,
+  proofBytes,
   protocolVersion,
+  publicKeyBytes,
   sameBytes,
+  sharedSecret,
   toBase64,
-  welcomeProof,
 } from "@obnixe/core/agent/wire";
-import type { BridgeMessage, Frame, PairingTranscript, RandomBytes, RejectionReason, ToolOutcome } from "@obnixe/core/agent/wire";
+import type { BridgeMessage, EphemeralKeyPair, Frame, PairingSecrets, PairingTranscript, RandomBytes, RejectionReason, ToolOutcome } from "@obnixe/core/agent/wire";
 
-const maxPending = 4;
+const maxPending = 8;
+const maxPendingPerAddress = 2;
+const defaultHandshakeTimeoutMs = 10_000;
+const defaultProofTimeoutMs = 10_000;
 const policyViolation = 1008;
+const tryAgainLater = 1013;
 
 export interface EndpointOptions {
   readonly port: number;
@@ -38,20 +47,37 @@ export interface EndpointOptions {
   readonly log: (line: string) => void;
   readonly now?: () => number;
   readonly callTimeoutMs?: number;
+  readonly handshakeTimeoutMs?: number;
+  readonly proofTimeoutMs?: number;
 }
 
 interface Hello {
   readonly transcript: PairingTranscript;
-  readonly proof: Uint8Array;
+  readonly shared: Uint8Array;
   readonly receivedAt: number;
+}
+
+interface Attempt {
+  readonly settle: (proof: Uint8Array | null) => void;
 }
 
 interface Pending {
   readonly socket: WebSocket;
+  readonly address: string;
   readonly bridgeNonce: Uint8Array;
+  readonly keyPair: EphemeralKeyPair;
+  readonly handshakeTimer: ReturnType<typeof setTimeout>;
   hello: Hello | null;
+  attempt: Attempt | null;
   attempts: number;
 }
+
+type Candidate = Pending & { readonly hello: Hello };
+
+type Verdict =
+  | { readonly kind: "match"; readonly candidate: Candidate; readonly secrets: PairingSecrets; readonly opening: Uint8Array }
+  | { readonly kind: "mismatch"; readonly candidate: Candidate }
+  | { readonly kind: "gone" };
 
 type Reply = { readonly ok: true; readonly result: unknown } | { readonly ok: false; readonly message: string };
 
@@ -116,7 +142,7 @@ export class PhoneEndpoint {
     });
     this.http = http;
     this.sockets = new WebSocketServer({ server: http, maxPayload: 4 * 1024 * 1024 });
-    this.sockets.on("connection", (socket) => this.accept(socket));
+    this.sockets.on("connection", (socket, request) => this.accept(socket, request));
     this.heartbeat = setInterval(() => this.tick(), heartbeatIntervalMs);
     return (http.address() as AddressInfo).port;
   }
@@ -141,20 +167,22 @@ export class PhoneEndpoint {
     const code = input.replace(/\s+/g, "");
     if (!isPairingCode(code)) return { kind: "invalid_code" };
     this.expirePending();
-    const candidates = [...this.pendings.values()].filter((pending): pending is Pending & { hello: Hello } => pending.hello !== null);
+    const candidates = [...this.pendings.values()].filter((pending): pending is Candidate => pending.hello !== null && pending.attempt === null);
     if (candidates.length === 0) return { kind: "no_phone" };
-    for (const candidate of candidates) {
-      const key = await derivePairingKey(code, candidate.hello.transcript);
-      if (this.pendings.get(candidate.socket) !== candidate) continue;
-      if (sameBytes(candidate.hello.proof, helloProof(key, candidate.hello.transcript))) return this.establish(candidate, key);
+    const verdicts = await Promise.all(candidates.map((candidate) => this.attempt(candidate, code)));
+    for (const verdict of verdicts) {
+      if (verdict.kind === "match" && this.pendings.get(verdict.candidate.socket) === verdict.candidate) return this.establish(verdict);
     }
+    let counted = false;
     let remaining = 0;
-    for (const candidate of candidates) {
-      candidate.attempts += 1;
-      if (candidate.attempts >= maxPairingAttempts) this.reject(candidate.socket, "code");
-      else remaining = Math.max(remaining, maxPairingAttempts - candidate.attempts);
+    for (const verdict of verdicts) {
+      if (verdict.kind !== "mismatch" || this.pendings.get(verdict.candidate.socket) !== verdict.candidate) continue;
+      counted = true;
+      verdict.candidate.attempts += 1;
+      if (verdict.candidate.attempts >= maxPairingAttempts) this.reject(verdict.candidate, "code");
+      else remaining = Math.max(remaining, maxPairingAttempts - verdict.candidate.attempts);
     }
-    return { kind: "bad_code", remaining };
+    return counted ? { kind: "bad_code", remaining } : { kind: "no_phone" };
   }
 
   async callTool(name: string, args: Readonly<Record<string, unknown>>): Promise<ToolOutcome> {
@@ -168,8 +196,10 @@ export class PhoneEndpoint {
 
   async close(): Promise<void> {
     if (this.heartbeat !== null) clearInterval(this.heartbeat);
-    for (const pending of this.pendings.values()) pending.socket.terminate();
-    this.pendings.clear();
+    for (const pending of [...this.pendings.values()]) {
+      this.forget(pending);
+      pending.socket.terminate();
+    }
     if (this.active !== null) this.drop(this.active, "bridge stopped");
     const sockets = this.sockets;
     const http = this.http;
@@ -183,19 +213,43 @@ export class PhoneEndpoint {
     }
   }
 
-  private accept(socket: WebSocket): void {
-    if (this.pendings.size >= maxPending) {
-      const oldest = this.pendings.keys().next().value;
-      if (oldest !== undefined) this.reject(oldest, "replaced");
+  /**
+   * Admits a dialing phone. A remote address only ever replaces its own oldest pending handshake, and once every slot is
+   * taken new sockets are turned away, so a flood from other addresses cannot evict a phone waiting for its code.
+   */
+  private accept(socket: WebSocket, request: IncomingMessage): void {
+    const address = remoteAddress(request);
+    const sameAddress = [...this.pendings.values()].filter((pending) => pending.address === address);
+    const oldest = sameAddress[0];
+    if (sameAddress.length >= maxPendingPerAddress && oldest !== undefined) this.reject(oldest, "replaced");
+    else if (this.pendings.size >= maxPending) {
+      this.options.log(`Refused a connection from ${address}: too many phones are already waiting to pair.`);
+      socket.close(tryAgainLater, "busy");
+      return;
     }
-    const pending: Pending = { socket, bridgeNonce: this.options.randomBytes(nonceBytes), hello: null, attempts: 0 };
+    const handshakeTimer = setTimeout(() => {
+      const pending = this.pendings.get(socket);
+      if (pending === undefined || pending.hello !== null) return;
+      this.forget(pending);
+      socket.terminate();
+    }, this.options.handshakeTimeoutMs ?? defaultHandshakeTimeoutMs);
+    const pending: Pending = {
+      socket,
+      address,
+      bridgeNonce: this.options.randomBytes(nonceBytes),
+      keyPair: generateEphemeralKeyPair(this.options.randomBytes),
+      handshakeTimer,
+      hello: null,
+      attempt: null,
+      attempts: 0,
+    };
     this.pendings.set(socket, pending);
     socket.on("message", (data, isBinary) => this.receive(socket, data, isBinary));
     socket.on("close", () => this.closed(socket));
     socket.on("pong", () => {
       if (this.active?.socket === socket) this.active.alive = true;
     });
-    this.send(socket, { type: "challenge", version: protocolVersion, nonce: toBase64(pending.bridgeNonce) });
+    this.send(socket, { type: "challenge", version: protocolVersion, nonce: toBase64(pending.bridgeNonce), key: toBase64(pending.keyPair.publicKey) });
   }
 
   private receive(socket: WebSocket, data: RawData, isBinary: boolean): void {
@@ -203,10 +257,10 @@ export class PhoneEndpoint {
       if (isBinary) throw new ProtocolError("Binary frames are not part of the protocol");
       const frame = decodeFrame(rawText(data));
       if (this.active?.socket === socket) this.receiveSealed(this.active, frame);
-      else this.receiveHello(socket, frame);
+      else this.receiveHandshake(socket, frame);
     } catch (error) {
       if (error instanceof ProtocolError) {
-        this.options.log(`Message refusé : ${error.message}`);
+        this.options.log(`Refused a message: ${error.message}`);
         socket.close(policyViolation, "protocol");
         return;
       }
@@ -214,27 +268,77 @@ export class PhoneEndpoint {
     }
   }
 
-  private receiveHello(socket: WebSocket, frame: Frame): void {
+  private receiveHandshake(socket: WebSocket, frame: Frame): void {
     const pending = this.pendings.get(socket);
     if (pending === undefined) throw new ProtocolError("Unknown socket");
-    if (frame.type !== "hello" || pending.hello !== null) throw new ProtocolError(`Unexpected ${frame.type} before pairing`);
+    switch (frame.type) {
+      case "hello":
+        this.receiveHello(pending, frame);
+        return;
+      case "proof": {
+        const attempt = pending.attempt;
+        if (attempt === null) throw new ProtocolError("Unexpected proof");
+        attempt.settle(decodeBytes(frame.proof, proofBytes));
+        return;
+      }
+      case "challenge":
+      case "commit":
+      case "welcome":
+      case "rejected":
+      case "sealed":
+        throw new ProtocolError(`Unexpected ${frame.type} before pairing`);
+      default: {
+        const unreachable: never = frame;
+        throw new ProtocolError(`Unhandled frame ${JSON.stringify(unreachable)}`);
+      }
+    }
+  }
+
+  private receiveHello(pending: Pending, frame: Extract<Frame, { type: "hello" }>): void {
+    if (pending.hello !== null) throw new ProtocolError("Unexpected second hello");
     if (frame.version !== protocolVersion) {
-      this.reject(socket, "version");
+      this.reject(pending, "version");
       return;
     }
-    pending.hello = {
-      transcript: { bridgeNonce: pending.bridgeNonce, phoneNonce: decodeBytes(frame.nonce, nonceBytes), device: frame.device },
-      proof: decodeBytes(frame.proof, 32),
-      receivedAt: this.now(),
+    const transcript: PairingTranscript = {
+      bridgeNonce: pending.bridgeNonce,
+      bridgeKey: pending.keyPair.publicKey,
+      phoneNonce: decodeBytes(frame.nonce, nonceBytes),
+      phoneKey: decodeBytes(frame.key, publicKeyBytes),
+      device: frame.device,
     };
-    this.options.log(`${frame.device} attend l'appairage. Lance \`obnixe-bridge pair\` et saisis le code affiché.`);
+    const shared = sharedSecret(pending.keyPair.secretKey, transcript.phoneKey);
+    clearTimeout(pending.handshakeTimer);
+    pending.hello = { transcript, shared, receivedAt: this.now() };
+    this.options.log(`${frame.device} is waiting to pair. Run \`obnixe-bridge pair\` and enter the code shown on the phone.`);
+  }
+
+  /** Commits to the bridge proof for `code`, then waits for the phone proof; the bridge proof is only revealed on a match. */
+  private async attempt(candidate: Candidate, code: string): Promise<Verdict> {
+    const secrets = await derivePairingSecrets(code, candidate.hello.transcript, candidate.hello.shared);
+    if (this.pendings.get(candidate.socket) !== candidate || candidate.attempt !== null) return { kind: "gone" };
+    const opening = this.options.randomBytes(openingBytes);
+    const commitment = commitBridgeProof(opening, bridgeProof(secrets));
+    const proof = await new Promise<Uint8Array | null>((resolve) => {
+      const timer = setTimeout(() => settle(null), this.options.proofTimeoutMs ?? defaultProofTimeoutMs);
+      const settle = (value: Uint8Array | null): void => {
+        clearTimeout(timer);
+        candidate.attempt = null;
+        resolve(value);
+      };
+      candidate.attempt = { settle };
+      this.send(candidate.socket, { type: "commit", commitment: toBase64(commitment) });
+    });
+    if (this.pendings.get(candidate.socket) !== candidate) return { kind: "gone" };
+    if (proof === null || !sameBytes(proof, phoneProof(secrets, commitment))) return { kind: "mismatch", candidate };
+    return { kind: "match", candidate, secrets, opening };
   }
 
   private receiveSealed(active: Active, frame: Frame): void {
     if (frame.type !== "sealed") throw new ProtocolError(`Unexpected ${frame.type} in session`);
     const message = parsePhoneMessage(active.channel.open(frame));
     if ("method" in message) {
-      this.options.log(`Connexion coupée depuis le téléphone (${message.params.reason}).`);
+      this.options.log(`The phone ended the connection (${message.params.reason}).`);
       this.drop(active, "phone closed the session");
       active.socket.close(1000, "closed");
       return;
@@ -246,15 +350,17 @@ export class PhoneEndpoint {
     waiter.resolve("result" in message ? { ok: true, result: message.result } : { ok: false, message: message.error.message });
   }
 
-  private async establish(candidate: Pending & { hello: Hello }, key: Uint8Array): Promise<PairResult> {
+  private async establish(match: Extract<Verdict, { kind: "match" }>): Promise<PairResult> {
+    const { candidate, secrets, opening } = match;
     const { socket, hello } = candidate;
-    this.pendings.delete(socket);
-    if (this.active !== null) {
-      this.drop(this.active, "replaced by a new pairing");
-      this.active.socket.close(1000, "replaced");
+    this.forget(candidate);
+    const previous = this.active;
+    if (previous !== null) {
+      this.drop(previous, "replaced by a new pairing");
+      previous.socket.close(1000, "replaced");
     }
-    this.send(socket, { type: "welcome", proof: toBase64(welcomeProof(key, hello.transcript)) });
-    const keys = deriveSessionKeys(key, hello.transcript);
+    this.send(socket, { type: "welcome", opening: toBase64(opening), proof: toBase64(bridgeProof(secrets)) });
+    const keys = secrets.sessionKeys;
     const active: Active = { socket, channel: new SealedChannel(keys.toPhone, keys.toBridge), device: hello.transcript.device, waiters: new Map(), nextId: 1, open: false, alive: true };
     this.active = active;
     const reply = await this.request(active, { method: "session.open", params: { client: this.client, host: this.options.hostLabel } });
@@ -265,7 +371,7 @@ export class PhoneEndpoint {
     }
     parseSessionOpenResult(reply.result);
     active.open = true;
-    this.options.log(`Connecté à ${active.device}.`);
+    this.options.log(`Connected to ${active.device}.`);
     return { kind: "paired", device: active.device, client: this.client };
   }
 
@@ -290,16 +396,23 @@ export class PhoneEndpoint {
     if (socket.readyState === socket.OPEN) socket.send(encodeFrame(frame));
   }
 
-  private reject(socket: WebSocket, reason: RejectionReason): void {
-    this.send(socket, { type: "rejected", reason });
-    this.pendings.delete(socket);
-    socket.close(1000, reason);
+  private reject(pending: Pending, reason: RejectionReason): void {
+    this.send(pending.socket, { type: "rejected", reason });
+    this.forget(pending);
+    pending.socket.close(1000, reason);
+  }
+
+  private forget(pending: Pending): void {
+    clearTimeout(pending.handshakeTimer);
+    if (this.pendings.get(pending.socket) === pending) this.pendings.delete(pending.socket);
+    pending.attempt?.settle(null);
   }
 
   private closed(socket: WebSocket): void {
-    this.pendings.delete(socket);
+    const pending = this.pendings.get(socket);
+    if (pending !== undefined) this.forget(pending);
     if (this.active?.socket === socket) {
-      if (this.active.open) this.options.log("Téléphone déconnecté.");
+      if (this.active.open) this.options.log("Phone disconnected.");
       this.drop(this.active, "phone disconnected");
     }
   }
@@ -316,7 +429,7 @@ export class PhoneEndpoint {
 
   private expirePending(): void {
     for (const pending of [...this.pendings.values()]) {
-      if (pending.hello !== null && this.now() - pending.hello.receivedAt > pairingCodeTtlMs) this.reject(pending.socket, "expired");
+      if (pending.hello !== null && this.now() - pending.hello.receivedAt > pairingCodeTtlMs) this.reject(pending, "expired");
     }
   }
 
@@ -325,7 +438,7 @@ export class PhoneEndpoint {
     const active = this.active;
     if (active === null) return;
     if (!active.alive) {
-      this.options.log("Téléphone injoignable, connexion coupée.");
+      this.options.log("The phone stopped answering; connection closed.");
       active.socket.terminate();
       return;
     }
@@ -336,6 +449,11 @@ export class PhoneEndpoint {
 }
 
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
+
+function remoteAddress(request: IncomingMessage): string {
+  const address = request.socket.remoteAddress ?? "unknown";
+  return address.startsWith("::ffff:") ? address.slice("::ffff:".length) : address;
+}
 
 function rawText(data: RawData): string {
   if (Array.isArray(data)) return Buffer.concat(data).toString("utf8");

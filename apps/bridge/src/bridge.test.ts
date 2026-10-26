@@ -5,7 +5,7 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { WebSocket } from "ws";
 import { PhoneSession, SealedChannel, closeConnection, decodeFrame, encodeFrame, openConnection, pairingCodeTtlMs, renameConnectionClient, runAgentTool } from "@obnixe/core";
-import type { PhoneLinkStatus, RejectionReason } from "@obnixe/core";
+import type { Frame, PhoneLinkStatus, RejectionReason } from "@obnixe/core";
 import { createTestContext } from "@obnixe/core/testing";
 import type { TestContext } from "@obnixe/core/testing";
 import { agentCall, agentConnection, changeset, session, settings } from "@obnixe/schema";
@@ -29,6 +29,7 @@ const logs: string[] = [];
 interface SimulatedPhone {
   readonly session: PhoneSession;
   readonly socket: WebSocket;
+  readonly sent: Frame[];
   readonly statuses: PhoneLinkStatus[];
   readonly rejections: RejectionReason[];
   readonly closeCodes: number[];
@@ -42,8 +43,9 @@ async function until(predicate: () => boolean, label: string): Promise<void> {
   }
 }
 
-function connectPhone(code: string): SimulatedPhone {
-  const socket = new WebSocket(`ws://127.0.0.1:${phonePort}`);
+function connectPhone(code: string, host = "127.0.0.1"): SimulatedPhone {
+  const socket = new WebSocket(`ws://${host}:${phonePort}`);
+  const sent: Frame[] = [];
   const statuses: PhoneLinkStatus[] = [];
   const rejections: RejectionReason[] = [];
   const closeCodes: number[] = [];
@@ -52,7 +54,13 @@ function connectPhone(code: string): SimulatedPhone {
     device: "iPhone",
     randomBytes: bytes,
     now: Date.now,
-    socket: { send: (text) => socket.send(text), close: () => socket.close() },
+    socket: {
+      send: (text) => {
+        sent.push(decodeFrame(text));
+        socket.send(text);
+      },
+      close: () => socket.close(),
+    },
     handlers: {
       onStatus: (status) => statuses.push(status),
       onOpen: (peer) => openConnection(context.db, context.env, peer),
@@ -70,7 +78,7 @@ function connectPhone(code: string): SimulatedPhone {
     if (connectionId !== null && !phoneSession.isClosed) closeConnection(context.db, context.env, connectionId, "network");
     phoneSession.markClosed();
   });
-  return { session: phoneSession, socket, statuses, rejections, closeCodes };
+  return { session: phoneSession, socket, sent, statuses, rejections, closeCodes };
 }
 
 async function pairedPhone(): Promise<SimulatedPhone> {
@@ -111,7 +119,16 @@ beforeEach(async () => {
     .run();
   logs.length = 0;
   skew = 0;
-  endpoint = new PhoneEndpoint({ port: 0, listenHost: "127.0.0.1", hostLabel: "MacBook Pro", randomBytes: bytes, log: (line) => logs.push(line), now: () => Date.now() + skew, callTimeoutMs: 5000 });
+  endpoint = new PhoneEndpoint({
+    port: 0,
+    listenHost: "::",
+    hostLabel: "MacBook Pro",
+    randomBytes: bytes,
+    log: (line) => logs.push(line),
+    now: () => Date.now() + skew,
+    callTimeoutMs: 5000,
+    handshakeTimeoutMs: 1000,
+  });
   phonePort = await endpoint.listen();
   control = await startControl(endpoint, 0);
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
@@ -181,6 +198,42 @@ describe("pairing", () => {
     expect(await status.json()).toEqual({ phone: "none", device: null, client: "Cursor" });
   });
 
+  it("rejects a replayed hello and proof", async () => {
+    const original = await pairedPhone();
+    const hello = original.sent.find((frame) => frame.type === "hello");
+    const proof = original.sent.find((frame) => frame.type === "proof");
+    if (hello === undefined || proof === undefined) throw new Error("Expected a recorded hello and proof");
+    const replayer = new WebSocket(`ws://127.0.0.1:${phonePort}`);
+    replayer.on("message", (data) => {
+      const frame = decodeFrame(String(data));
+      if (frame.type === "challenge") replayer.send(encodeFrame(hello));
+      if (frame.type === "commit") replayer.send(encodeFrame(proof));
+    });
+    await until(() => logs.filter((line) => line.includes("is waiting to pair")).length === 2, "replayed hello");
+    expect(await postPairingCode(control.port, "482917")).toEqual({ kind: "bad_code", remaining: 4 });
+    expect(endpoint.status()).toEqual({ phone: "connected", device: "iPhone", client: "Cursor" });
+    replayer.close();
+  });
+
+  it("keeps a waiting phone through a connection flood from another address", async () => {
+    const phone = connectPhone("482917", "[::1]");
+    await until(() => endpoint.status().phone === "waiting", "hello");
+    const flood = Array.from({ length: 12 }, () => new WebSocket(`ws://127.0.0.1:${phonePort}`));
+    const floodClosed = flood.map((socket) => new Promise<void>((resolve) => socket.on("close", () => resolve())));
+    await Promise.all(flood.map((socket) => new Promise<void>((resolve) => socket.on("open", () => resolve()))));
+    expect(phone.rejections).toEqual([]);
+    expect(await postPairingCode(control.port, "482917")).toEqual({ kind: "paired", device: "iPhone", client: "Cursor" });
+    await until(() => phone.statuses.includes("open"), "open session");
+    await Promise.all(floodClosed);
+  });
+
+  it("drops sockets that never say hello", async () => {
+    const idle = new WebSocket(`ws://127.0.0.1:${phonePort}`);
+    const closed = new Promise<void>((resolve) => idle.on("close", () => resolve()));
+    await closed;
+    expect(await postPairingCode(control.port, "482917")).toEqual({ kind: "no_phone" });
+  });
+
   it("expires a hello that waited too long", async () => {
     const phone = connectPhone("482917");
     await until(() => endpoint.status().phone === "waiting", "hello");
@@ -233,7 +286,7 @@ describe("relayed tool calls", () => {
     expect(after.isError).toBe(true);
     expect(textOf(after)).toBe(notConnectedMessage);
     expect(connectionRow(connectionId)?.endReason).toBe("user");
-    expect(logs.some((line) => line.includes("Connexion coupée depuis le téléphone"))).toBe(true);
+    expect(logs.some((line) => line.includes("The phone ended the connection (user)"))).toBe(true);
   });
 
   it("marks the connection as dropped when the socket dies", async () => {
