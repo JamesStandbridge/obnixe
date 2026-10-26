@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { efforts, equipments, exerciseMeasures, sensations, sportKeys, zoneKeys } from "@obnixe/schema";
+import { efforts, equipments, exerciseMeasures, loadModes, sensations, sportKeys, zoneKeys } from "@obnixe/schema";
 import type { AgentCallKind, LocalDate, SportKey } from "@obnixe/schema";
 import { daysBetween } from "../dates.ts";
 
@@ -47,12 +47,24 @@ const rangeRule = {
 };
 
 const exerciseReference = z.string().trim().min(1).describe("Exercise id, or exact exercise name (matched case and accent insensitively).");
+const loadMode = z
+  .enum(loadModes)
+  .describe(
+    "What a set's loadGrams measures. total: the whole load as read, e.g. a loaded barbell, a machine or cable stack, a single dumbbell or kettlebell held alone. per_hand: one of two identical dumbbells or kettlebells, e.g. lateral raises with 4 kg in each hand are logged as loadGrams 4000. per_side: the load on one side, e.g. plates per side of a bar or each of two cable stacks; any fixed bar or sled goes in baseGrams. Defaults to per_hand for dumbbell and kettlebell, total otherwise. Duration exercises are always total.",
+  );
+const baseGrams = z
+  .int()
+  .min(1)
+  .max(500_000)
+  .describe("Fixed weight counted once on top of both sides, e.g. 10000 for a 10 kg EZ bar loaded with plates per side. Only with loadMode per_side.");
 const newExercise = z
   .object({
     measure: z.enum(exerciseMeasures).describe("load_reps: external load and reps; bodyweight_reps: reps with optional added load; duration: holds in seconds."),
     equipment: z.enum(equipments),
+    loadMode: loadMode.optional(),
+    baseGrams: baseGrams.optional(),
   })
-  .describe("Only used when 'exercise' matches no existing exercise: the exercise is then created with these properties. Without it, unknown exercises are created as load_reps / other.");
+  .describe("Only used when 'exercise' matches no existing exercise: the exercise is then created with these properties. Without it, unknown exercises are created as load_reps / other / total.");
 
 const programItemInput = z
   .object({
@@ -91,7 +103,14 @@ const programSlotInput = z.object({
 
 const strengthSetInput = z
   .object({
-    loadGrams: z.int().min(0).max(1_000_000).optional().describe("External load in grams (e.g. 62500 for 62.5 kg). Required for load_reps, optional added load for bodyweight_reps."),
+    loadGrams: z
+      .int()
+      .min(0)
+      .max(1_000_000)
+      .optional()
+      .describe(
+        "Load in grams exactly as the user reads it, interpreted by the exercise's loadMode (see list_exercises, or newExercise for a new one); never multiply it yourself. total: whole load (62500 for a 62.5 kg barbell). per_hand: one implement ('4 kg each dumbbell' is 4000). per_side: one side without the bar ('10 kg plates each side' is 10000). Required for load_reps, optional added load for bodyweight_reps.",
+      ),
     reps: z.int().min(1).max(200).optional(),
     durationSeconds: z.int().min(1).max(3600).optional(),
     rir: z.int().min(0).max(10).optional().describe("Reps in reserve."),
@@ -113,7 +132,7 @@ export const toolContracts = {
     name: "get_history",
     title: "Training history",
     description:
-      "Return the sessions of a date range (max 366 days), newest first: sport, status, start time, duration in seconds, catalog values, effort, sensation, enjoyment, notes, program slot, strength exercises with every set (loadGrams in grams, reps, durationSeconds, rir), itemized entries (e.g. climbing problems) and pain reports.",
+      "Return the sessions of a date range (max 366 days), newest first: sport, status, start time, duration in seconds, catalog values, effort, sensation, enjoyment, notes, program slot, strength exercises with their loadMode and baseGrams and every set (loadGrams as entered, totalLoadGrams the resulting total external load in grams, reps, durationSeconds, rir), itemized entries (e.g. climbing problems) and pain reports.",
     kind: "read",
     permission: null,
     input: z.object({ ...range, sport: z.enum(sportKeys).optional().describe("Only this sport.") }).refine(rangeRule.check, rangeRule.params),
@@ -122,7 +141,7 @@ export const toolContracts = {
     name: "get_exercise_progress",
     title: "Exercise progress",
     description:
-      "Return the history of one strength exercise: per session the sets (loadGrams in grams, reps, durationSeconds, rir), best set, estimated one-rep max in grams (Epley) and volume in gram-reps. Defaults to the whole history.",
+      "Return the history of one strength exercise with its loadMode and baseGrams: per session the sets (loadGrams as entered, totalLoadGrams the resulting total external load in grams, reps, durationSeconds, rir), best set, estimated one-rep max in grams (Epley) and volume in gram-reps, both computed from totalLoadGrams. Defaults to the whole history.",
     kind: "read",
     permission: null,
     input: z.object({ exercise: exerciseReference, from: localDate.optional(), to: localDate.optional() }),
@@ -164,7 +183,8 @@ export const toolContracts = {
   list_exercises: {
     name: "list_exercises",
     title: "Exercises",
-    description: "List strength exercises with id, name, measure, equipment, load step in grams and the body zones they load.",
+    description:
+      "List strength exercises with id, name, measure, equipment, loadMode and baseGrams (what a set's loadGrams measures, see create_exercise), load step in grams of the entered value and the body zones they load.",
     kind: "read",
     permission: null,
     input: z.object({
@@ -175,14 +195,17 @@ export const toolContracts = {
   create_exercise: {
     name: "create_exercise",
     title: "Create exercise",
-    description: "Create a strength exercise. Fails if an exercise with the same name already exists. The user can undo it from the phone.",
+    description:
+      "Create a strength exercise. loadMode tells what the user enters for each set, so that logging stays natural while volume and estimated maxes use the total: total as read, per_hand for each of two dumbbells, per_side for each side plus a fixed baseGrams. Fails if an exercise with the same name already exists. The user can undo it from the phone.",
     kind: "write",
     permission: "write",
     input: z.object({
       name: shortText.max(80).describe("Exercise name in French, e.g. 'Rowing haltère'."),
       measure: newExercise.shape.measure,
       equipment: z.enum(equipments),
-      loadStepGrams: z.int().min(1).max(50_000).optional().describe("Smallest load increment in grams, e.g. 2500. Not allowed for duration exercises."),
+      loadMode: loadMode.optional(),
+      baseGrams: baseGrams.optional(),
+      loadStepGrams: z.int().min(1).max(50_000).optional().describe("Smallest increment of the entered load in grams, e.g. 2500, or 1000 per dumbbell for per_hand. Not allowed for duration exercises."),
       zones: z.array(z.enum(zoneKeys)).max(6).optional().describe("Body zones this exercise loads, used for pain follow-up."),
     }),
   },
@@ -226,7 +249,7 @@ export const toolContracts = {
     name: "log_strength_session",
     title: "Log a strength session",
     description:
-      "Record a completed past strength session with its exercises and sets, in order. Unknown exercises are created. The user can undo it from the phone.",
+      "Record a completed past strength session with its exercises and sets, in order. Check each exercise's loadMode with list_exercises first so loadGrams is the value the user read (per dumbbell, per side, or total). Unknown exercises are created. The user can undo it from the phone.",
     kind: "write",
     permission: "write",
     input: z.object({

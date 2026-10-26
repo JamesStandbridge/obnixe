@@ -29,6 +29,8 @@ import {
 import type { EpochMs, Exercise, FieldDefinition, SportDefinition, Id, LocalDate, ProgramVersion, Session, StrengthSet } from "@obnixe/schema";
 import type { ObnixeDatabase } from "../database.ts";
 import { daysBetween, localDateOf } from "../dates.ts";
+import { totalLoadGrams } from "../training/load.ts";
+import type { ExerciseLoad } from "../training/load.ts";
 import type { ToolInput } from "./contract.ts";
 import type { AgentEnvironment, Json, ToolResult } from "./environment.ts";
 import { ToolInputError } from "./environment.ts";
@@ -98,10 +100,11 @@ function rangeSummary(prefix: string, from: LocalDate, to: LocalDate, env: Agent
   return `${prefix} ${frenchSpan(from, to)}`;
 }
 
-function setJson(set: StrengthSet): Json {
+function setJson(set: StrengthSet, load: ExerciseLoad): Json {
   return {
     position: set.position,
     loadGrams: set.loadGrams,
+    totalLoadGrams: totalLoadGrams(set.loadGrams, load),
     reps: set.reps,
     durationSeconds: set.durationSeconds,
     rir: set.rir,
@@ -121,7 +124,7 @@ export function getHistory(db: ObnixeDatabase, env: AgentEnvironment, input: Too
     .orderBy(desc(session.startedAt))
     .all();
   const ids = rows.map((row) => row.session.id);
-  const entries = ids.length === 0 ? [] : db.select({ entry: strengthEntry, name: exercise.name }).from(strengthEntry).innerJoin(exercise, eq(strengthEntry.exerciseId, exercise.id)).where(inArray(strengthEntry.sessionId, ids)).orderBy(asc(strengthEntry.position)).all();
+  const entries = ids.length === 0 ? [] : db.select({ entry: strengthEntry, name: exercise.name, loadMode: exercise.loadMode, baseGrams: exercise.baseGrams }).from(strengthEntry).innerJoin(exercise, eq(strengthEntry.exerciseId, exercise.id)).where(inArray(strengthEntry.sessionId, ids)).orderBy(asc(strengthEntry.position)).all();
   const entryIds = entries.map((row) => row.entry.id);
   const sets = entryIds.length === 0 ? [] : db.select().from(strengthSet).where(inArray(strengthSet.entryId, entryIds)).orderBy(asc(strengthSet.position)).all();
   const items = ids.length === 0 ? [] : db.select().from(sessionItem).where(inArray(sessionItem.sessionId, ids)).orderBy(asc(sessionItem.position)).all();
@@ -142,12 +145,14 @@ export function getHistory(db: ObnixeDatabase, env: AgentEnvironment, input: Too
     note: row.note,
     exercises: entries
       .filter((entry) => entry.entry.sessionId === row.id)
-      .map(({ entry, name }) => ({
+      .map(({ entry, name, loadMode, baseGrams }) => ({
         exercise: name,
         exerciseId: entry.exerciseId,
+        loadMode,
+        baseGrams,
         status: entry.status,
         note: entry.note,
-        sets: sets.filter((set) => set.entryId === entry.id).map(setJson),
+        sets: sets.filter((set) => set.entryId === entry.id).map((set) => setJson(set, { loadMode, baseGrams })),
       })),
     items: items.filter((item) => item.sessionId === row.id).map((item) => ({ position: item.position, values: item.values })),
     pain: pains
@@ -172,43 +177,51 @@ export function getExerciseProgress(db: ObnixeDatabase, _env: AgentEnvironment, 
   if (input.from !== undefined) conditions.push(gte(session.localDate, input.from as LocalDate));
   if (input.to !== undefined) conditions.push(lte(session.localDate, input.to as LocalDate));
   const entries = db
-    .select({ entryId: strengthEntry.id, sessionId: session.id, localDate: session.localDate, startedAt: session.startedAt })
+    .select({ entryId: strengthEntry.id, sessionId: session.id, localDate: session.localDate, startedAt: session.startedAt, loadMode: exercise.loadMode, baseGrams: exercise.baseGrams })
     .from(strengthEntry)
     .innerJoin(session, eq(strengthEntry.sessionId, session.id))
+    .innerJoin(exercise, eq(strengthEntry.exerciseId, exercise.id))
     .where(and(...conditions))
     .orderBy(asc(session.startedAt))
     .all();
   const sets = entries.length === 0 ? [] : db.select().from(strengthSet).where(inArray(strengthSet.entryId, entries.map((entry) => entry.entryId))).orderBy(asc(strengthSet.position)).all();
   const history = entries.map((entry) => {
+    const load: ExerciseLoad = { loadMode: entry.loadMode, baseGrams: entry.baseGrams };
     const own = sets.filter((set) => set.entryId === entry.entryId && !set.interrupted);
     return {
       sessionId: entry.sessionId,
       localDate: entry.localDate,
-      sets: own.map(setJson),
-      bestSet: bestSet(target, own),
-      estimatedOneRepMaxGrams: estimatedOneRepMax(own),
-      volumeGramReps: own.reduce((total, set) => total + (set.loadGrams ?? 0) * (set.reps ?? 0), 0),
+      sets: own.map((set) => setJson(set, load)),
+      bestSet: bestSet(target, own, load),
+      estimatedOneRepMaxGrams: estimatedOneRepMax(own, load),
+      volumeGramReps: own.reduce((total, set) => total + (totalLoadGrams(set.loadGrams, load) ?? 0) * (set.reps ?? 0), 0),
     };
   });
   return {
     kind: "read",
     summary: `Progression ${progressArticle(target.name)} ${lowerFirst(target.name)}`,
-    data: { exercise: { id: target.id, name: target.name, measure: target.measure, equipment: target.equipment }, sessions: history },
+    data: {
+      exercise: { id: target.id, name: target.name, measure: target.measure, equipment: target.equipment, loadMode: target.loadMode, baseGrams: target.baseGrams },
+      sessions: history,
+    },
   };
 }
 
-function bestSet(target: Exercise, sets: readonly StrengthSet[]): Json {
-  const score = (set: StrengthSet): number =>
-    target.measure === "duration" ? (set.durationSeconds ?? 0) * 1_000_000 + (set.loadGrams ?? 0) : (set.loadGrams ?? 0) * 1000 + (set.reps ?? 0);
+function bestSet(target: Exercise, sets: readonly StrengthSet[], load: ExerciseLoad): Json {
+  const score = (set: StrengthSet): number => {
+    const total = totalLoadGrams(set.loadGrams, load) ?? 0;
+    return target.measure === "duration" ? (set.durationSeconds ?? 0) * 1_000_000 + total : total * 1000 + (set.reps ?? 0);
+  };
   const best = [...sets].sort((left, right) => score(right) - score(left))[0];
-  return best === undefined ? null : setJson(best);
+  return best === undefined ? null : setJson(best, load);
 }
 
-function estimatedOneRepMax(sets: readonly StrengthSet[]): number | null {
+function estimatedOneRepMax(sets: readonly StrengthSet[], load: ExerciseLoad): number | null {
   let best: number | null = null;
   for (const set of sets) {
-    if (set.loadGrams === null || set.reps === null || set.loadGrams === 0) continue;
-    const estimate = Math.round(set.loadGrams * (1 + set.reps / 30));
+    const total = totalLoadGrams(set.loadGrams, load);
+    if (total === null || set.reps === null || total === 0) continue;
+    const estimate = Math.round(total * (1 + set.reps / 30));
     if (best === null || estimate > best) best = estimate;
   }
   return best;
@@ -369,6 +382,8 @@ export function listExercises(db: ObnixeDatabase, _env: AgentEnvironment, input:
         name: row.name,
         measure: row.measure,
         equipment: row.equipment,
+        loadMode: row.loadMode,
+        baseGrams: row.baseGrams,
         loadStepGrams: row.loadStepGrams,
         archived: row.archivedAt !== null,
         zones: zoneRows.filter((zone) => zone.exerciseId === row.id).map((zone) => zone.zone),
