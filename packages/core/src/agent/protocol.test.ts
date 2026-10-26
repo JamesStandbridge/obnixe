@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import type { Id } from "@obnixe/schema";
-import { fromBase64, toBase64 } from "./encoding.ts";
+import { Utf8Error, fromBase64, fromUtf8, toBase64 } from "./encoding.ts";
 import {
   ProtocolError,
   SealedChannel,
@@ -38,6 +38,17 @@ describe("base64", () => {
     expect(() => decodeBytes("abc")).toThrow(ProtocolError);
     expect(() => decodeBytes("ab$=")).toThrow(ProtocolError);
     expect(() => decodeBytes(toBase64(bytes(16)), 32)).toThrow(ProtocolError);
+  });
+});
+
+describe("utf8", () => {
+  it("decodes like TextDecoder and rejects malformed input", () => {
+    const text = "Développé couché · 9,2 km · 漢字 · \u{1F3C3}";
+    expect(fromUtf8(new TextEncoder().encode(text))).toBe(text);
+    expect(fromUtf8(new TextEncoder().encode("x".repeat(10_000)))).toHaveLength(10_000);
+    for (const bad of [[0xc3], [0xc0, 0x80], [0xed, 0xa0, 0x80], [0xf5, 0x80, 0x80, 0x80], [0x80]]) {
+      expect(() => fromUtf8(new Uint8Array(bad))).toThrow(Utf8Error);
+    }
   });
 });
 

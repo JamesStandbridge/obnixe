@@ -6,7 +6,7 @@ import { sha256 } from "@noble/hashes/sha2.js";
 import { concatBytes, utf8ToBytes } from "@noble/hashes/utils.js";
 import { z } from "zod";
 import { connectionEndReasons } from "@obnixe/schema";
-import { Base64Error, fromBase64, toBase64 } from "./encoding.ts";
+import { Base64Error, Utf8Error, fromBase64, fromUtf8, toBase64 } from "./encoding.ts";
 
 export const protocolVersion = 1;
 export const defaultPhonePort = 7429;
@@ -62,6 +62,15 @@ function parseJson(text: string): unknown {
     return JSON.parse(text);
   } catch (error) {
     if (error instanceof SyntaxError) throw new ProtocolError(`Frame is not JSON: ${error.message}`);
+    throw error;
+  }
+}
+
+function decodeUtf8(bytes: Uint8Array): string {
+  try {
+    return fromUtf8(bytes);
+  } catch (error) {
+    if (error instanceof Utf8Error) throw new ProtocolError(error.message);
     throw error;
   }
 }
@@ -229,6 +238,6 @@ export class SealedChannel {
       throw error;
     }
     this.received += 1;
-    return parseJson(new TextDecoder().decode(plain));
+    return parseJson(decodeUtf8(plain));
   }
 }
