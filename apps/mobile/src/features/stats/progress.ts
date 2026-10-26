@@ -68,6 +68,7 @@ export interface Subject {
   readonly id: string;
   readonly group: GroupKey;
   readonly subgroup: string | null;
+  readonly exerciseId: Id | null;
   readonly icon: SportKey | null;
   readonly name: string;
   readonly meta: string;
@@ -197,6 +198,7 @@ function exerciseSubjects(db: AppDatabase, today: LocalDate): Subject[] {
         id: `exercise:${exercise.id}`,
         group: "strength",
         subgroup: place?.slot ?? "Hors programme",
+        exerciseId: exercise.id,
         icon: "strength",
         name: exercise.name,
         meta: `dernière : ${rowDate(item.lastDate).toLowerCase()}`,
@@ -330,6 +332,7 @@ function sportSubjects(db: AppDatabase, today: LocalDate): Subject[] {
         id: `sport:${key}`,
         group: key,
         subgroup: null,
+        exerciseId: null,
         icon: key,
         name: sport.label,
         meta: `${plural(count, noun)} sur un an`,
@@ -400,6 +403,7 @@ function bodySubjects(db: AppDatabase, today: LocalDate): Subject[] {
       id: "body:weight",
       group: "body",
       subgroup: null,
+      exerciseId: null,
       icon: null,
       name: "Poids",
       meta: last === undefined ? "" : `dernière pesée : ${formatNumber(last.grams / 1000)} kg`,
@@ -449,6 +453,7 @@ function checkInSubjects(db: AppDatabase, today: LocalDate): Subject[] {
       id: "check_in",
       group: "check_in",
       subgroup: null,
+      exerciseId: null,
       icon: null,
       name: "Énergie et sommeil",
       meta: `check-ins depuis le ${shortDate(first.localDate)}`,
