@@ -43,7 +43,7 @@ import { RelayLink } from "./relay.ts";
 import type { RelayInvite } from "./relay.ts";
 
 const maxPending = 8;
-const maxPendingPerAddress = 2;
+const maxPendingPerOrigin = 2;
 const defaultHandshakeTimeoutMs = 10_000;
 const defaultProofTimeoutMs = 10_000;
 const policyViolation = 1008;
@@ -280,7 +280,7 @@ export class PhoneEndpoint {
     const origin = socket.origin;
     const sameOrigin = [...this.pendings.values()].filter((pending) => pending.origin === origin);
     const oldest = sameOrigin[0];
-    if (sameOrigin.length >= maxPendingPerAddress && oldest !== undefined) this.reject(oldest, "replaced");
+    if (sameOrigin.length >= maxPendingPerOrigin && oldest !== undefined) this.reject(oldest, "replaced");
     else if (this.pendings.size >= maxPending) {
       this.options.log(`Refused a connection from ${origin}: too many phones are already waiting to pair.`);
       socket.close(tryAgainLater, "busy");
