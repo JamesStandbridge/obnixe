@@ -1,30 +1,51 @@
 import { randomBytes } from "node:crypto";
+import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { PassThrough } from "node:stream";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { WebSocket } from "ws";
-import { PhoneSession, SealedChannel, closeConnection, decodeFrame, encodeFrame, openConnection, pairingCodeTtlMs, renameConnectionClient, runAgentTool } from "@obnixe/core";
-import type { Frame, PhoneLinkStatus, RejectionReason } from "@obnixe/core";
+import {
+  PhoneSession,
+  SealedChannel,
+  closeConnection,
+  decodeFrame,
+  encodeFrame,
+  generateIdentity,
+  openConnection,
+  pairingCodeTtlMs,
+  phoneRevocation,
+  renameConnectionClient,
+  runAgentTool,
+} from "@obnixe/core";
+import type { Frame, PhoneLinkStatus, PhonePairing, PhoneRevocation, RejectionReason } from "@obnixe/core";
 import { createTestContext } from "@obnixe/core/testing";
 import type { TestContext } from "@obnixe/core/testing";
 import { agentCall, agentConnection, changeset, session, settings } from "@obnixe/schema";
 import type { Id } from "@obnixe/schema";
 import { startControl } from "./control.ts";
 import type { ControlServer } from "./control.ts";
+import { postForget, runForget } from "./forget.ts";
 import { createMcpServer } from "./mcp.ts";
 import { postPairingCode } from "./pair.ts";
+import { PairingFile } from "./pairings.ts";
 import { PhoneEndpoint, notConnectedMessage } from "./phone.ts";
 
 const bytes = (length: number): Uint8Array => new Uint8Array(randomBytes(length));
 
 let context: TestContext;
+let configDir: string;
+let pairings: PairingFile;
 let endpoint: PhoneEndpoint;
 let control: ControlServer;
 let phonePort: number;
 let client: Client;
 let skew = 0;
 const logs: string[] = [];
+const deviceId = generateIdentity(bytes);
 
 interface SimulatedPhone {
   readonly session: PhoneSession;
@@ -32,7 +53,14 @@ interface SimulatedPhone {
   readonly sent: Frame[];
   readonly statuses: PhoneLinkStatus[];
   readonly rejections: RejectionReason[];
+  readonly paired: PhonePairing[];
   readonly closeCodes: number[];
+}
+
+interface PhoneOptions {
+  readonly host?: string;
+  readonly pairing?: PhonePairing;
+  readonly revocation?: PhoneRevocation;
 }
 
 async function until(predicate: () => boolean, label: string): Promise<void> {
@@ -43,15 +71,19 @@ async function until(predicate: () => boolean, label: string): Promise<void> {
   }
 }
 
-function connectPhone(code: string, host = "127.0.0.1"): SimulatedPhone {
-  const socket = new WebSocket(`ws://${host}:${phonePort}`);
+function connectPhone(code: string, options: PhoneOptions = {}): SimulatedPhone {
+  const socket = new WebSocket(`ws://${options.host ?? "127.0.0.1"}:${phonePort}`);
   const sent: Frame[] = [];
   const statuses: PhoneLinkStatus[] = [];
   const rejections: RejectionReason[] = [];
+  const paired: PhonePairing[] = [];
   const closeCodes: number[] = [];
   const phoneSession = new PhoneSession({
     code,
     device: "iPhone",
+    deviceId,
+    pairing: options.pairing ?? null,
+    revocation: options.revocation ?? null,
     randomBytes: bytes,
     now: Date.now,
     socket: {
@@ -67,6 +99,8 @@ function connectPhone(code: string, host = "127.0.0.1"): SimulatedPhone {
       onClient: (connectionId, name) => renameConnectionClient(context.db, connectionId, name),
       onCall: (connectionId, tool, args) => runAgentTool(context.db, context.env, { connectionId, tool, arguments: args, timeZone: "Europe/Paris" }),
       onRejected: (reason) => rejections.push(reason),
+      onPaired: (pairing) => paired.push(pairing),
+      onRevocationSent: () => undefined,
     },
   });
   socket.on("message", (data) => {
@@ -78,7 +112,7 @@ function connectPhone(code: string, host = "127.0.0.1"): SimulatedPhone {
     if (connectionId !== null && !phoneSession.isClosed) closeConnection(context.db, context.env, connectionId, "network");
     phoneSession.markClosed();
   });
-  return { session: phoneSession, socket, sent, statuses, rejections, closeCodes };
+  return { session: phoneSession, socket, sent, statuses, rejections, paired, closeCodes };
 }
 
 async function pairedPhone(): Promise<SimulatedPhone> {
@@ -89,6 +123,18 @@ async function pairedPhone(): Promise<SimulatedPhone> {
   return phone;
 }
 
+function storedPairing(phone: SimulatedPhone): PhonePairing {
+  const [pairing] = phone.paired;
+  if (pairing === undefined) throw new Error("The phone stored no pairing");
+  return pairing;
+}
+
+async function resumedPhone(pairing: PhonePairing): Promise<SimulatedPhone> {
+  const phone = connectPhone("000000", { pairing });
+  await until(() => phone.statuses.includes("open"), "resumed session");
+  return phone;
+}
+
 function connectionRow(connectionId: Id | null) {
   return context.db.select().from(agentConnection).all().find((row) => row.id === connectionId);
 }
@@ -96,6 +142,33 @@ function connectionRow(connectionId: Id | null) {
 function textOf(result: Awaited<ReturnType<Client["callTool"]>>): string {
   const [first] = (result as CallToolResult).content;
   return first?.type === "text" ? first.text : "";
+}
+
+async function startBridge(): Promise<void> {
+  endpoint = new PhoneEndpoint({
+    port: 0,
+    listenHost: "::",
+    hostLabel: "MacBook Pro",
+    pairings,
+    randomBytes: bytes,
+    log: (line) => logs.push(line),
+    now: () => Date.now() + skew,
+    callTimeoutMs: 5000,
+    handshakeTimeoutMs: 1000,
+  });
+  phonePort = await endpoint.listen();
+  control = await startControl(endpoint, 0);
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  await createMcpServer(endpoint).connect(serverTransport);
+  client = new Client({ name: "cursor-vscode", version: "1.0.0" });
+  await client.connect(clientTransport);
+  await until(() => endpoint.status().client === "Cursor", "client name");
+}
+
+async function stopBridge(): Promise<void> {
+  await client.close();
+  await endpoint.close();
+  await control.close();
 }
 
 beforeEach(async () => {
@@ -119,29 +192,14 @@ beforeEach(async () => {
     .run();
   logs.length = 0;
   skew = 0;
-  endpoint = new PhoneEndpoint({
-    port: 0,
-    listenHost: "::",
-    hostLabel: "MacBook Pro",
-    randomBytes: bytes,
-    log: (line) => logs.push(line),
-    now: () => Date.now() + skew,
-    callTimeoutMs: 5000,
-    handshakeTimeoutMs: 1000,
-  });
-  phonePort = await endpoint.listen();
-  control = await startControl(endpoint, 0);
-  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-  await createMcpServer(endpoint).connect(serverTransport);
-  client = new Client({ name: "cursor-vscode", version: "1.0.0" });
-  await client.connect(clientTransport);
-  await until(() => endpoint.status().client === "Cursor", "client name");
+  configDir = mkdtempSync(join(tmpdir(), "obnixe-bridge-"));
+  pairings = new PairingFile(join(configDir, "obnixe", "bridge.json"), bytes);
+  await startBridge();
 });
 
 afterEach(async () => {
-  await client.close();
-  await endpoint.close();
-  await control.close();
+  await stopBridge();
+  rmSync(configDir, { recursive: true, force: true });
 });
 
 describe("MCP surface", () => {
@@ -216,7 +274,7 @@ describe("pairing", () => {
   });
 
   it("keeps a waiting phone through a connection flood from another address", async () => {
-    const phone = connectPhone("482917", "[::1]");
+    const phone = connectPhone("482917", { host: "[::1]" });
     await until(() => endpoint.status().phone === "waiting", "hello");
     const flood = Array.from({ length: 12 }, () => new WebSocket(`ws://127.0.0.1:${phonePort}`));
     const floodClosed = flood.map((socket) => new Promise<void>((resolve) => socket.on("close", () => resolve())));
@@ -240,6 +298,114 @@ describe("pairing", () => {
     skew = pairingCodeTtlMs + 1;
     expect(await postPairingCode(control.port, "482917")).toEqual({ kind: "no_phone" });
     await until(() => phone.rejections.includes("expired"), "expiry");
+  });
+});
+
+describe("trusted reconnection", () => {
+  it("keeps the bridge identity and the pairing in a private file", async () => {
+    const phone = await pairedPhone();
+    const pairing = storedPairing(phone);
+    expect(statSync(pairings.path).mode & 0o777).toBe(0o600);
+    expect(statSync(join(configDir, "obnixe")).mode & 0o777).toBe(0o700);
+    const stored = JSON.parse(readFileSync(pairings.path, "utf8")) as { bridgeId: string; pairings: { pairingId: string; deviceId: string; device: string; secret: string }[] };
+    expect(stored.bridgeId).toBe(pairing.bridgeId);
+    expect(stored.pairings).toEqual([expect.objectContaining({ pairingId: pairing.pairingId, deviceId, device: "iPhone", secret: pairing.secret })]);
+    expect(pairing.bridgeName).toBe("MacBook Pro");
+    const reloaded = new PairingFile(pairings.path, bytes);
+    expect(reloaded.bridgeId()).toBe(pairing.bridgeId);
+    expect(reloaded.lookup(pairing.pairingId).kind).toBe("known");
+  });
+
+  it("resumes without a code after the phone leaves and after a bridge restart, as new connections", async () => {
+    const first = await pairedPhone();
+    const pairing = storedPairing(first);
+    const firstConnection = first.session.connectionId;
+    if (firstConnection === null) throw new Error("No connection");
+    closeConnection(context.db, context.env, firstConnection, "screen_closed");
+    first.session.close("screen_closed");
+    await until(() => endpoint.status().phone === "none", "bridge drop");
+
+    const second = await resumedPhone(pairing);
+    expect(second.statuses).toEqual(["resuming", "open"]);
+    expect(second.sent.some((frame) => frame.type === "hello")).toBe(false);
+    expect(second.paired).toEqual([]);
+    expect(endpoint.status()).toEqual({ phone: "connected", device: "iPhone", client: "Cursor" });
+    expect((await client.callTool({ name: "list_sports", arguments: {} })).isError).toBe(false);
+
+    await stopBridge();
+    await until(() => second.closeCodes.length > 0, "socket close on restart");
+    expect(connectionRow(second.session.connectionId)?.endReason).toBe("network");
+    await startBridge();
+    const third = await resumedPhone(pairing);
+    expect((await client.callTool({ name: "list_programs", arguments: {} })).isError).toBe(false);
+    const ids = [firstConnection, second.session.connectionId, third.session.connectionId];
+    expect(new Set(ids).size).toBe(3);
+    expect(connectionRow(firstConnection)?.endReason).toBe("screen_closed");
+    expect(connectionRow(third.session.connectionId)).toMatchObject({ client: "Cursor", host: "MacBook Pro", endedAt: null });
+    expect(logs.filter((line) => line.startsWith("Reconnected to iPhone without a code")).length).toBe(2);
+  });
+
+  it("rejects an unknown pairing and a forged secret with reason unknown", async () => {
+    const pairing = storedPairing(await pairedPhone());
+    const unknown = connectPhone("000000", { pairing: { ...pairing, pairingId: generateIdentity(bytes) } });
+    await until(() => unknown.rejections.length > 0, "unknown rejection");
+    expect(unknown.rejections).toEqual(["unknown"]);
+    const forged = connectPhone("000000", { pairing: { ...pairing, secret: Buffer.from(bytes(32)).toString("base64") } });
+    await until(() => forged.rejections.length > 0, "forged rejection");
+    expect(forged.rejections).toEqual(["unknown"]);
+    expect(forged.sent.some((frame) => frame.type === "sealed")).toBe(false);
+    expect(endpoint.status().device).toBe("iPhone");
+  });
+
+  it("refuses a replayed resume frame", async () => {
+    const pairing = storedPairing(await pairedPhone());
+    const resumed = await resumedPhone(pairing);
+    const recorded = resumed.sent.find((frame) => frame.type === "resume");
+    if (recorded === undefined) throw new Error("Expected a recorded resume");
+    const replayer = new WebSocket(`ws://127.0.0.1:${phonePort}`);
+    const answers: Frame[] = [];
+    replayer.on("message", (data) => {
+      const frame = decodeFrame(String(data));
+      answers.push(frame);
+      if (frame.type === "challenge") replayer.send(encodeFrame(recorded));
+    });
+    await until(() => answers.length === 2, "replay answer");
+    expect(answers[1]).toEqual({ type: "rejected", reason: "unknown" });
+    expect(endpoint.status().phone).toBe("connected");
+  });
+
+  it("forgets every pairing on demand, ends the trusted session and then answers revoked", async () => {
+    const phone = await pairedPhone();
+    const pairing = storedPairing(phone);
+    expect(await postForget(control.port)).toEqual({ devices: ["iPhone"] });
+    await until(() => phone.closeCodes.length > 0, "forgotten session closed");
+    expect(endpoint.status().phone).toBe("none");
+    const again = connectPhone("000000", { pairing });
+    await until(() => again.rejections.length > 0, "revoked rejection");
+    expect(again.rejections).toEqual(["revoked"]);
+    expect(await postForget(control.port)).toEqual({ devices: [] });
+  });
+
+  it("drops a pairing the phone revoked before pairing again with a code", async () => {
+    const pairing = storedPairing(await pairedPhone());
+    const phone = connectPhone("482917", { revocation: phoneRevocation(pairing) });
+    await until(() => logs.some((line) => line.includes("forgot this Mac")), "revocation log");
+    expect(pairings.list()).toEqual([]);
+    expect(pairings.lookup(pairing.pairingId).kind).toBe("revoked");
+    expect(await postPairingCode(control.port, "482917")).toEqual({ kind: "paired", device: "iPhone", client: "Cursor" });
+    await until(() => phone.statuses.includes("open"), "new pairing");
+    expect(storedPairing(phone).pairingId).not.toBe(pairing.pairingId);
+    expect(pairings.list().map((entry) => entry.pairingId)).toEqual([storedPairing(phone).pairingId]);
+  });
+
+  it("forgets from the file when no bridge is running", async () => {
+    await pairedPhone();
+    await stopBridge();
+    const output = new PassThrough();
+    expect(await runForget({ controlPort: control.port, pairings, output })).toBe(0);
+    expect(String(output.read())).toBe("Forgot iPhone. The phone will ask for a new code.\n");
+    expect(pairings.list()).toEqual([]);
+    await startBridge();
   });
 });
 
