@@ -5,7 +5,7 @@ import type { AsideCopy } from "@/features/data/asideCopies";
 import { fileSize, longDateTime } from "@/features/data/format";
 import { capitalize } from "@/format/labels";
 import { LinkButton } from "@/ui/Button";
-import { Choices } from "@/ui/Inputs";
+import { MenuItem } from "@/ui/Inputs";
 import { Sheet } from "@/ui/Overlays";
 import { Text } from "@/ui/Text";
 import { useTheme } from "@/ui/theme";
@@ -37,38 +37,38 @@ export function AsideSheet({ open, aside, onClose }: AsideSheetProps) {
     onClose();
   };
 
-  const share = async (copy: AsideCopy): Promise<void> => {
+  const share = (copy: AsideCopy): void => {
     setSharing(copy.name);
-    try {
-      await shareAsideCopy(copy);
-    } finally {
-      setSharing(null);
-    }
+    shareAsideCopy(copy)
+      .catch((error: unknown) => ErrorUtils.getGlobalHandler()(error, false))
+      .finally(() => {
+        aside.refresh();
+        setSharing(null);
+      });
   };
 
   if (confirming !== null) {
     return (
       <Sheet open={open} title="Supprimer cette copie ?" context={`Mise de côté le ${longDateTime(confirming.setAsideAt)} · ${fileSize(confirming.bytes)}. Elle ne pourra pas être récupérée.`} onClose={close}>
-        <Choices<"delete" | "keep">
-          items={[
-            { value: "delete", label: "Supprimer la copie", primary: true },
-            { value: "keep", label: "Garder" },
-          ]}
-          onChoose={(choice) => {
-            if (choice === "delete") {
+        <View style={styles.confirm}>
+          <MenuItem
+            label="Supprimer la copie"
+            destructive
+            onPress={() => {
               deleteAsideCopy(confirming);
               aside.refresh();
               if (aside.copies.length <= 1) onClose();
-            }
-            setConfirming(null);
-          }}
-        />
+              setConfirming(null);
+            }}
+          />
+          <MenuItem label="Garder" onPress={() => setConfirming(null)} />
+        </View>
       </Sheet>
     );
   }
 
   return (
-    <Sheet open={open} title="Copies mises de côté" context="Bases illisibles gardées au redémarrage, à partager pour les récupérer ailleurs" onClose={close}>
+    <Sheet open={open} title="Copies mises de côté" context="Bases illisibles mises de côté au démarrage" onClose={close}>
       {aside.copies.length === 0 ? (
         <Text tone="secondary" style={styles.empty}>
           Aucune copie
@@ -85,7 +85,7 @@ export function AsideSheet({ open, aside, onClose }: AsideSheetProps) {
                 {copy.raw ? `${fileSize(copy.bytes)} · copie brute` : fileSize(copy.bytes)}
               </Text>
             </View>
-            <LinkButton label={sharing === copy.name ? "Partage…" : "Partager"} disabled={sharing !== null} onPress={() => void share(copy)} />
+            <LinkButton label={sharing === copy.name ? "Partage…" : "Partager"} disabled={sharing !== null} onPress={() => share(copy)} />
             <LinkButton label="Supprimer" disabled={sharing !== null} onPress={() => setConfirming(copy)} />
           </View>
         ))}
@@ -96,6 +96,7 @@ export function AsideSheet({ open, aside, onClose }: AsideSheetProps) {
 
 const styles = StyleSheet.create({
   empty: { marginTop: 8, marginBottom: 8 },
+  confirm: { marginTop: 8 },
   row: { flexDirection: "row", alignItems: "center", gap: 4, minHeight: 60, paddingVertical: 8, borderTopWidth: 1 },
   main: { flex: 1, gap: 2 },
 });
