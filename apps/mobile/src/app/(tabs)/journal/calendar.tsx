@@ -1,9 +1,5 @@
-import { AppBar, Screen } from "@/ui/Layout";
+import { CalendarScreen } from "@/features/stats/CalendarScreen";
 
 export default function Calendar() {
-  return (
-    <Screen>
-      <AppBar title="Calendrier" />
-    </Screen>
-  );
+  return <CalendarScreen />;
 }
