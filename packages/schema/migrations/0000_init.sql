@@ -73,6 +73,8 @@ CREATE TABLE `exercise` (
 	`name_key` text NOT NULL,
 	`measure` text NOT NULL,
 	`equipment` text NOT NULL,
+	`load_mode` text NOT NULL,
+	`base_grams` integer,
 	`load_step_grams` integer,
 	`zones_reviewed` integer NOT NULL,
 	`merged_into_id` text,
@@ -81,7 +83,9 @@ CREATE TABLE `exercise` (
 	`updated_at` integer NOT NULL,
 	FOREIGN KEY (`merged_into_id`) REFERENCES `exercise`(`id`) ON UPDATE no action ON DELETE no action,
 	CONSTRAINT "exercise_merged" CHECK("exercise"."merged_into_id" IS NULL OR ("exercise"."merged_into_id" <> "exercise"."id" AND "exercise"."archived_at" IS NOT NULL)),
-	CONSTRAINT "exercise_load_step" CHECK("exercise"."load_step_grams" IS NULL OR ("exercise"."measure" <> 'duration' AND "exercise"."load_step_grams" > 0))
+	CONSTRAINT "exercise_load_step" CHECK("exercise"."load_step_grams" IS NULL OR ("exercise"."measure" <> 'duration' AND "exercise"."load_step_grams" > 0)),
+	CONSTRAINT "exercise_load_mode" CHECK("exercise"."load_mode" = 'total' OR "exercise"."measure" <> 'duration'),
+	CONSTRAINT "exercise_base" CHECK("exercise"."base_grams" IS NULL OR ("exercise"."load_mode" = 'per_side' AND "exercise"."base_grams" > 0))
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `exercise_name_key` ON `exercise` (`name_key`) WHERE "exercise"."merged_into_id" IS NULL;--> statement-breakpoint

@@ -102,6 +102,36 @@ describe("loadSessionReport", () => {
     const pain = report.data.pains[0];
     expect(pain === undefined ? null : report.painAnchors.get(pain.id)).toEqual({ kind: "set", exerciseName: "Développé couché", setIndex: 1 });
   });
+
+  it("aggregates effective totals of per hand and per side loads while keeping entered values", () => {
+    const raises = addExercise(context, { name: "Élévations latérales", measure: "load_reps", stepGrams: 1000, zones: [], load: { loadMode: "per_hand", baseGrams: null } });
+    const curl = addExercise(context, { name: "Curl barre EZ", measure: "load_reps", stepGrams: 1250, zones: [], load: { loadMode: "per_side", baseGrams: 10_000 } });
+    const armSession = (raisesKg: number, raisesReps: number, curlKg: number, curlReps: number): WorkoutData => {
+      const started = startFreeWorkoutMutations(context.env.newId, { now: context.env.now(), timeZone });
+      apply(context, started.mutations);
+      let data = reload(context, started.sessionId);
+      for (const exerciseId of [raises, curl]) {
+        apply(context, addExerciseMutations(context.db, data, exerciseId, context.env.newId()));
+        data = reload(context, data.session.id);
+      }
+      data = logSet(data, 0, kgReps(raisesKg, raisesReps), null);
+      data = logSet(data, 1, kgReps(curlKg, curlReps), 90);
+      return finish(data);
+    };
+    armSession(4, 15, 10, 10);
+    context.advance(2 * 86_400_000);
+    const data = armSession(5, 12, 11.25, 8);
+
+    const report = loadSessionReport(context.db, data.session.id, context.env.now());
+    if (report === null) throw new Error("No report");
+    expect(report.summary.volumeGrams).toBe(10_000 * 12 + 32_500 * 8);
+    expect(report.summary.best).toMatchObject({ loadGrams: 11_250, totalLoadGrams: 32_500, reps: 8, estimatedOneRepMaxGrams: Math.round(32_500 * (1 + 8 / 30)) });
+    expect(report.exercises.map((exercise) => exercise.outcome)).toEqual([
+      { kind: "load", deltaGrams: 2_000, previousDate: expect.any(String) },
+      { kind: "load", deltaGrams: 2_500, previousDate: expect.any(String) },
+    ]);
+    expect(report.data.exercises.map((exercise) => exercise.sets.map((set) => set.loadGrams))).toEqual([[5_000], [11_250]]);
+  });
 });
 
 describe("climbBreakdown", () => {

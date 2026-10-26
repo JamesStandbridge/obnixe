@@ -235,6 +235,86 @@ describe("writes", () => {
   });
 });
 
+describe("load modes", () => {
+  beforeEach(() => allow({ agentCanWrite: true }));
+
+  interface ListedExercise {
+    readonly name: string;
+    readonly loadMode: string;
+    readonly baseGrams: number | null;
+  }
+
+  interface ProgressSet {
+    readonly loadGrams: number | null;
+    readonly totalLoadGrams: number | null;
+  }
+
+  interface Progress {
+    readonly exercise: { readonly loadMode: string; readonly baseGrams: number | null };
+    readonly sessions: readonly { readonly sets: readonly ProgressSet[]; readonly bestSet: ProgressSet; readonly estimatedOneRepMaxGrams: number; readonly volumeGramReps: number }[];
+  }
+
+  it("defaults the load mode from the equipment and validates the base weight", () => {
+    ok("create_exercise", { name: "Élévations latérales", measure: "load_reps", equipment: "dumbbell" });
+    ok("create_exercise", { name: "Presse à cuisses", measure: "load_reps", equipment: "machine" });
+    ok("create_exercise", { name: "Curl barre EZ", measure: "load_reps", equipment: "barbell", loadMode: "per_side", baseGrams: 10000 });
+    ok("create_exercise", { name: "Rowing un bras", measure: "load_reps", equipment: "dumbbell", loadMode: "total" });
+    expect(call("create_exercise", { name: "Développé militaire", measure: "load_reps", equipment: "barbell", baseGrams: 20000 }).text).toContain("baseGrams is only allowed with loadMode per_side");
+    expect(call("create_exercise", { name: "Farmer hold", measure: "duration", equipment: "dumbbell", loadMode: "per_hand" }).text).toContain("can only be total");
+    ok("create_exercise", { name: "Farmer hold", measure: "duration", equipment: "dumbbell" });
+    const listed = ok<{ exercises: ListedExercise[] }>("list_exercises", {}).exercises;
+    expect(listed.map(({ name, loadMode, baseGrams }) => ({ name, loadMode, baseGrams }))).toEqual([
+      { name: "Curl barre EZ", loadMode: "per_side", baseGrams: 10000 },
+      { name: "Élévations latérales", loadMode: "per_hand", baseGrams: null },
+      { name: "Farmer hold", loadMode: "total", baseGrams: null },
+      { name: "Presse à cuisses", loadMode: "total", baseGrams: null },
+      { name: "Rowing un bras", loadMode: "total", baseGrams: null },
+    ]);
+  });
+
+  it("keeps the entered loads and reads back effective totals", () => {
+    ok("log_strength_session", {
+      startedAt: "2026-10-20T18:00:00+02:00",
+      durationSeconds: 3600,
+      exercises: [
+        { exercise: "Élévations latérales", newExercise: { measure: "load_reps", equipment: "dumbbell" }, sets: [{ loadGrams: 4000, reps: 15 }, { loadGrams: 6000, reps: 10 }] },
+        { exercise: "Curl barre EZ", newExercise: { measure: "load_reps", equipment: "barbell", loadMode: "per_side", baseGrams: 10000 }, sets: [{ loadGrams: 10000, reps: 10 }] },
+      ],
+    });
+    expect(new Set(context.db.select({ loadGrams: strengthSet.loadGrams }).from(strengthSet).all().map((row) => row.loadGrams))).toEqual(new Set([4000, 6000, 10000]));
+
+    const raises = ok<Progress>("get_exercise_progress", { exercise: "elevations laterales" });
+    expect(raises.exercise).toMatchObject({ loadMode: "per_hand", baseGrams: null });
+    expect(raises.sessions[0]?.sets).toEqual([expect.objectContaining({ loadGrams: 4000, totalLoadGrams: 8000 }), expect.objectContaining({ loadGrams: 6000, totalLoadGrams: 12000 })]);
+    expect(raises.sessions[0]).toMatchObject({ bestSet: { loadGrams: 6000, totalLoadGrams: 12000 }, estimatedOneRepMaxGrams: 16000, volumeGramReps: 8000 * 15 + 12000 * 10 });
+
+    const curl = ok<Progress>("get_exercise_progress", { exercise: "Curl barre EZ" });
+    expect(curl.sessions[0]).toMatchObject({ sets: [{ loadGrams: 10000, totalLoadGrams: 30000 }], volumeGramReps: 300000 });
+
+    const history = ok<{ sessions: { exercises: { exercise: string; loadMode: string; baseGrams: number | null; sets: ProgressSet[] }[] }[] }>("get_history", { from: "2026-10-01", to: "2026-10-24" });
+    expect(history.sessions[0]?.exercises.map(({ exercise: name, loadMode, baseGrams, sets }) => ({ name, loadMode, baseGrams, totals: sets.map((set) => set.totalLoadGrams) }))).toEqual([
+      { name: "Élévations latérales", loadMode: "per_hand", baseGrams: null, totals: [8000, 12000] },
+      { name: "Curl barre EZ", loadMode: "per_side", baseGrams: 10000, totals: [30000] },
+    ]);
+  });
+
+  it("creates program exercises with the given load mode", () => {
+    ok("upsert_program", {
+      name: "Épaules",
+      sessionsPerWeek: 2,
+      summary: "Programme épaules",
+      slots: [
+        {
+          name: "Séance A",
+          sport: "strength",
+          variants: [{ name: "Salle", items: [{ exercise: "Oiseau poulie", newExercise: { measure: "load_reps", equipment: "cable", loadMode: "per_side" }, sets: 3, repsMin: 12, repsMax: 15 }] }],
+        },
+      ],
+    });
+    expect(context.db.select({ loadMode: exercise.loadMode, baseGrams: exercise.baseGrams }).from(exercise).where(eq(exercise.name, "Oiseau poulie")).get()).toEqual({ loadMode: "per_side", baseGrams: null });
+  });
+});
+
 describe("upsert_program", () => {
   beforeEach(() => allow({ agentCanWrite: true }));
 

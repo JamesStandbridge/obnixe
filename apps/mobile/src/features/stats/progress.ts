@@ -108,6 +108,24 @@ const exerciseMetricNotes: Readonly<Record<ExerciseMetric, string>> = {
   total_duration: "Toutes les séries",
 };
 
+function weighsLoad(metric: ExerciseMetric): boolean {
+  switch (metric) {
+    case "e1rm":
+    case "load":
+    case "volume":
+      return true;
+    case "best_reps":
+    case "total_reps":
+    case "best_duration":
+    case "total_duration":
+      return false;
+    default: {
+      const unreachable: never = metric;
+      return unreachable;
+    }
+  }
+}
+
 function exerciseUnit(metric: ExerciseMetric): string {
   switch (metric) {
     case "e1rm":
@@ -135,7 +153,7 @@ function exercisePointDetail(point: ExercisePoint, metric: ExerciseMetric): stri
   const top = point.top;
   const parts: string[] = [];
   if (top === null) parts.push(plural(point.setCount, "série"));
-  else if (top.loadGrams !== null && top.reps !== null) parts.push(`${formatNumber(top.loadGrams / 1000)} × ${top.reps}`);
+  else if (top.totalLoadGrams !== null && top.reps !== null) parts.push(`${formatNumber(top.totalLoadGrams / 1000)} × ${top.reps}`);
   else if (top.reps !== null) parts.push(`${top.reps} rép.`);
   else if (top.durationSeconds !== null) parts.push(`${top.durationSeconds} s`);
   if (top?.rir != null && metric !== "volume") parts.push(`RIR ${top.rir}`);
@@ -201,7 +219,7 @@ function exerciseSubjects(db: AppDatabase, today: LocalDate): Subject[] {
             format,
             tickFormat: format,
             better: "higher",
-            note: exerciseMetricNotes[metric],
+            note: weighsLoad(metric) && exercise.loadMode !== "total" ? `${exerciseMetricNotes[metric]} · charge totale` : exerciseMetricNotes[metric],
             domain: { kind: "auto" },
             points: points.map((point) => ({
               date: point.date,

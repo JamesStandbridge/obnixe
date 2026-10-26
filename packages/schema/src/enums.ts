@@ -34,6 +34,9 @@ export type ExerciseMeasure = (typeof exerciseMeasures)[number];
 export const equipments = ["barbell", "dumbbell", "kettlebell", "machine", "cable", "bodyweight", "band", "other"] as const;
 export type Equipment = (typeof equipments)[number];
 
+export const loadModes = ["total", "per_hand", "per_side"] as const;
+export type LoadMode = (typeof loadModes)[number];
+
 export const programStatuses = ["draft", "active", "archived"] as const;
 export type ProgramStatus = (typeof programStatuses)[number];
 

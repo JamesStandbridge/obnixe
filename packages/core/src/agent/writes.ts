@@ -33,7 +33,7 @@ export function createExercise(db: ObnixeDatabase, env: AgentEnvironment, actor:
     throw new ToolInputError(`An exercise named '${existing.name}' already exists (id ${existing.id}).`);
   }
   if (input.measure === "duration" && input.loadStepGrams !== undefined) throw new ToolInputError("loadStepGrams is not allowed for duration exercises.");
-  const row = { ...newExerciseRow(env, name, input.measure, input.equipment, input.loadStepGrams ?? null), zonesReviewed: input.zones !== undefined };
+  const row = { ...newExerciseRow(env, name, input, input.loadStepGrams ?? null), zonesReviewed: input.zones !== undefined };
   const zoneKeys = [...new Set(input.zones ?? [])];
   const mutations: Mutation[] = [
     { kind: "insert", table: "exercise", row },

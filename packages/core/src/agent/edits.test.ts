@@ -379,6 +379,8 @@ interface ExerciseData {
   readonly exerciseId: Id;
   readonly name: string;
   readonly measure: string;
+  readonly loadMode: string;
+  readonly baseGrams: number | null;
   readonly loadStepGrams: number | null;
   readonly zones: readonly string[];
   readonly archived: boolean;
@@ -424,6 +426,18 @@ describe("update_exercise", () => {
     const changed = ok<ExerciseData>("update_exercise", { exercise: "Pompes", measure: "load_reps", loadStepGrams: 1250 });
     expect(changed).toMatchObject({ measure: "load_reps", loadStepGrams: 1250 });
     expect(ok<ExerciseData>("update_exercise", { exercise: "Pompes", measure: "duration" })).toMatchObject({ measure: "duration", loadStepGrams: null });
+  });
+
+  it("relabels the load mode, clears the base weight outside per_side and keeps duration exercises total", () => {
+    ok("create_exercise", { name: "Gainage", measure: "duration", equipment: "bodyweight" });
+    ok("create_exercise", { name: "Curl barre EZ", measure: "load_reps", equipment: "barbell" });
+    expect(ok<ExerciseData>("update_exercise", { exercise: "Curl barre EZ", loadMode: "per_side", baseGrams: 10_000 })).toMatchObject({ loadMode: "per_side", baseGrams: 10_000 });
+    expect(ok<ExerciseData>("update_exercise", { exercise: "Curl barre EZ", equipment: "other" })).toMatchObject({ loadMode: "per_side", baseGrams: 10_000 });
+    expect(ok<ExerciseData>("update_exercise", { exercise: "Curl barre EZ", loadMode: "total" })).toMatchObject({ loadMode: "total", baseGrams: null });
+    expect(failed("update_exercise", { exercise: "Curl barre EZ", baseGrams: 10_000 })).toContain("only allowed with loadMode per_side");
+    expect(failed("update_exercise", { exercise: "Gainage", loadMode: "per_hand" })).toContain("always loadMode total");
+    undoLast();
+    expect(context.db.select().from(exercise).where(eq(exercise.name, "Curl barre EZ")).get()).toMatchObject({ loadMode: "per_side", baseGrams: 10_000 });
   });
 });
 

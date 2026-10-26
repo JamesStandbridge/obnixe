@@ -1,5 +1,5 @@
 import { exerciseNameKey } from "@obnixe/schema";
-import type { EpochMs, Equipment, Exercise, ExerciseMeasure, Id, ZoneKey } from "@obnixe/schema";
+import type { EpochMs, Equipment, Exercise, ExerciseMeasure, Id, LoadMode, ZoneKey } from "@obnixe/schema";
 import { rowKey } from "../keys.ts";
 import type { Mutation } from "../writer.ts";
 
@@ -7,6 +7,8 @@ export interface ExerciseInput {
   readonly name: string;
   readonly measure: ExerciseMeasure;
   readonly equipment: Equipment;
+  readonly loadMode: LoadMode;
+  readonly baseGrams: number | null;
   readonly loadStepGrams: number | null;
   readonly zones: readonly ZoneKey[];
 }
@@ -15,6 +17,7 @@ export type ExerciseIssue =
   | { readonly kind: "name_missing" }
   | { readonly kind: "name_taken"; readonly existing: Exercise }
   | { readonly kind: "load_step_invalid" }
+  | { readonly kind: "load_mode_invalid" }
   | { readonly kind: "measure_locked" };
 
 export type ExercisePlan =
@@ -63,6 +66,10 @@ function inputIssue(input: ExerciseInput, existing: readonly Exercise[], exceptI
   if (taken !== null) return { kind: "name_taken", existing: taken };
   const step = input.loadStepGrams;
   if (input.measure === "duration" ? step !== null : step !== null && (!Number.isInteger(step) || step <= 0)) return { kind: "load_step_invalid" };
+  const base = input.baseGrams;
+  if ((input.measure === "duration" && input.loadMode !== "total") || (base !== null && (input.loadMode !== "per_side" || !Number.isInteger(base) || base <= 0))) {
+    return { kind: "load_mode_invalid" };
+  }
   return null;
 }
 
@@ -88,6 +95,8 @@ export function planCreateExercise(input: ExerciseInput, existing: readonly Exer
           nameKey: exerciseNameKey(name),
           measure: input.measure,
           equipment: input.equipment,
+          loadMode: input.loadMode,
+          baseGrams: input.baseGrams,
           loadStepGrams: input.loadStepGrams,
           zonesReviewed: true,
           mergedIntoId: null,
@@ -122,6 +131,8 @@ export function planUpdateExercise(update: ExerciseUpdate, existing: readonly Ex
     nameKey: exerciseNameKey(name),
     measure: input.measure,
     equipment: input.equipment,
+    loadMode: input.loadMode,
+    baseGrams: input.baseGrams,
     loadStepGrams: input.loadStepGrams,
     zonesReviewed: true,
   };

@@ -1,5 +1,5 @@
 import { dateParts, gramsToMass, localTimeOf, weekdayIndex } from "@obnixe/core";
-import type { Effort, EpochMs, Equipment, LocalDate, MassUnit, PainLevel, Sensation } from "@obnixe/schema";
+import type { Effort, EpochMs, Equipment, Exercise, LocalDate, MassUnit, PainLevel, Sensation } from "@obnixe/schema";
 import { monthLong, weekdayLong } from "@/format/dates";
 import { formatNumber } from "@/format/numbers";
 
@@ -39,6 +39,35 @@ export const equipmentLabels: Readonly<Record<Equipment, string>> = {
   band: "élastique",
   other: "autre",
 };
+
+export type LoadedExercise = Pick<Exercise, "equipment" | "loadMode" | "baseGrams">;
+
+export function perLoadLabel(exercise: LoadedExercise): string | null {
+  const mode = exercise.loadMode;
+  switch (mode) {
+    case "total":
+      return null;
+    case "per_hand":
+      return exercise.equipment === "dumbbell" ? "par haltère" : exercise.equipment === "kettlebell" ? "par kettlebell" : "par main";
+    case "per_side":
+      return "par côté";
+    default: {
+      const unreachable: never = mode;
+      return unreachable;
+    }
+  }
+}
+
+export function baseLoadLabel(exercise: LoadedExercise, unit: MassUnit): string | null {
+  if (exercise.loadMode !== "per_side" || exercise.baseGrams === null) return null;
+  const mass = `${formatMass(exercise.baseGrams, unit)} ${unit}`;
+  return exercise.equipment === "barbell" ? `+ barre ${mass}` : `+ ${mass} à vide`;
+}
+
+export function loadContext(exercise: LoadedExercise, unit: MassUnit): string | null {
+  const parts = [perLoadLabel(exercise), baseLoadLabel(exercise, unit)].filter((part): part is string => part !== null);
+  return parts.length === 0 ? null : parts.join(" ");
+}
 
 export const effortLabels: Readonly<Record<Effort, string>> = { easy: "Facile", moderate: "Modéré", hard: "Dur", very_hard: "Très dur", max: "Max" };
 

@@ -1,8 +1,11 @@
 import { and, desc, eq, isNotNull, isNull } from "drizzle-orm";
 import { exercise, exerciseNameKey } from "@obnixe/schema";
-import type { Equipment, Exercise, ExerciseMeasure, Id } from "@obnixe/schema";
+import type { Equipment, Exercise, ExerciseMeasure, Id, LoadMode } from "@obnixe/schema";
 import type { Environment, ObnixeDatabase } from "../database.ts";
+import { defaultLoadMode } from "../training/load.ts";
+import type { ExerciseLoad } from "../training/load.ts";
 import type { NewRow } from "../writer.ts";
+import { ToolInputError } from "./environment.ts";
 
 const maxMergeDepth = 16;
 
@@ -18,9 +21,25 @@ export function findExercise(db: ObnixeDatabase, reference: string): Exercise | 
   return found;
 }
 
+export interface ExerciseProperties {
+  readonly measure: ExerciseMeasure;
+  readonly equipment: Equipment;
+  readonly loadMode?: LoadMode | undefined;
+  readonly baseGrams?: number | undefined;
+}
+
 export interface ExerciseRequest {
   readonly exercise: string;
-  readonly newExercise?: { readonly measure: ExerciseMeasure; readonly equipment: Equipment } | undefined;
+  readonly newExercise?: ExerciseProperties | undefined;
+}
+
+const defaultProperties: ExerciseProperties = { measure: "load_reps", equipment: "other" };
+
+export function exerciseLoadOf(name: string, properties: ExerciseProperties): ExerciseLoad {
+  const loadMode = properties.loadMode ?? defaultLoadMode(properties.equipment, properties.measure);
+  if (properties.measure === "duration" && loadMode !== "total") throw new ToolInputError(`'${name}' is a duration exercise: its loadMode can only be total.`);
+  if (properties.baseGrams !== undefined && loadMode !== "per_side") throw new ToolInputError(`'${name}': baseGrams is only allowed with loadMode per_side.`);
+  return { loadMode, baseGrams: properties.baseGrams ?? null };
 }
 
 export interface ResolvedExercise {
@@ -46,20 +65,21 @@ export function planExercises(db: ObnixeDatabase, env: Environment, requests: re
     }
     const name = request.exercise.trim().replace(/\s+/g, " ");
     const nameKey = exerciseNameKey(name);
-    const pending = createdByKey.get(nameKey) ?? newExerciseRow(env, name, request.newExercise?.measure ?? "load_reps", request.newExercise?.equipment ?? "other");
+    const pending = createdByKey.get(nameKey) ?? newExerciseRow(env, name, request.newExercise ?? defaultProperties);
     createdByKey.set(nameKey, pending);
     resolved.set(request.exercise, { id: pending.id, name: pending.name, measure: pending.measure });
   }
   return { resolved, created: [...createdByKey.values()] };
 }
 
-export function newExerciseRow(env: Environment, name: string, measure: ExerciseMeasure, equipment: Equipment, loadStepGrams: number | null = null): NewRow<"exercise"> {
+export function newExerciseRow(env: Environment, name: string, properties: ExerciseProperties, loadStepGrams: number | null = null): NewRow<"exercise"> {
   return {
     id: env.newId(),
     name,
     nameKey: exerciseNameKey(name),
-    measure,
-    equipment,
+    measure: properties.measure,
+    equipment: properties.equipment,
+    ...exerciseLoadOf(name, properties),
     loadStepGrams,
     zonesReviewed: false,
     mergedIntoId: null,

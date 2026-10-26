@@ -2,12 +2,15 @@ import type { EpochMs, FieldValue, LocalDate, SessionItem, StrengthSet } from "@
 import { activeSeconds } from "../activity/freeSession.ts";
 import { parseGrade } from "../stats/indicators.ts";
 import type { Grade } from "../stats/indicators.ts";
+import { totalLoadGrams } from "./load.ts";
+import type { ExerciseLoad } from "./load.ts";
 import type { PreviousPerformance, Progression } from "./progression.ts";
 import type { WorkoutData, WorkoutExercise } from "./workout.ts";
 
 export interface BestSet {
   readonly entryId: string;
   readonly loadGrams: number;
+  readonly totalLoadGrams: number;
   readonly reps: number;
   readonly estimatedOneRepMaxGrams: number;
 }
@@ -39,10 +42,13 @@ export function strengthSummary(data: WorkoutData, now: EpochMs): StrengthSummar
       if (set.restBeforeSeconds !== null) rests.push(set.restBeforeSeconds);
       if (set.interrupted) continue;
       setsDone += 1;
-      if (set.loadGrams === null || set.reps === null) continue;
-      volumeGrams += set.loadGrams * set.reps;
-      const estimate = estimatedOneRepMax(set.loadGrams, set.reps);
-      if (best === null || estimate > best.estimatedOneRepMaxGrams) best = { entryId: candidate.entry.id, loadGrams: set.loadGrams, reps: set.reps, estimatedOneRepMaxGrams: estimate };
+      const total = totalLoadGrams(set.loadGrams, candidate.exercise);
+      if (set.loadGrams === null || total === null || set.reps === null) continue;
+      volumeGrams += total * set.reps;
+      const estimate = estimatedOneRepMax(total, set.reps);
+      if (best === null || estimate > best.estimatedOneRepMaxGrams) {
+        best = { entryId: candidate.entry.id, loadGrams: set.loadGrams, totalLoadGrams: total, reps: set.reps, estimatedOneRepMaxGrams: estimate };
+      }
     }
   }
   return {
@@ -68,7 +74,7 @@ export type ExerciseOutcome =
   | { readonly kind: "same"; readonly previousDate: LocalDate };
 
 const sum = (values: readonly number[]): number => values.reduce((total, value) => total + value, 0);
-const topLoad = (sets: readonly StrengthSet[]): number => Math.max(0, ...sets.map((set) => set.loadGrams ?? 0));
+const topLoad = (sets: readonly StrengthSet[], load: ExerciseLoad): number => Math.max(0, ...sets.map((set) => totalLoadGrams(set.loadGrams, load) ?? 0));
 
 export function exerciseOutcome(current: WorkoutExercise, previous: PreviousPerformance | null, progression: Progression): ExerciseOutcome {
   const done = completedSets(current.sets);
@@ -79,7 +85,7 @@ export function exerciseOutcome(current: WorkoutExercise, previous: PreviousPerf
   const previousDate = previous.localDate;
   const measure = current.exercise.measure;
   if (measure === "load_reps") {
-    const deltaGrams = topLoad(done) - topLoad(before);
+    const deltaGrams = topLoad(done, current.exercise) - topLoad(before, current.exercise);
     if (deltaGrams !== 0) return { kind: "load", deltaGrams, previousDate };
   }
   if (progression.kind === "suspended") return { kind: "suspended" };

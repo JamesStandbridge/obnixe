@@ -20,7 +20,7 @@ import { sports } from "@obnixe/schema";
 import type { Id, LocalDate, MassUnit, PainPhase } from "@obnixe/schema";
 import { db, environment } from "@/data/database";
 import { undo, useUndoableWrite, write } from "@/data/write";
-import { effortLabels, formatDay, formatLongDate, formatMass, formatTime, sensationPhrases } from "@/features/training/format";
+import { effortLabels, formatDay, formatLongDate, formatMass, formatTime, loadContext, sensationPhrases } from "@/features/training/format";
 import { capitalize, lowerFirst, sessionTitle, zoneLabel } from "@/format/labels";
 import { formatClock, formatLongClock } from "@/format/durations";
 import { Message } from "@/features/training/Message";
@@ -134,7 +134,7 @@ function exerciseDetail(report: ExerciseReport, today: LocalDate, unit: MassUnit
     case "same":
     case "reps":
     case "duration":
-      return outcomeText(outcome, today, unit, false);
+      return outcomeText(outcome, exercise.exercise.loadMode, today, unit, false);
     case "load":
     case "first":
       return plan;
@@ -515,6 +515,7 @@ function ExerciseBlock({ report, exercise, today, unit, onSet }: ExerciseBlockPr
   const { colors } = useTheme();
   const target = exercise.exercise;
   const name = target.exercise.name;
+  const context = loadContext(target.exercise, unit);
   return (
     <View style={styles.exercise}>
       <View style={[styles.exerciseHead, { borderBottomColor: colors.line }]}>
@@ -530,7 +531,7 @@ function ExerciseBlock({ report, exercise, today, unit, onSet }: ExerciseBlockPr
           <Icon name="chevron" size={14} color={colors.text3} />
         </Pressable>
         <Text variant="small" tone="secondary" numberOfLines={1} style={styles.exerciseDetail}>
-          {exerciseDetail(exercise, today, unit)}
+          {context === null ? exerciseDetail(exercise, today, unit) : `${exerciseDetail(exercise, today, unit)} · ${context}`}
         </Text>
       </View>
       {target.sets.map((set, index) => {

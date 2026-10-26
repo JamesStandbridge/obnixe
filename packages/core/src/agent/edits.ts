@@ -240,6 +240,8 @@ function exerciseIssueMessage(issue: ExerciseIssue, current: Exercise): string {
       return `An exercise named '${issue.existing.name}' already exists (id ${issue.existing.id}). Fold one into the other with merge_exercises.`;
     case "load_step_invalid":
       return "loadStepGrams is not allowed for duration exercises.";
+    case "load_mode_invalid":
+      return "Duration exercises are always loadMode total, and baseGrams (above 0) is only allowed with loadMode per_side.";
     case "measure_locked":
       return `'${current.name}' is used by logged sessions or programs, so its measure cannot change. Create a new exercise with the right measure instead.`;
     default: {
@@ -253,7 +255,9 @@ function detailInput(current: Exercise, zones: readonly ZoneKey[], input: ToolIn
   const measure = input.measure ?? current.measure;
   const keepStep = measure === current.measure || usesLoad(measure);
   const loadStepGrams = input.loadStepGrams !== undefined ? input.loadStepGrams : keepStep ? current.loadStepGrams : null;
-  return { name: input.name ?? current.name, measure, equipment: input.equipment ?? current.equipment, loadStepGrams, zones: input.zones ?? zones };
+  const loadMode = input.loadMode ?? (measure === "duration" ? "total" : current.loadMode);
+  const baseGrams = input.baseGrams !== undefined ? input.baseGrams : loadMode === "per_side" ? current.baseGrams : null;
+  return { name: input.name ?? current.name, measure, equipment: input.equipment ?? current.equipment, loadMode, baseGrams, loadStepGrams, zones: input.zones ?? zones };
 }
 
 function keepZonesReview(mutation: Mutation, current: Exercise): Mutation | null {
@@ -292,6 +296,8 @@ export function updateExercise(db: ObnixeDatabase, env: AgentEnvironment, actor:
       name: saved.name,
       measure: saved.measure,
       equipment: saved.equipment,
+      loadMode: saved.loadMode,
+      baseGrams: saved.baseGrams,
       loadStepGrams: saved.loadStepGrams,
       zones: [...zonesOf(db, saved.id)],
       archived: saved.archivedAt !== null,

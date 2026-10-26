@@ -37,7 +37,7 @@ import { sports, zoneKeys } from "@obnixe/schema";
 import type { EpochMs, Exercise, Id, PainLevel, StrengthSet, ZoneKey } from "@obnixe/schema";
 import { db, environment } from "@/data/database";
 import { useUndoableWrite, write } from "@/data/write";
-import { equipmentLabels, formatMass } from "@/features/training/format";
+import { baseLoadLabel, equipmentLabels, formatMass, perLoadLabel } from "@/features/training/format";
 import { formatClock, formatLongClock } from "@/format/durations";
 import { freeStrengthTitle, lowerFirst, zoneLabel } from "@/format/labels";
 import { useNow } from "@/features/training/useLiveLoad";
@@ -256,7 +256,7 @@ export function LiveWorkoutScreen({ live }: LiveWorkoutScreenProps) {
         setPad({
           key,
           request: {
-            title: `Charge · ${equipmentLabels[display.exercise.equipment]}`,
+            title: `Charge · ${perLoadLabel(display.exercise) ?? equipmentLabels[display.exercise.equipment]}`,
             unit,
             decimals: 1,
             current: gramsToMass(activeDraft.loadGrams ?? 0, unit),
@@ -499,6 +499,7 @@ export function LiveWorkoutScreen({ live }: LiveWorkoutScreenProps) {
   };
 
   const stopped = display === undefined ? [] : stoppedZones(display.zones, live.latestPains);
+  const baseLabel = display === undefined ? null : baseLoadLabel(display.exercise, unit);
   const showWarning = !finished && editing === null && display !== undefined && stopped.length > 0 && display.sets.length === 0;
   const comparison =
     display === undefined || progression === null || base === null
@@ -579,6 +580,7 @@ export function LiveWorkoutScreen({ live }: LiveWorkoutScreenProps) {
               <Text style={styles.target} tone="secondary">
                 {targetText(display)} · repos {formatClock(display.target.restSeconds)}
                 {display.target.rir === null ? "" : ` · RIR ${display.target.rir}`}
+                {baseLabel === null ? "" : ` · ${baseLabel}`}
               </Text>
             )}
             <Track

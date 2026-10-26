@@ -1,6 +1,7 @@
 import type { ExerciseMeasure, Id, ZoneKey } from "@obnixe/schema";
 import { exerciseNameKey } from "@obnixe/schema";
 import type { TestContext } from "../testing.ts";
+import type { ExerciseLoad } from "./load.ts";
 import { commit } from "../writer.ts";
 import type { Mutation } from "../writer.ts";
 import { startWorkoutMutations } from "./lifecycle.ts";
@@ -18,6 +19,7 @@ export interface ExerciseSpec {
   readonly measure: ExerciseMeasure;
   readonly stepGrams: number | null;
   readonly zones: readonly ZoneKey[];
+  readonly load?: ExerciseLoad;
 }
 
 export function addExercise(context: TestContext, spec: ExerciseSpec): Id {
@@ -26,7 +28,7 @@ export function addExercise(context: TestContext, spec: ExerciseSpec): Id {
     {
       kind: "insert",
       table: "exercise",
-      row: { id, name: spec.name, nameKey: exerciseNameKey(spec.name), measure: spec.measure, equipment: "barbell", loadStepGrams: spec.stepGrams, zonesReviewed: true, mergedIntoId: null, archivedAt: null },
+      row: { id, name: spec.name, nameKey: exerciseNameKey(spec.name), measure: spec.measure, equipment: "barbell", ...(spec.load ?? { loadMode: "total", baseGrams: null }), loadStepGrams: spec.stepGrams, zonesReviewed: true, mergedIntoId: null, archivedAt: null },
     },
     ...spec.zones.map((zone): Mutation => ({ kind: "insert", table: "exercise_zone", row: { exerciseId: id, zone } })),
   ]);

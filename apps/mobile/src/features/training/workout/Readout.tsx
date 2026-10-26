@@ -4,7 +4,7 @@ import { impactAsync, ImpactFeedbackStyle } from "expo-haptics";
 import { durationStepSeconds, gramsToMass } from "@obnixe/core";
 import type { WorkoutExercise } from "@obnixe/core";
 import type { MassUnit } from "@obnixe/schema";
-import { equipmentLabels, formatMass } from "@/features/training/format";
+import { equipmentLabels, formatMass, perLoadLabel } from "@/features/training/format";
 import { formatClock } from "@/format/durations";
 import { formatNumber } from "@/format/numbers";
 import { durationLimit, loadLimits, rangeText, repsLimit } from "@/features/training/workout/liveWorkout";
@@ -41,7 +41,7 @@ interface ReadoutProps {
 
 export function Readout({ target, draft, suggested, unit, stepGrams, comparison, onAdjust, onOpenPad, onRir }: ReadoutProps) {
   const measure = target.exercise.measure;
-  const equipment = equipmentLabels[target.exercise.equipment];
+  const loadUnit = perLoadLabel(target.exercise) ?? equipmentLabels[target.exercise.equipment];
   const range = rangeText(target);
   const loadValue = gramsToMass(draft.loadGrams ?? 0, unit);
   const loadMax = loadLimits[unit];
@@ -63,7 +63,7 @@ export function Readout({ target, draft, suggested, unit, stepGrams, comparison,
         </View>
       ) : (
         <View style={styles.figureRow}>
-          <Figure text={formatNumber(loadValue)} unit={`${unit} · ${equipment}`} range={null} suggested={suggested} label="Saisir la charge" onPress={() => onOpenPad("load")} />
+          <Figure text={formatNumber(loadValue)} unit={`${unit} · ${loadUnit}`} range={null} suggested={suggested} label="Saisir la charge" onPress={() => onOpenPad("load")} />
           <TimesSign />
           <Figure text={String(reps)} unit="rép." range={range === "" ? null : range} suggested={suggested} label="Saisir les répétitions" onPress={() => onOpenPad("reps")} />
         </View>
