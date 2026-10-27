@@ -1,9 +1,9 @@
 import { chmodSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 import { z } from "zod";
 import { generateIdentity } from "@obnixe/core/agent/wire";
 import type { RandomBytes } from "@obnixe/core/agent/wire";
+import { platformPath, userConfigDir } from "./paths.ts";
 
 const maxRevoked = 32;
 
@@ -30,11 +30,10 @@ export type PairingLookup = { readonly kind: "known"; readonly pairing: BridgePa
 
 export class PairingFileError extends Error {}
 
-export function pairingFilePath(env: NodeJS.ProcessEnv): string {
+export function pairingFilePath(env: NodeJS.ProcessEnv, platform: NodeJS.Platform, home: string): string {
   const override = env.OBNIXE_BRIDGE_CONFIG;
   if (override !== undefined && override !== "") return override;
-  const configHome = env.XDG_CONFIG_HOME;
-  return join(configHome !== undefined && configHome !== "" ? configHome : join(homedir(), ".config"), "obnixe", "bridge.json");
+  return platformPath(platform).join(userConfigDir(platform, env, home), "obnixe", "bridge.json");
 }
 
 function isMissingFile(error: unknown): boolean {

@@ -43,7 +43,7 @@ function describe(result: PairResult): string {
     case "paired":
       return `Connected to ${result.device}. ${result.client} can use Obnixe while the Agent screen stays open; next time the phone reconnects without a code.`;
     case "no_phone":
-      return "No phone is waiting. Open the Agent screen in Obnixe, touch Saisir l'adresse and check the Mac address it dials.";
+      return "No phone is waiting. Open the Agent screen in Obnixe, touch Saisir l'adresse and check the computer address it dials.";
     case "bad_code":
       return result.remaining > 0 ? `Code refused. ${result.remaining} attempt${result.remaining > 1 ? "s" : ""} left.` : "Code refused. Generate a new code on the phone.";
     case "invalid_code":
@@ -93,7 +93,7 @@ async function runInvite(options: PairCommandOptions, write: (line: string) => v
   const result = await postInvite(options.controlPort, true);
   switch (result.kind) {
     case "no_address":
-      write("This Mac has no private network address the phone can dial (Wi-Fi, Ethernet or Tailscale). Join the phone's network, or set OBNIXE_PHONE_HOST to an IPv4 address.");
+      write("This computer has no private network address the phone can dial (Wi-Fi, Ethernet or Tailscale). Join the phone's network, or set OBNIXE_PHONE_HOST to an IPv4 address.");
       return 1;
     case "ready":
       break;
@@ -106,7 +106,7 @@ async function runInvite(options: PairCommandOptions, write: (line: string) => v
   const page = `http://127.0.0.1:${options.controlPort}/pair`;
   write(terminalQr(ticket.url));
   write("");
-  write("On the phone: Obnixe, Aujourd'hui, Connecter un agent, Scanner le QR code du Mac.");
+  write("On the phone: Obnixe, Aujourd'hui, Connecter un agent, Scanner le QR code.");
   write(`Valid 5 minutes, once. Larger version: ${page}`);
   write(`The phone will dial ${ticket.hosts.join(", ")}.`);
   write(`Link, opens Obnixe when sent to the phone: ${ticket.url}`);
@@ -123,7 +123,7 @@ export async function runPair(options: PairCommandOptions): Promise<number> {
     options.output.write(`${line}\n`);
   };
   const unreachable = (): number => {
-    write("The bridge is not running. Start Cursor or Codex with the obnixe MCP server, then retry.");
+    write("The bridge is not running. Start your MCP client (Cursor, Claude or another) with the obnixe server, then retry.");
     return 1;
   };
   if (options.code === undefined) {

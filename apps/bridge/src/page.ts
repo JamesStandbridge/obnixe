@@ -5,7 +5,7 @@ export function pagePolicy(nonce: string): string {
 const style = `
 :root { color-scheme: dark; --bg: #0c1013; --surface: #161a1e; --text: #ebeff2; --text2: #b3b8be; --text3: #888d92; --line: #ffffff14; --mark: #e5ed32; --warn: #f5ae39; }
 * { box-sizing: border-box; }
-body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--text); font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; display: grid; place-items: center; }
+body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--text); font: 16px/1.45 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", sans-serif; display: grid; place-items: center; }
 main { width: min(440px, 100% - 32px); padding: 40px 0; }
 .eyebrow { margin: 0; font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text3); }
 h1 { margin: 6px 0 8px; font-size: 30px; line-height: 1.1; letter-spacing: -.02em; }
@@ -23,7 +23,7 @@ li { padding: 10px 0; border-bottom: 1px solid var(--line); display: flex; gap: 
 li span { width: 16px; color: var(--text3); font-weight: 700; flex: none; }
 details { margin-top: 20px; color: var(--text2); font-size: 14px; }
 summary { cursor: pointer; color: var(--text); font-weight: 600; }
-code { font: 13px ui-monospace, Menlo, monospace; color: var(--text); }
+code { font: 13px ui-monospace, Menlo, Consolas, monospace; color: var(--text); }
 a { color: var(--text); }
 `;
 
@@ -46,7 +46,7 @@ function clock() {
 async function load() {
   const response = await fetch("/invite", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ fresh: false }), cache: "no-store" });
   const result = await response.json();
-  if (result.kind !== "ready") return show("Ce Mac n'a aucune adresse privée joignable par le téléphone (Wi-Fi, Ethernet ou Tailscale).", "stale");
+  if (result.kind !== "ready") return show("Cet ordinateur n'a aucune adresse privée joignable par le téléphone (Wi-Fi, Ethernet ou Tailscale).", "stale");
   const ticket = result.ticket;
   id = ticket.id;
   expiresAt = ticket.expiresAt;
@@ -67,14 +67,14 @@ async function poll() {
   if (state.kind === "waiting") return show("Valable " + clock() + ", une seule fois", "live");
   if (state.kind === "paired") {
     document.body.classList.add("done");
-    return show(state.device + " est relié à ce Mac. Tu peux fermer cette page.", "done");
+    return show(state.device + " est relié à cet ordinateur. Tu peux fermer cette page.", "done");
   }
   if (state.kind === "expired") return show("QR code expiré. Recharge la page pour en créer un autre.", "stale");
   return show("Appairage interrompu : " + state.message, "stale");
 }
 function unreachable(error) {
   if (!(error instanceof TypeError)) throw error;
-  show("Le bridge ne répond plus. Relance Cursor ou Codex, puis obnixe-bridge pair.", "stale");
+  show("Le bridge ne répond plus. Relance ton agent (Cursor, Claude ou un autre client MCP), puis obnixe-bridge pair.", "stale");
 }
 function tick() {
   poll().catch(unreachable);
@@ -97,16 +97,16 @@ export function pairPage(nonce: string): string {
 <main>
 <p class="eyebrow">obnixe-bridge · <span id="name"></span></p>
 <h1>Scanne ce code avec ton téléphone</h1>
-<p class="lead">Le téléphone se relie à ce Mac sans rien saisir.</p>
+<p class="lead">Le téléphone se relie à cet ordinateur sans rien saisir.</p>
 <div class="code" id="code" role="img" aria-label="QR code d'appairage"></div>
 <p class="status" id="status" data-tone="live" aria-live="polite"><span class="dot"></span><span id="label">Préparation du QR code…</span></p>
 <ol>
 <li><span>1</span>Dans Obnixe, ouvre Aujourd'hui puis Connecter un agent</li>
-<li><span>2</span>Touche Scanner le QR code du Mac, vise ce code et confirme</li>
+<li><span>2</span>Touche Scanner le QR code, vise ce code et confirme</li>
 <li><span>3</span>Garde l'écran Agent ouvert pendant la connexion</li>
 </ol>
 <details>
-<summary>Le téléphone ne trouve pas le Mac ?</summary>
+<summary>Le téléphone ne trouve pas l'ordinateur ?</summary>
 <p>Il doit être sur le même Wi-Fi ou sur Tailscale. Adresses annoncées : <code id="hosts"></code>.</p>
 <p>Sans caméra : sur le téléphone, touche Saisir l'adresse, puis lance <code>obnixe-bridge pair 123456</code> avec le code affiché.</p>
 <p><a id="invite" href="#">Lien d'appairage</a> (s'ouvre dans Obnixe sur le téléphone)</p>

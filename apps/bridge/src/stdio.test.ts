@@ -56,7 +56,7 @@ it("forgets without a running bridge", () => {
     encoding: "utf8",
   });
   expect(result.status).toBe(0);
-  expect(result.stdout).toBe("No phone is paired with this Mac.\n");
+  expect(result.stdout).toBe("No phone is paired with this computer.\n");
 }, 20_000);
 
 it("serves the QR page of the running bridge with the addresses it listens on", async () => {
@@ -82,5 +82,5 @@ it("serves the QR page of the running bridge with the addresses it listens on", 
 it("tells the user when no bridge runs for `pair`", () => {
   const result = spawnSync(process.execPath, [...nodeArgs, "pair"], { env: { ...process.env, OBNIXE_CONTROL_PORT: "1", OBNIXE_BRIDGE_CONFIG: configFile }, encoding: "utf8" });
   expect(result.status).toBe(1);
-  expect(result.stdout).toBe("The bridge is not running. Start Cursor or Codex with the obnixe MCP server, then retry.\n");
+  expect(result.stdout).toBe("The bridge is not running. Start your MCP client (Cursor, Claude or another) with the obnixe server, then retry.\n");
 }, 20_000);

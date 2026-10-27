@@ -192,7 +192,7 @@ export interface EndpointStatus {
 }
 
 export const notConnectedMessage =
-  "The Obnixe phone is not connected. Ask the user to open the Agent screen of the Obnixe app (Aujourd'hui, Connecter un agent): a phone paired before reconnects by itself, otherwise ask them to run `obnixe-bridge pair` in a terminal and scan the QR code it shows with Scanner le QR code du Mac, then retry.";
+  "The Obnixe phone is not connected. Ask the user to open the Agent screen of the Obnixe app (Aujourd'hui, Connecter un agent): a phone paired before reconnects by itself, otherwise ask them to run `obnixe-bridge pair` in a terminal and scan the QR code it shows with Scanner le QR code, then retry.";
 
 /**
  * Endpoint the phone reaches, by dialing the direct WebSocket listeners or through the relay: verifies pairing proofs, then
@@ -631,7 +631,7 @@ export class PhoneEndpoint {
     const lookup = this.options.pairings.lookup(frame.pairing);
     switch (lookup.kind) {
       case "unknown":
-        this.options.log(`${frame.device} tried to reconnect with a pairing this Mac does not know; it will show a new code.`);
+        this.options.log(`${frame.device} tried to reconnect with a pairing this computer does not know; it will show a new code.`);
         this.reject(pending, "unknown");
         return;
       case "revoked":
@@ -671,7 +671,7 @@ export class PhoneEndpoint {
     this.options.pairings.revoke(frame.pairing);
     this.endTrusted(frame.pairing, "pairing revoked by the phone");
     this.relay?.sync();
-    this.options.log(`${lookup.pairing.device} forgot this Mac; its pairing is revoked.`);
+    this.options.log(`${lookup.pairing.device} forgot this computer; its pairing is revoked.`);
   }
 
   private endTrusted(pairingId: string, reason: string): void {

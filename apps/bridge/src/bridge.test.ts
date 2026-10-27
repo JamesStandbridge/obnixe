@@ -628,7 +628,7 @@ describe("trusted reconnection", () => {
     const pairing = storedPairing(await pairedPhone());
     const revocation = phoneRevocation(pairing);
     const phone = connectPhone("482917", { revocation });
-    await until(() => logs.some((line) => line.includes("forgot this Mac")), "revocation log");
+    await until(() => logs.some((line) => line.includes("forgot this computer")), "revocation log");
     expect(pairings.list()).toEqual([]);
     expect(pairings.lookup(pairing.pairingId).kind).toBe("revoked");
     expect(phone.acknowledged).toEqual([]);
