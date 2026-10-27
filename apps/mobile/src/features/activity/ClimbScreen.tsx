@@ -226,7 +226,7 @@ export function ClimbScreen({ current }: ClimbScreenProps) {
     const mutations = withPending && pendingDraft !== null ? [...planClimbItem(db(), environment, current, normalizeDraft(pendingDraft), pendingPainIds).mutations] : [];
     write("Séance d'escalade terminée", [...mutations, planSessionCompletion(environment, current)]);
     setSheet("none");
-    router.replace({ pathname: "/session/[id]/review", params: { id: current.id } });
+    router.replace({ pathname: "/session/[id]/review", params: { id: current.id, attach: "1" } });
   };
 
   const discard = (): void => {

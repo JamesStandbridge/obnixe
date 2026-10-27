@@ -100,6 +100,7 @@ interface NextSession {
     readonly variants: readonly { readonly name: string; readonly isDefault: boolean; readonly estimatedDurationSeconds: number | null; readonly exercises: readonly NextExercise[] }[];
   } | null;
   readonly after: { readonly name: string } | null;
+  readonly cycle: readonly { readonly position: number; readonly name: string; readonly state: string; readonly sessionId: string | null; readonly localDate: string | null }[];
   readonly painOnLoadedZones: readonly { readonly zone: string; readonly level: string; readonly followed: boolean }[];
 }
 
@@ -154,17 +155,21 @@ describe("get_next_session", () => {
     expect(data.painOnLoadedZones).toEqual([]);
   });
 
-  it("moves to the following slot once the next one is done", () => {
+  it("moves to the following slot once the next one is done and lists the cycle", () => {
     const { squat, slotA } = seedProgram();
-    seed.session({ sport: "strength", date: "2026-10-23", slotId: slotA, entries: [{ exerciseId: squat, sets: [{ kg: 80, reps: 8 }] }] });
+    const done = seed.session({ sport: "strength", date: "2026-10-23", slotId: slotA, entries: [{ exerciseId: squat, sets: [{ kg: 80, reps: 8 }] }] });
     const data = ok<NextSession>("get_next_session", {});
     expect(data.next).toMatchObject({ name: "Footing", sport: "run", lastCompletedOn: null, daysSinceLastCompleted: null, variants: [] });
     expect(data.after?.name).toBe("Séance A");
+    expect(data.cycle).toEqual([
+      { position: 1, lineageId: expect.any(String), name: "Séance A", sport: "strength", state: "done", sessionId: done, localDate: "2026-10-23" },
+      { position: 2, lineageId: expect.any(String), name: "Footing", sport: "run", state: "next", sessionId: null, localDate: null },
+    ]);
   });
 
-  it("follows a skipped slot and returns to it once the skip is undone", () => {
-    const { squat, slotA, slotB } = seedProgram();
-    seed.session({ sport: "run", date: "2026-10-20", slotId: slotB, values: { distance: 6000 } });
+  it("checks a skipped slot for the cycle and proposes it again once the skip is undone", () => {
+    const { squat, slotA } = seedProgram();
+    seed.session({ sport: "run", date: "2026-10-20", values: { distance: 6000 } });
     expect(ok<NextSession>("get_next_session", {}).next?.name).toBe("Séance A");
 
     const plan = planSkipNextSlot(context.db, { now: context.env.now(), timeZone, newId: context.env.newId });
@@ -174,6 +179,7 @@ describe("get_next_session", () => {
     const skipped = ok<NextSession>("get_next_session", {});
     expect(skipped.next).toMatchObject({ name: "Footing", sport: "run" });
     expect(skipped.after?.name).toBe("Séance A");
+    expect(skipped.cycle.map((entry) => entry.state)).toEqual(["skipped", "next"]);
     expect(skipped.week).toMatchObject({ sessionsDone: 1 });
 
     toggleChange(context.db, context.env, user, skipId, "Séance A passée");

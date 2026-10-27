@@ -182,7 +182,7 @@ function WorkoutGate({ sessionId }: WorkoutGateProps) {
               if (live === null) return;
               cancelRestAlert();
               write("Séance terminée", finishMutations(live.data, environment.now()));
-              router.replace({ pathname: "/session/[id]/review", params: { id: sessionId } });
+              router.replace({ pathname: "/session/[id]/review", params: { id: sessionId, attach: "1" } });
             },
           }}
         />

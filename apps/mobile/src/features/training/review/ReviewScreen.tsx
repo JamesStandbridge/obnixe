@@ -2,10 +2,10 @@ import { useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { daysBetween, latestPainByZone, loadSessionReport, localDateOf, reviewMutations, rotationChoice, trackedZones, worstLevel } from "@obnixe/core";
+import { daysBetween, latestPainByZone, loadSessionReport, localDateOf, nextSlot, openSlotsOfSport, reviewMutations, rotationChoice, trackedZones, worstLevel } from "@obnixe/core";
 import type { PainAnchor, RotationChoice, SessionReport } from "@obnixe/core";
 import { sports, zoneKeys } from "@obnixe/schema";
-import type { Effort, EpochMs, Id, LocalDate, MassUnit, PainLevel, PainReport, Sensation, ZoneKey } from "@obnixe/schema";
+import type { Effort, EpochMs, Id, LocalDate, MassUnit, PainLevel, PainReport, ProgramSlot, Sensation, Session, ZoneKey } from "@obnixe/schema";
 import { db, environment } from "@/data/database";
 import { useUndoableWrite } from "@/data/write";
 import { effortLabels, formatDay, formatTime, painPhrases, sensationLabels } from "@/features/training/format";
@@ -14,31 +14,51 @@ import { formatClock } from "@/format/durations";
 import { Message } from "@/features/training/Message";
 import { climbFacts, climbItemWord, continuousIndicators, durationText, fieldValueText, outcomeText, setsFact, strengthValue, titleSource } from "@/features/training/sessionText";
 import { useLiveLoad } from "@/features/training/useLiveLoad";
+import { positioned, SlotMenuItem, useAttachSession } from "@/features/training/attach";
+import type { PositionedSlot } from "@/features/training/attach";
 import { deviceTimeZone } from "@/format/dates";
 import { useMassUnit } from "@/data/settings";
 import { LinkButton, PrimaryButton } from "@/ui/Button";
 import { PainMark, Switch } from "@/ui/Controls";
 import { Icon } from "@/ui/icons/Icon";
-import { Question, Scale, TextField, ZoneRow } from "@/ui/Inputs";
+import { Choices, MenuItem, Question, Scale, TextField, ZoneRow } from "@/ui/Inputs";
 import type { ScaleOption } from "@/ui/Inputs";
 import { Row, Section } from "@/ui/Layout";
+import { Sheet } from "@/ui/Overlays";
 import { Text } from "@/ui/Text";
 import { useTheme } from "@/ui/theme";
 import { fonts, layout } from "@/ui/tokens";
 
+interface AttachOffer {
+  readonly programName: string;
+  readonly slots: readonly PositionedSlot[];
+}
+
 interface ReviewData {
   readonly report: SessionReport;
   readonly choice: RotationChoice | null;
+  readonly offer: AttachOffer | null;
   readonly tracked: readonly ZoneKey[];
   readonly latest: ReadonlyMap<ZoneKey, PainReport>;
+}
+
+function attachOffer(current: Session): AttachOffer | null {
+  if (current.slotId !== null || current.status !== "completed") return null;
+  const next = nextSlot(db());
+  if (next === null) return null;
+  const open = openSlotsOfSport(next, current.sport);
+  return open.length === 0 ? null : { programName: next.current.version.name, slots: positioned(next.cycle, open) };
 }
 
 function loadReview(sessionId: Id): ReviewData | null {
   const now = environment.now();
   const report = loadSessionReport(db(), sessionId, now);
   if (report === null) return null;
-  return { report, choice: rotationChoice(db(), report.data.session), tracked: trackedZones(db()), latest: latestPainByZone(db(), now) };
+  return { report, choice: rotationChoice(db(), report.data.session), offer: attachOffer(report.data.session), tracked: trackedZones(db()), latest: latestPainByZone(db(), now) };
 }
+
+type AttachPrompt = "closed" | "ask" | "choose";
+type AttachAnswer = "yes" | "choose" | "no";
 
 const effortOptions: readonly ScaleOption<Effort>[] = (Object.keys(effortLabels) as Effort[]).map((value) => ({ value, label: effortLabels[value] }));
 const sensationOptions: readonly ScaleOption<Sensation>[] = (Object.keys(sensationLabels) as Sensation[]).map((value) => ({ value, label: sensationLabels[value] }));
@@ -52,9 +72,10 @@ const enjoymentOptions: readonly ScaleOption<number>[] = [
 
 interface ReviewScreenProps {
   readonly sessionId: Id;
+  readonly offerAttach: boolean;
 }
 
-export function ReviewScreen({ sessionId }: ReviewScreenProps) {
+export function ReviewScreen({ sessionId, offerAttach }: ReviewScreenProps) {
   const data = useLiveLoad(() => loadReview(sessionId), [sessionId]);
   if (data === null || data.report.data.session.deletedAt !== null) return <Message title="Séance introuvable" detail="Elle a été supprimée ou n'existe pas." action={null} />;
   const { session } = data.report.data;
@@ -70,7 +91,7 @@ export function ReviewScreen({ sessionId }: ReviewScreenProps) {
       />
     );
   }
-  return <ReviewForm data={data} />;
+  return <ReviewForm data={data} offerAttach={offerAttach} />;
 }
 
 function anchorText(anchor: PainAnchor | undefined, itemWord: string): string {
@@ -168,9 +189,10 @@ function factsFor(report: SessionReport, now: EpochMs): string {
 
 interface ReviewFormProps {
   readonly data: ReviewData;
+  readonly offerAttach: boolean;
 }
 
-function ReviewForm({ data }: ReviewFormProps) {
+function ReviewForm({ data, offerAttach }: ReviewFormProps) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const unit = useMassUnit();
@@ -189,6 +211,8 @@ function ReviewForm({ data }: ReviewFormProps) {
   const [extraZones, setExtraZones] = useState<readonly ZoneKey[]>([]);
   const [showOther, setShowOther] = useState(false);
   const [panelHeight, setPanelHeight] = useState(100);
+  const [prompt, setPrompt] = useState<AttachPrompt>(offerAttach && data.offer !== null ? "ask" : "closed");
+  const attach = useAttachSession();
 
   const listed = reviewZones(data, today);
   const listedKeys = [...listed.map((entry) => entry.zone), ...extraZones];
@@ -197,6 +221,32 @@ function ReviewForm({ data }: ReviewFormProps) {
   const title = sessionTitle(titleSource(report));
   const rows = doneRows(report, today, unit);
   const ended = session.endedAt ?? session.startedAt;
+  const offer = data.offer;
+  const proposed = offer?.slots[0] ?? null;
+
+  const attachTo = (slot: ProgramSlot): void => {
+    setPrompt("closed");
+    setCounts(true);
+    attach({ session, slot, title, extraOffset: panelHeight });
+  };
+
+  const answer = (value: AttachAnswer): void => {
+    switch (value) {
+      case "yes":
+        if (proposed !== null) attachTo(proposed.entry.slot);
+        return;
+      case "choose":
+        setPrompt("choose");
+        return;
+      case "no":
+        setPrompt("closed");
+        return;
+      default: {
+        const unreachable: never = value;
+        throw new Error(`Unhandled answer ${String(unreachable)}`);
+      }
+    }
+  };
 
   const save = (): void => {
         undoableWrite({
@@ -348,6 +398,27 @@ function ReviewForm({ data }: ReviewFormProps) {
       <View onLayout={(event) => setPanelHeight(event.nativeEvent.layout.height)} style={[styles.panel, { backgroundColor: colors.bg, borderTopColor: colors.line, paddingBottom: insets.bottom + 12 }]}>
         <PrimaryButton label="Enregistrer le bilan" icon={<Icon name="check" color={colors.actInk} />} onPress={save} />
       </View>
+
+      <Sheet
+        open={prompt !== "closed" && offer !== null && proposed !== null}
+        title={prompt === "choose" || proposed === null ? "Compter comme…" : `Compter comme ${proposed.entry.slot.name} ?`}
+        context={offer === null || proposed === null ? "" : prompt === "choose" ? `${offer.programName} · à faire dans ce cycle` : `${offer.programName} · séance ${proposed.position}, ${proposed.entry.state.kind === "next" ? "la prochaine" : "à faire dans ce cycle"}`}
+        onClose={() => setPrompt("closed")}
+      >
+        {offer === null ? null : prompt === "choose" ? (
+          <View style={styles.menu}>
+            {offer.slots.map((slot) => (
+              <SlotMenuItem key={slot.entry.slot.id} slot={slot} today={today} onPress={() => attachTo(slot.entry.slot)} />
+            ))}
+            <MenuItem label="Hors programme" detail="Ne compte pas dans la rotation" onPress={() => setPrompt("closed")} />
+          </View>
+        ) : (
+          <Choices<AttachAnswer>
+            items={[{ value: "yes", label: "Oui", primary: true }, ...(offer.slots.length > 1 ? [{ value: "choose" as const, label: "Une autre séance du programme" }] : []), { value: "no", label: "Non, hors programme" }]}
+            onChoose={answer}
+          />
+        )}
+      </Sheet>
     </View>
   );
 }
@@ -370,4 +441,5 @@ const styles = StyleSheet.create({
   program: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 64, paddingVertical: 10 },
   programText: { flex: 1, gap: 3 },
   panel: { position: "absolute", left: 0, right: 0, bottom: 0, borderTopWidth: 1, paddingTop: 10, paddingHorizontal: layout.gutter },
+  menu: { marginTop: 8 },
 });

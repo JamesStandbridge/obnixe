@@ -350,7 +350,7 @@ export function LiveWorkoutScreen({ live }: LiveWorkoutScreenProps) {
       leaving.current = true;
       cancelRestAlert();
       write("Séance terminée", finishMutations(data, environment.now()));
-      router.replace({ pathname: "/session/[id]/review", params: { id: sessionId } });
+      router.replace({ pathname: "/session/[id]/review", params: { id: sessionId, attach: "1" } });
       return;
     }
     if (editing !== null) {
@@ -510,7 +510,7 @@ export function LiveWorkoutScreen({ live }: LiveWorkoutScreenProps) {
     leaving.current = true;
     cancelRestAlert();
     write("Séance terminée", finishMutations(data, environment.now()));
-    router.replace({ pathname: "/session/[id]/review", params: { id: sessionId } });
+    router.replace({ pathname: "/session/[id]/review", params: { id: sessionId, attach: "1" } });
   };
 
   const toggleTheme = (): void => {

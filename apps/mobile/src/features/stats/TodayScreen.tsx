@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { ReactNode } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { router } from "expo-router";
+import { asc, eq } from "drizzle-orm";
 import {
   addDays,
   completedSessions,
@@ -23,11 +24,11 @@ import {
   weekSummary,
 } from "@obnixe/core";
 import type { NextSlot, OpenSession, PainCarry, PlanItem, SessionSuggestion, TodayNotices } from "@obnixe/core";
-import { settings, sportPreference, sports } from "@obnixe/schema";
+import { programItem, programVariant, settings, sportPreference, sports } from "@obnixe/schema";
 import type { Archetype, Id, LocalDate, ProgramSlot, SportKey, SportPreference } from "@obnixe/schema";
 import { db } from "@/data/database";
 import { useUndoableWrite } from "@/data/write";
-import { ControlButton, PrimaryButton } from "@/ui/Button";
+import { ControlButton, LinkButton, PrimaryButton } from "@/ui/Button";
 import { PainMark, Segmented } from "@/ui/Controls";
 import { Icon } from "@/ui/icons/Icon";
 import type { IconName } from "@/ui/icons/Icon";
@@ -111,7 +112,7 @@ function startSlot(slot: ProgramSlot, variantId: Id | null): void {
       return;
     case "itemized":
     case "continuous":
-      if (slot.sport === "climb") router.push({ pathname: "/climb/[id]", params: { id: "new" } });
+      if (slot.sport === "climb") router.push({ pathname: "/climb/[id]", params: { id: "new", slotId: slot.id } });
       else router.push({ pathname: "/log", params: { sport: slot.sport, slotId: slot.id } });
       return;
     default: {
@@ -149,6 +150,7 @@ export function TodayScreen() {
   const data = useTodayData(today);
   const write = useUndoableWrite();
   const [noticesOpen, setNoticesOpen] = useState(false);
+  const [othersOpen, setOthersOpen] = useState(false);
   const [chosenVariant, setChosenVariant] = useState<Id | null>(null);
   const variantId = effectiveVariant(data.next, chosenVariant);
   const isEmpty = data.open === null && data.programId === null;
@@ -196,7 +198,10 @@ export function TodayScreen() {
             )}
           </Card>
         ) : (
-          <NextCard next={data.next} variantId={variantId} onVariant={setChosenVariant} notices={data.notices} today={today} onOpenNotices={() => setNoticesOpen(true)} />
+          <>
+            <NextCard next={data.next} variantId={variantId} onVariant={setChosenVariant} notices={data.notices} today={today} onOpenNotices={() => setNoticesOpen(true)} />
+            {data.next.cycle.some((entry) => entry.state.kind === "pending") ? <LinkButton label="Autre séance du programme" onPress={() => setOthersOpen(true)} style={styles.otherSlots} /> : null}
+          </>
         )}
 
         <Section title={isEmpty ? "Noter une activité" : "Hors programme"}>
@@ -221,6 +226,17 @@ export function TodayScreen() {
       ) : null}
 
       <NoticesSheet open={noticesOpen} notices={data.notices} today={today} onClose={() => setNoticesOpen(false)} />
+      {data.next === null ? null : (
+        <OtherSlotsSheet
+          open={othersOpen && data.open === null}
+          next={data.next}
+          onClose={() => setOthersOpen(false)}
+          onStart={(slot, chosen) => {
+            setOthersOpen(false);
+            startSlot(slot, chosen);
+          }}
+        />
+      )}
     </View>
   );
 }
@@ -592,6 +608,80 @@ function reviewLabel(date: LocalDate, today: LocalDate): string {
   return `Bilan du ${shortDate(date)}`;
 }
 
+interface VariantSummary {
+  readonly id: Id;
+  readonly name: string;
+  readonly exerciseCount: number;
+  readonly durationSeconds: number | null;
+}
+
+interface OtherSlot {
+  readonly slot: ProgramSlot;
+  readonly variants: readonly VariantSummary[];
+}
+
+function otherSlots(next: NextSlot): OtherSlot[] {
+  const database = db();
+  return next.cycle
+    .filter((entry) => entry.state.kind === "pending")
+    .map(({ slot }) => ({
+      slot,
+      variants: database
+        .select()
+        .from(programVariant)
+        .where(eq(programVariant.slotId, slot.id))
+        .orderBy(asc(programVariant.position))
+        .all()
+        .map((variant) => {
+          const items = database.select().from(programItem).where(eq(programItem.variantId, variant.id)).all();
+          return { id: variant.id, name: variant.name, exerciseCount: items.length, durationSeconds: estimatedSlotSeconds(slot, items) };
+        }),
+    }));
+}
+
+function otherSlotDetail(other: OtherSlot, variant: VariantSummary | null): string {
+  const duration = variant?.durationSeconds ?? other.slot.targetDurationSeconds;
+  const parts = variant === null ? [sportLabel(other.slot.sport)] : [plural(variant.exerciseCount, "exercice")];
+  if (duration !== null) parts.push(formatDuration(duration));
+  return parts.join(" · ");
+}
+
+interface OtherSlotsSheetProps {
+  readonly open: boolean;
+  readonly next: NextSlot;
+  readonly onClose: () => void;
+  readonly onStart: (slot: ProgramSlot, variantId: Id | null) => void;
+}
+
+function OtherSlotsSheet({ open, next, onClose, onStart }: OtherSlotsSheetProps) {
+  const others = useLiveValue(() => otherSlots(next), ["program_variant", "program_item"], [next]);
+  const [chosen, setChosen] = useState<Readonly<Record<Id, Id>>>({});
+  return (
+    <Sheet open={open} title="Autre séance du programme" context={`Cochée dans ce cycle · ${next.slot.name} reste la prochaine`} onClose={onClose}>
+      <View style={styles.menu}>
+        {others.map((other) => {
+          const variant = other.variants.find((item) => item.id === chosen[other.slot.id]) ?? other.variants[0] ?? null;
+          return (
+            <View key={other.slot.id}>
+              <MenuItem
+                label={variant === null || other.variants.length < 2 ? other.slot.name : `${other.slot.name} · ${variant.name}`}
+                detail={otherSlotDetail(other, variant)}
+                leading={<SportIcon sport={other.slot.sport} variant="badge" label={sportLabel(other.slot.sport)} />}
+                onPress={() => onStart(other.slot, variant?.id ?? null)}
+              />
+              {other.variants.length > 1 && variant !== null ? (
+                <View style={styles.otherVariants} accessibilityLabel={`Variante de ${other.slot.name}`}>
+                  <Segmented<Id> options={other.variants.map((item) => ({ value: item.id, label: item.name }))} value={variant.id} onChange={(value) => setChosen({ ...chosen, [other.slot.id]: value })} />
+                </View>
+              ) : null}
+            </View>
+          );
+        })}
+      </View>
+    </Sheet>
+  );
+}
+
 interface NoticesSheetProps {
   readonly open: boolean;
   readonly notices: TodayNotices;
@@ -683,4 +773,6 @@ const styles = StyleSheet.create({
   otherLabel: { flex: 1 },
   bottomPanel: { position: "absolute", left: 0, right: 0, bottom: 0, paddingHorizontal: layout.gutter, paddingVertical: 10 },
   menu: { marginTop: 8 },
+  otherSlots: { alignSelf: "flex-start", marginTop: 6, marginLeft: -10 },
+  otherVariants: { paddingBottom: 12 },
 });

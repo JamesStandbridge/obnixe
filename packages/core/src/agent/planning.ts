@@ -7,6 +7,7 @@ import { trackedZones } from "../activity/pain.ts";
 import { exerciseZones, lastSessionBySlotLineage, latestZonePain, worstPain, zonePainWindowMs } from "../programs/queries.ts";
 import type { LatestZonePain } from "../programs/queries.ts";
 import { currentProgram, nextSlot } from "../rotation.ts";
+import type { CycleSlot } from "../rotation.ts";
 import { todayCheckIn } from "../stats/checkin.ts";
 import { completedSessions } from "../stats/sessions.ts";
 import { estimatedSlotSeconds, openSession } from "../stats/today.ts";
@@ -118,6 +119,24 @@ function planVariant(context: PlanningContext, slot: ProgramSlot, variant: Progr
   };
 }
 
+function cycleJson(entry: CycleSlot, index: number): Json {
+  const base = { position: index + 1, lineageId: entry.slot.lineageId, name: entry.slot.name, sport: entry.slot.sport };
+  const { state } = entry;
+  switch (state.kind) {
+    case "done":
+      return { ...base, state: state.kind, sessionId: state.sessionId, localDate: state.localDate };
+    case "skipped":
+      return { ...base, state: state.kind, sessionId: null, localDate: state.localDate };
+    case "next":
+    case "pending":
+      return { ...base, state: state.kind, sessionId: null, localDate: null };
+    default: {
+      const unreachable: never = state;
+      throw new Error(`Unhandled cycle state ${String(unreachable)}`);
+    }
+  }
+}
+
 export function getNextSession(db: ObnixeDatabase, env: AgentEnvironment): ToolResult {
   const now = env.now();
   const today = localDateOf(now, env.timeZone);
@@ -125,14 +144,14 @@ export function getNextSession(db: ObnixeDatabase, env: AgentEnvironment): ToolR
   const checkIn = todayCheckIn(db, today).checkIn;
   const base = { today, openSession: openJson(open), checkIn: checkIn === null ? null : { energy: checkIn.energy, sleep: checkIn.sleep } };
   const current = currentProgram(db);
-  if (current === null) return { kind: "read", summary: "Prochaine séance", data: { ...base, program: null, week: null, next: null, after: null, painOnLoadedZones: [] } };
+  if (current === null) return { kind: "read", summary: "Prochaine séance", data: { ...base, program: null, week: null, next: null, after: null, cycle: [], painOnLoadedZones: [] } };
 
   const monday = mondayOf(today);
   const week = weekSummary(today, completedSessions(db, { from: monday, to: addDays(monday, 6) }), current.version.sessionsPerWeek);
   const program = { id: current.program.id, name: current.version.name, versionNumber: current.version.number, sessionsPerWeek: current.version.sessionsPerWeek };
   const weekJson = { monday, sessionsDone: week.sessionsDone, sessionsPlanned: week.sessionsPlanned, today: week.days.find((day) => day.isToday)?.state ?? "rest" };
   const next = nextSlot(db);
-  if (next === null) return { kind: "read", summary: "Aucune séance prévue", data: { ...base, program, week: weekJson, next: null, after: null, painOnLoadedZones: [] } };
+  if (next === null) return { kind: "read", summary: "Aucune séance prévue", data: { ...base, program, week: weekJson, next: null, after: null, cycle: [], painOnLoadedZones: [] } };
 
   const context: PlanningContext = {
     db,
@@ -171,6 +190,7 @@ export function getNextSession(db: ObnixeDatabase, env: AgentEnvironment): ToolR
         variants: variants.map((variant) => variant.json),
       },
       after: next.after === null ? null : { lineageId: next.after.lineageId, name: next.after.name, sport: next.after.sport },
+      cycle: next.cycle.map(cycleJson),
       painOnLoadedZones,
     },
   };

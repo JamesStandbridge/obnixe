@@ -4,18 +4,20 @@ import { router } from "expo-router";
 import { ZodError } from "zod";
 import {
   AlreadyRevertedError,
+  attachableSlots,
   correctSetMutations,
   deleteSetMutations,
   DependentRowsError,
   InvalidSetError,
   loadSessionReport,
   localDateOf,
+  nextSlot,
   RevertConflictError,
   sessionHistory,
 } from "@obnixe/core";
 import type { HistoryEntry, PainAnchor, SessionReport } from "@obnixe/core";
 import { sports } from "@obnixe/schema";
-import type { Id, PainPhase } from "@obnixe/schema";
+import type { Id, PainPhase, ProgramSlot, Session } from "@obnixe/schema";
 import { db, environment } from "@/data/database";
 import { undo, useUndoableWrite, write } from "@/data/write";
 import { effortLabels, formatDay, formatLongDate, formatMass, formatTime, sensationPhrases } from "@/features/training/format";
@@ -33,6 +35,8 @@ import { SetSheet } from "@/features/training/detail/SetSheet";
 import type { SetTarget } from "@/features/training/detail/SetSheet";
 import { climbItemWord, fieldValueText, shortTitle, timeRange, titleSource } from "@/features/training/sessionText";
 import { useLiveLoad } from "@/features/training/useLiveLoad";
+import { positioned, SlotMenuItem, useAttachSession } from "@/features/training/attach";
+import type { PositionedSlot } from "@/features/training/attach";
 import { deviceTimeZone } from "@/format/dates";
 import { useMassUnit } from "@/data/settings";
 import { setText } from "@/features/training/workout/liveWorkout";
@@ -54,12 +58,19 @@ import { goBack } from "@/ui/navigation";
 interface DetailData {
   readonly report: SessionReport;
   readonly history: readonly HistoryEntry[];
+  readonly attachable: readonly PositionedSlot[];
+}
+
+function attachableFor(current: Session): readonly PositionedSlot[] {
+  if (current.status !== "completed") return [];
+  const next = nextSlot(db());
+  return next === null ? [] : positioned(next.cycle, attachableSlots(next, current.sport));
 }
 
 function loadDetail(sessionId: Id): DetailData | null {
   const report = loadSessionReport(db(), sessionId, environment.now());
   if (report === null) return null;
-  return { report, history: sessionHistory(db(), sessionId) };
+  return { report, history: sessionHistory(db(), sessionId), attachable: attachableFor(report.data.session) };
 }
 
 interface SessionDetailScreenProps {
@@ -162,13 +173,15 @@ function Detail({ data }: DetailProps) {
   const unit = useMassUnit();
   const notify = useSnackbar();
   const undoableWrite = useUndoableWrite();
-  const { report, history } = data;
+  const attach = useAttachSession();
+  const { report, history, attachable } = data;
   const { session } = report.data;
   const now = environment.now();
   const today = localDateOf(now, deviceTimeZone());
   const [more, setMore] = useState(false);
   const [editing, setEditing] = useState(false);
   const [dating, setDating] = useState(false);
+  const [attaching, setAttaching] = useState(false);
   const [setTarget, setSetTarget] = useState<SetTarget | null>(null);
   const title = sessionTitle(titleSource(report));
   const sport = sports[session.sport];
@@ -256,6 +269,12 @@ function Detail({ data }: DetailProps) {
       message: counts ? "Compte dans la rotation" : "Ne compte plus dans la rotation",
       ...placement,
     });
+  };
+
+  const attachTo = (slot: ProgramSlot | null): void => {
+    setAttaching(false);
+    if (slot !== null && slot.id === session.slotId && session.countsInRotation) return;
+    attach({ session, slot, title, extraOffset: 0 });
   };
 
   const remove = (): void => {
@@ -439,8 +458,26 @@ function Detail({ data }: DetailProps) {
               }}
             />
           ) : null}
+          {!completed || (attachable.length === 0 && session.slotId === null) ? null : (
+            <MenuItem
+              label="Rattacher au programme"
+              detail={report.data.slot === null ? "hors programme" : lowerFirst(report.data.slot.name)}
+              onPress={() => {
+                setMore(false);
+                setAttaching(true);
+              }}
+            />
+          )}
           {session.slotId === null ? null : <MenuItem label={session.countsInRotation ? "Ne pas compter dans la rotation" : "Compter dans la rotation"} onPress={toggleRotation} />}
           <MenuItem label="Supprimer la séance" detail="30 jours dans la corbeille" onPress={remove} />
+        </View>
+      </Sheet>
+      <Sheet open={attaching} title="Rattacher au programme" context={`${sport.label} · cochée pour le cycle en cours`} onClose={() => setAttaching(false)}>
+        <View style={styles.menu}>
+          {attachable.map((slot) => (
+            <SlotMenuItem key={slot.entry.slot.id} slot={slot} today={today} current={slot.entry.slot.id === session.slotId && session.countsInRotation} onPress={() => attachTo(slot.entry.slot)} />
+          ))}
+          {session.slotId === null ? null : <MenuItem label="Hors programme" detail="Ne compte plus dans la rotation" onPress={() => attachTo(null)} />}
         </View>
       </Sheet>
       <EditSheet open={editing} session={session} placeholder={title} unit={unit} onClose={() => setEditing(false)} onSave={saveFields} />
