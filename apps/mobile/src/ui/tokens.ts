@@ -1,4 +1,5 @@
 import type { TextStyle } from "react-native";
+import type { SportKey } from "@obnixe/schema";
 
 export interface Palette {
   readonly bg: string;
@@ -23,6 +24,7 @@ export interface Palette {
   readonly snackbarBg: string;
   readonly snackbarInk: string;
   readonly sheetBg: string;
+  readonly sport: Readonly<Record<SportKey, string>>;
 }
 
 export type PaletteName = "dark" | "sunlight";
@@ -51,6 +53,7 @@ export const palettes: Readonly<Record<PaletteName, Palette>> = {
     snackbarBg: "#ebeff2",
     snackbarInk: "#0c1013",
     sheetBg: "#161a1e",
+    sport: { strength: "#8fb3ff", run: "#ff7a45", hike: "#d2ad6b", swim: "#3fd0e0", bike: "#ff6f9c", climb: "#5ad991", yoga: "#c8a4ff" },
   },
   sunlight: {
     bg: "#f5f7f9",
@@ -75,8 +78,14 @@ export const palettes: Readonly<Record<PaletteName, Palette>> = {
     snackbarBg: "#13161a",
     snackbarInk: "#eff2f5",
     sheetBg: "#f5f7f9",
+    sport: { strength: "#2c56c9", run: "#c4420c", hike: "#8a5f18", swim: "#00788a", bike: "#bd1f5c", climb: "#11804a", yoga: "#7440c0" },
   },
 };
+
+/** Expects a #rrggbb color. */
+export function wash(color: string, alpha = 0.16): string {
+  return `${color}${Math.round(alpha * 255).toString(16).padStart(2, "0")}`;
+}
 
 export const radii = { control: 8, panel: 12, sheet: 20, tag: 4 } as const;
 
