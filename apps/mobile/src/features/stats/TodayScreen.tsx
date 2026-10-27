@@ -657,7 +657,7 @@ function OtherSlotsSheet({ open, next, onClose, onStart }: OtherSlotsSheetProps)
   const others = useLiveValue(() => otherSlots(next), ["program_variant", "program_item"], [next]);
   const [chosen, setChosen] = useState<Readonly<Record<Id, Id>>>({});
   return (
-    <Sheet open={open} title="Autre séance du programme" context={`Cochée dans ce cycle · ${next.slot.name} reste la prochaine`} onClose={onClose}>
+    <Sheet open={open} title="Autre séance du programme" context={`Elle sera cochée pour ce cycle, ${next.slot.name} restera la prochaine`} onClose={onClose}>
       <View style={styles.menu}>
         {others.map((other) => {
           const variant = other.variants.find((item) => item.id === chosen[other.slot.id]) ?? other.variants[0] ?? null;
