@@ -1,15 +1,13 @@
 import { Platform } from "react-native";
-import {
-  AndroidImportance,
-  cancelScheduledNotificationAsync,
-  getPermissionsAsync,
-  requestPermissionsAsync,
-  scheduleNotificationAsync,
-  SchedulableTriggerInputTypes,
-  setNotificationChannelAsync,
-  setNotificationHandler,
-} from "expo-notifications";
-import type { NotificationPermissionsStatus } from "expo-notifications";
+// The package index loads the push topic module, which Expo Go on Android does not ship, so local notification APIs are imported from their own files.
+import { cancelScheduledNotificationAsync } from "expo-notifications/build/cancelScheduledNotificationAsync";
+import { AndroidImportance } from "expo-notifications/build/NotificationChannelManager.types";
+import { getPermissionsAsync, requestPermissionsAsync } from "expo-notifications/build/NotificationPermissions";
+import type { NotificationPermissionsStatus } from "expo-notifications/build/NotificationPermissions.types";
+import { SchedulableTriggerInputTypes } from "expo-notifications/build/Notifications.types";
+import { setNotificationHandler } from "expo-notifications/build/NotificationsHandler";
+import { scheduleNotificationAsync } from "expo-notifications/build/scheduleNotificationAsync";
+import { setNotificationChannelAsync } from "expo-notifications/build/setNotificationChannelAsync";
 
 export type RestAlertPermission = "granted" | "denied" | "ask";
 
