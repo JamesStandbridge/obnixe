@@ -1,18 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-  <rect width="1024" height="1024" fill="#0c1013"/>
-  <g transform="translate(512 512) scale(0.9) translate(-512 -512)">
-    <path d="M702.82 280.51A300 300 0 1 1 617.06 231" fill="none" stroke="#ebeff2" stroke-width="84"/>
-    <path d="M597 364.78L683 215.82" stroke="#e5ed32" stroke-width="52"/>
-    <path d="M512 326L512 280" stroke="#888d92" stroke-width="18"/>
-    <path d="M688.67 410L712.92 396" stroke="#888d92" stroke-width="14"/>
-    <path d="M698 512L744 512" stroke="#888d92" stroke-width="18"/>
-    <path d="M688.67 614L712.92 628" stroke="#888d92" stroke-width="14"/>
-    <path d="M614 688.67L628 712.92" stroke="#888d92" stroke-width="14"/>
-    <path d="M512 698L512 744" stroke="#888d92" stroke-width="18"/>
-    <path d="M410 688.67L396 712.92" stroke="#888d92" stroke-width="14"/>
-    <path d="M335.33 614L311.08 628" stroke="#888d92" stroke-width="14"/>
-    <path d="M326 512L280 512" stroke="#888d92" stroke-width="18"/>
-    <path d="M335.33 410L311.08 396" stroke="#888d92" stroke-width="14"/>
-    <path d="M410 335.33L396 311.08" stroke="#888d92" stroke-width="14"/>
-  </g>
+  <rect width="1024" height="1024" fill="#e5ed32"/>
+  <path d="M384.00 480.28 L472.00 457.40 L472.00 478.40 L640.00 434.72 L640.00 543.72 L552.00 566.60 L552.00 545.60 L384.00 589.28 Z" fill="#6f7414"/>
+  <path d="M228.00 237.84 L447.00 180.90 L517.00 250.70 L316.00 302.96 L316.00 664.96 L552.00 603.60 L552.00 563.60 L640.00 540.72 L640.00 668.72 L228.00 775.84 Z M796.00 786.16 L577.00 843.10 L507.00 773.30 L708.00 721.04 L708.00 359.04 L472.00 420.40 L472.00 460.40 L384.00 483.28 L384.00 355.28 L796.00 248.16 Z" fill="#0c1013"/>
 </svg>
