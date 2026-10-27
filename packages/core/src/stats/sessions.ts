@@ -1,9 +1,8 @@
 import { and, asc, eq, gte, inArray, isNotNull, isNull, lte, ne } from "drizzle-orm";
 import { agentConnection, change, changeset, exercise, painReport, programSlot, programVariant, session, sessionItem, strengthEntry, strengthSet } from "@obnixe/schema";
-import type { Effort, EpochMs, FieldValues, Id, LocalDate, PainLevel, ReviewStatus, Session, SportKey, StrengthSet, ZoneKey } from "@obnixe/schema";
+import type { Effort, EpochMs, Exercise, FieldValues, Id, LocalDate, PainLevel, ReviewStatus, Session, SportKey, StrengthSet, ZoneKey } from "@obnixe/schema";
 import type { ObnixeDatabase } from "../database.ts";
 import { setVolumeGrams, totalLoadGrams } from "../training/load.ts";
-import type { ExerciseLoad } from "../training/load.ts";
 
 export type ReportedPainLevel = Exclude<PainLevel, "none">;
 
@@ -32,11 +31,11 @@ export interface SessionSummary {
   readonly addedBy: string | null;
 }
 
-export interface StrengthDigestExercise {
+export interface StrengthDigestExercise extends Pick<Exercise, "equipment" | "loadMode" | "baseGrams"> {
   readonly name: string;
   readonly sets: number;
   readonly volumeGrams: number;
-  /** Heaviest set by total load (see totalLoadGrams), ties broken by reps. */
+  /** Load of the heaviest set as logged, read through loadMode; the set is picked by total load (see totalLoadGrams), ties broken by reps. */
   readonly topLoadGrams: number | null;
   readonly topReps: number | null;
   readonly topDurationSeconds: number | null;
@@ -109,6 +108,7 @@ export function completedSessions(db: ObnixeDatabase, range: SessionRange = {}):
           sessionId: strengthEntry.sessionId,
           entryId: strengthEntry.id,
           name: exercise.name,
+          equipment: exercise.equipment,
           loadMode: exercise.loadMode,
           baseGrams: exercise.baseGrams,
           loadGrams: strengthSet.loadGrams,
@@ -166,7 +166,7 @@ export function completedSessions(db: ObnixeDatabase, range: SessionRange = {}):
   }));
 }
 
-interface DigestSet extends ExerciseLoad, Pick<StrengthSet, "loadGrams" | "reps" | "durationSeconds"> {
+interface DigestSet extends Pick<Exercise, "equipment" | "loadMode" | "baseGrams">, Pick<StrengthSet, "loadGrams" | "reps" | "durationSeconds"> {
   readonly entryId: Id;
   readonly name: string;
 }
@@ -184,9 +184,12 @@ function strengthDigest(sets: readonly DigestSet[]): StrengthDigest | null {
     const top = entrySets.reduce((best, set) => (isHeavier(set, best) ? set : best));
     return {
       name: top.name,
+      equipment: top.equipment,
+      loadMode: top.loadMode,
+      baseGrams: top.baseGrams,
       sets: entrySets.length,
       volumeGrams: entrySets.reduce((total, set) => total + setVolumeGrams(set, set), 0),
-      topLoadGrams: totalLoadGrams(top.loadGrams, top),
+      topLoadGrams: top.loadGrams,
       topReps: top.reps,
       topDurationSeconds: top.durationSeconds,
     };

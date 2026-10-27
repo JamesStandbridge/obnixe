@@ -17,7 +17,7 @@ import { durationFigure, effortLabel, painWords, rowDate } from "@/features/stat
 import { DetailLine } from "@/features/stats/parts";
 import { distanceFigure, formatRatio, itemNoun, sportLabel } from "@/features/stats/presentation";
 import { openSession, sessionFlagParts } from "@/features/stats/SessionRow";
-import { formatMass } from "@/features/training/format";
+import { formatMass, perLoadLabel } from "@/features/training/format";
 
 const shownExercises = 3;
 const shownClimbs = 14;
@@ -91,7 +91,9 @@ function cardStats(summary: SessionSummary, unit: MassUnit): StatValue[] {
 function setsText(item: StrengthDigestExercise, unit: MassUnit): string {
   const effort = item.topReps !== null ? formatInteger(item.topReps) : item.topDurationSeconds !== null ? (item.topDurationSeconds < 60 ? `${item.topDurationSeconds} s` : formatClock(item.topDurationSeconds)) : null;
   const sets = effort === null ? plural(item.sets, "série") : `${formatInteger(item.sets)} × ${effort}`;
-  return item.topLoadGrams === null || item.topLoadGrams === 0 ? sets : `${sets} · ${formatMass(item.topLoadGrams, unit)} ${unit}`;
+  if (item.topLoadGrams === null || item.topLoadGrams === 0) return sets;
+  const per = perLoadLabel(item);
+  return `${sets} · ${formatMass(item.topLoadGrams, unit)} ${unit}${per === null ? "" : ` ${per}`}`;
 }
 
 interface StrengthSignatureProps {
@@ -104,9 +106,8 @@ function StrengthSignature({ digest, unit, tone }: StrengthSignatureProps) {
   const { colors } = useTheme();
   const byVolume = digest.volumeGrams > 0;
   const weight = (item: StrengthDigestExercise): number => (byVolume ? item.volumeGrams : item.sets);
-  const ranked = [...digest.exercises].sort((left, right) => weight(right) - weight(left));
-  const top = ranked.slice(0, shownExercises);
-  const max = Math.max(1, ...top.map(weight));
+  const top = digest.exercises.slice(0, shownExercises);
+  const max = Math.max(1, ...digest.exercises.map(weight));
   const hidden = digest.exercises.length - top.length;
   return (
     <View style={styles.exercises}>

@@ -10,6 +10,15 @@ beforeEach(() => {
 });
 
 describe("strength digest", () => {
+  it("picks the top set by total load but reports it as logged", () => {
+    const row = seed.exercise("Rowing haltère", "load_reps", [], { loadMode: "per_hand", baseGrams: null });
+    seed.session({ sport: "strength", date: "2026-10-20", entries: [{ exerciseId: row, sets: [{ kg: 24, reps: 6 }, { kg: 26, reps: 4 }, { kg: 26, reps: 5 }] }] });
+    const exercise = completedSessions(seed.context.db)[0]?.strength?.exercises[0];
+    expect(exercise?.topLoadGrams).toBe(26_000);
+    expect(exercise?.topReps).toBe(5);
+    expect(exercise?.volumeGrams).toBe(48_000 * 6 + 52_000 * 9);
+  });
+
   it("sums completed sets and volume per exercise in session order, honoring load modes", () => {
     const squat = seed.exercise("Squat barre");
     const curl = seed.exercise("Curl haltères", "load_reps", [], { loadMode: "per_hand", baseGrams: null });
@@ -26,9 +35,9 @@ describe("strength digest", () => {
     const strength = completedSessions(seed.context.db)[0]?.strength;
     expect(strength?.sets).toBe(6);
     expect(strength?.exercises).toEqual([
-      { name: "Squat barre", sets: 3, volumeGrams: 70_000 * 5 + 75_000 * 5 + 75_000 * 4, topLoadGrams: 75_000, topReps: 5, topDurationSeconds: null },
-      { name: "Curl haltères", sets: 2, volumeGrams: 24_000 * 22, topLoadGrams: 24_000, topReps: 12, topDurationSeconds: null },
-      { name: "Développé EZ", sets: 1, volumeGrams: 40_000 * 8, topLoadGrams: 40_000, topReps: 8, topDurationSeconds: null },
+      { name: "Squat barre", equipment: "barbell", loadMode: "total", baseGrams: null, sets: 3, volumeGrams: 70_000 * 5 + 75_000 * 5 + 75_000 * 4, topLoadGrams: 75_000, topReps: 5, topDurationSeconds: null },
+      { name: "Curl haltères", equipment: "barbell", loadMode: "per_hand", baseGrams: null, sets: 2, volumeGrams: 24_000 * 22, topLoadGrams: 12_000, topReps: 12, topDurationSeconds: null },
+      { name: "Développé EZ", equipment: "barbell", loadMode: "per_side", baseGrams: 10_000, sets: 1, volumeGrams: 40_000 * 8, topLoadGrams: 15_000, topReps: 8, topDurationSeconds: null },
     ]);
     expect(strength?.volumeGrams).toBe(1_025_000 + 528_000 + 320_000);
   });
@@ -44,8 +53,8 @@ describe("strength digest", () => {
       sets: 4,
       volumeGrams: 0,
       exercises: [
-        { name: "Tractions", sets: 2, volumeGrams: 0, topLoadGrams: null, topReps: 8, topDurationSeconds: null },
-        { name: "Gainage", sets: 2, volumeGrams: 0, topLoadGrams: null, topReps: null, topDurationSeconds: 60 },
+        { name: "Tractions", equipment: "bodyweight", loadMode: "total", baseGrams: null, sets: 2, volumeGrams: 0, topLoadGrams: null, topReps: 8, topDurationSeconds: null },
+        { name: "Gainage", equipment: "bodyweight", loadMode: "total", baseGrams: null, sets: 2, volumeGrams: 0, topLoadGrams: null, topReps: null, topDurationSeconds: 60 },
       ],
     });
     expect(interrupted?.strength).toBeNull();
