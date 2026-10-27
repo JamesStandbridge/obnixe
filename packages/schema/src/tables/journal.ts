@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import { check, index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import type { AnySQLiteColumn } from "drizzle-orm/sqlite-core";
 import { id, ref, timestamp } from "../columns.ts";
 import { agentCallKinds, authors, changeOperations, connectionEndReasons, journaledTables } from "../enums.ts";
 
@@ -28,6 +29,8 @@ export const changeset = sqliteTable(
     connectionId: ref("connection_id").references(() => agentConnection.id),
     summary: text("summary").notNull(),
     revertsId: ref("reverts_id"),
+    // Changeset committed just before this one for rows it needs (exercises created by an agent session); undone with it when possible.
+    companionId: ref("companion_id").references((): AnySQLiteColumn => changeset.id),
     createdAt: timestamp("created_at").notNull(),
   },
   (t) => [

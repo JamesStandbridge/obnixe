@@ -1,6 +1,6 @@
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
-import { agentCall, changeset, exercise, exerciseZone, painReport, program, programItem, session, sessionItem, settings, strengthEntry, strengthSet } from "@obnixe/schema";
+import { agentCall, change, changeset, exercise, exerciseZone, painReport, program, programItem, session, sessionItem, settings, strengthEntry, strengthSet } from "@obnixe/schema";
 import type { EpochMs, Id, LocalDate, PainReport, Session } from "@obnixe/schema";
 import { trashItems } from "../data/trash.ts";
 import { createTestContext } from "../testing.ts";
@@ -314,7 +314,7 @@ describe("update_strength_session", () => {
     });
     const before = history();
 
-    ok("update_strength_session", {
+    const corrected = ok<{ createdExercises: { id: Id; name: string }[] }>("update_strength_session", {
       sessionId,
       exercises: [
         { exercise: "Rowing haltère", newExercise: { measure: "load_reps", equipment: "dumbbell" }, sets: [{ loadGrams: 24000, reps: 10 }] },
@@ -331,11 +331,15 @@ describe("update_strength_session", () => {
     const newFirst = context.db.select().from(strengthSet).where(eq(strengthSet.entryId, squat?.id ?? ("" as Id))).orderBy(asc(strengthSet.position)).get();
     expect(newFirst?.completedAt).toBe(firstSet.completedAt);
     expect(painOf(pain.id).strengthSetId).toBe(newFirst?.id);
-    expect(context.db.select().from(changeset).where(eq(changeset.summary, "Exercice ajouté · Rowing haltère")).get()?.author).toBe("agent");
+    const [rowing] = corrected.createdExercises;
+    if (rowing === undefined) throw new Error("No created exercise");
+    const created = context.db.select({ changesetId: change.changesetId }).from(change).where(and(eq(change.tableName, "exercise"), eq(change.rowId, rowing.id))).get();
+    expect(context.db.select({ companionId: changeset.companionId }).from(changeset).where(eq(changeset.id, lastCall().changesetId)).get()).toEqual({ companionId: created?.changesetId });
 
     undoLast();
     expect(history()).toEqual(before);
     expect(painOf(pain.id).strengthSetId).toBe(firstSet.id);
+    expect(context.db.select().from(exercise).where(eq(exercise.id, rowing.id)).get()).toBeUndefined();
   });
 
   it("refuses other sports, wrong sets and open sessions", () => {

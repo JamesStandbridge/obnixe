@@ -31,12 +31,86 @@ export interface RevertRequest {
   readonly restoredVersionSummary: (restoredNumber: number) => string;
 }
 
+interface ChainLink {
+  readonly revertsId: Id | null;
+  readonly companionId: Id | null;
+}
+
+function chainLink(db: ObnixeDatabase, changesetId: Id): ChainLink {
+  const link = db.select({ revertsId: changeset.revertsId, companionId: changeset.companionId }).from(changeset).where(eq(changeset.id, changesetId)).get();
+  if (link === undefined) throw new ChangesetNotFoundError(changesetId);
+  return link;
+}
+
+function revertedBy(db: ObnixeDatabase, changesetId: Id): Id | null {
+  return db.select({ id: changeset.id }).from(changeset).where(eq(changeset.revertsId, changesetId)).get()?.id ?? null;
+}
+
+interface ChainPosition {
+  readonly companionId: Id | null;
+  /** Reverts chained between the original changeset and this one: even while its effect is applied, odd while undone. */
+  readonly depth: number;
+}
+
+function chainPosition(db: ObnixeDatabase, changesetId: Id): ChainPosition {
+  let link = chainLink(db, changesetId);
+  let depth = 0;
+  while (link.revertsId !== null) {
+    link = chainLink(db, link.revertsId);
+    depth += 1;
+  }
+  return { companionId: link.companionId, depth };
+}
+
+interface ChainTip {
+  readonly tipId: Id;
+  readonly depth: number;
+}
+
+function chainTip(db: ObnixeDatabase, changesetId: Id): ChainTip {
+  let tipId = changesetId;
+  let depth = 0;
+  let next = revertedBy(db, tipId);
+  while (next !== null) {
+    tipId = next;
+    depth += 1;
+    next = revertedBy(db, tipId);
+  }
+  return { tipId, depth };
+}
+
+/**
+ * Reverts a changeset in a single transaction. When its original changeset has a companion (rows it needs), undoing
+ * also undoes the companion afterwards unless that revert conflicts, in which case the companion rows stay; redoing
+ * restores an undone companion first, since the redone rows need it.
+ */
 export function revert(db: ObnixeDatabase, env: Environment, request: RevertRequest): Id {
-  const { changesetId } = request;
+  return db.transaction((tx) => {
+    const position = chainPosition(tx, request.changesetId);
+    if (position.companionId === null) return revertOne(tx, env, request, request.changesetId);
+    const companion = chainTip(tx, position.companionId);
+    const companionApplied = companion.depth % 2 === 0;
+    if (position.depth % 2 === 1) {
+      if (!companionApplied) revertOne(tx, env, request, companion.tipId);
+      return revertOne(tx, env, request, request.changesetId);
+    }
+    const reverted = revertOne(tx, env, request, request.changesetId);
+    if (companionApplied) {
+      try {
+        revertOne(tx, env, request, companion.tipId);
+      } catch (error) {
+        if (!(error instanceof RevertConflictError)) throw error;
+      }
+    }
+    return reverted;
+  });
+}
+
+function revertOne(db: ObnixeDatabase, env: Environment, request: RevertRequest, changesetId: Id): Id {
   const target = db.select().from(changeset).where(eq(changeset.id, changesetId)).get();
   if (target === undefined) throw new ChangesetNotFoundError(changesetId);
-  const existing = db.select({ id: changeset.id }).from(changeset).where(eq(changeset.revertsId, changesetId)).get();
-  if (existing !== undefined) throw new AlreadyRevertedError(changesetId, existing.id);
+  const existing = revertedBy(db, changesetId);
+  if (existing !== null) throw new AlreadyRevertedError(changesetId, existing);
   const changes = db.select().from(change).where(eq(change.changesetId, changesetId)).orderBy(asc(change.sequence)).all();
   const plan = planRevert(changes, (table, rowId) => readRow(db, table, rowId));
   if (plan.conflicts.length > 0) throw new RevertConflictError(plan.conflicts);

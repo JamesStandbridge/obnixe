@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "a657e684-4408-4a8e-b011-8eba560caa5d",
+  "id": "c91e6202-f6e7-4dd4-91f8-b31b51489fc0",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "check_in": {
@@ -935,6 +935,13 @@
           "notNull": false,
           "autoincrement": false
         },
+        "companion_id": {
+          "name": "companion_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "integer",
@@ -966,6 +973,19 @@
           "tableTo": "agent_connection",
           "columnsFrom": [
             "connection_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "changeset_companion_id_changeset_id_fk": {
+          "name": "changeset_companion_id_changeset_id_fk",
+          "tableFrom": "changeset",
+          "tableTo": "changeset",
+          "columnsFrom": [
+            "companion_id"
           ],
           "columnsTo": [
             "id"
