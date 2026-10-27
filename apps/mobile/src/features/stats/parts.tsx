@@ -92,6 +92,7 @@ function DetailPiece({ part }: { readonly part: DetailPart }) {
 export interface ChipOption<T extends string> {
   readonly value: T;
   readonly label: string;
+  readonly sport?: SportKey;
 }
 
 interface FilterChipsProps<T extends string> {
@@ -129,6 +130,7 @@ export function FilterChips<T extends string>({ label, options, value, onChange 
               },
             ]}
           >
+            {option.sport === undefined ? null : <SmallSportIcon sport={option.sport} color={colors.sport[option.sport]} size={16} />}
             <Text variant="label" tone={selected ? "primary" : "secondary"} style={selected ? styles.chipSelected : undefined}>
               {option.label}
             </Text>
@@ -181,6 +183,6 @@ const styles = StyleSheet.create({
   pain: { flexDirection: "row", alignItems: "center", gap: 6 },
   chipsScroll: { marginHorizontal: -layout.gutter, flexGrow: 0 },
   chips: { paddingHorizontal: layout.gutter, gap: 6 },
-  chip: { minHeight: 48, paddingHorizontal: 16, borderRadius: radii.control, alignItems: "center", justifyContent: "center" },
+  chip: { minHeight: 48, paddingHorizontal: 16, borderRadius: radii.control, flexDirection: "row", gap: 6, alignItems: "center", justifyContent: "center" },
   chipSelected: { fontFamily: fonts.text700 },
 });

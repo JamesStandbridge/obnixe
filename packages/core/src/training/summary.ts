@@ -2,7 +2,7 @@ import type { EpochMs, FieldValue, LocalDate, SessionItem, StrengthSet } from "@
 import { activeSeconds } from "../activity/freeSession.ts";
 import { parseGrade } from "../stats/indicators.ts";
 import type { Grade } from "../stats/indicators.ts";
-import { totalLoadGrams } from "./load.ts";
+import { setVolumeGrams, totalLoadGrams } from "./load.ts";
 import type { ExerciseLoad } from "./load.ts";
 import type { PreviousPerformance, Progression } from "./progression.ts";
 import type { WorkoutData, WorkoutExercise } from "./workout.ts";
@@ -42,9 +42,9 @@ export function strengthSummary(data: WorkoutData, now: EpochMs): StrengthSummar
       if (set.restBeforeSeconds !== null) rests.push(set.restBeforeSeconds);
       if (set.interrupted) continue;
       setsDone += 1;
+      volumeGrams += setVolumeGrams(set, candidate.exercise);
       const total = totalLoadGrams(set.loadGrams, candidate.exercise);
       if (set.loadGrams === null || total === null || set.reps === null) continue;
-      volumeGrams += total * set.reps;
       const estimate = estimatedOneRepMax(total, set.reps);
       if (best === null || estimate > best.estimatedOneRepMaxGrams) {
         best = { entryId: candidate.entry.id, loadGrams: set.loadGrams, totalLoadGrams: total, reps: set.reps, estimatedOneRepMaxGrams: estimate };
@@ -117,7 +117,7 @@ export interface ClimbBreakdown {
 
 const separateGrades = 3;
 
-export function climbBreakdown(items: readonly SessionItem[]): ClimbBreakdown {
+export function climbBreakdown(items: readonly Pick<SessionItem, "values">[]): ClimbBreakdown {
   const parsed = items.map((item) => ({ grade: parseGrade(item.values.grade), result: item.values.result, attempts: typeof item.values.attempts === "number" ? item.values.attempts : 0 }));
   const isSent = (result: FieldValue | undefined): boolean => result === "sent" || result === "flash";
   let maxSent: Grade | null = null;

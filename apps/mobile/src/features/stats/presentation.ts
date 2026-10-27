@@ -30,7 +30,7 @@ export function formatRatio(indicator: Extract<IndicatorDefinition, { type: "rat
   return { value: formatNumber(value, 2), unit: "" };
 }
 
-function itemNoun(sport: SportKey, values: FieldValues): string {
+export function itemNoun(sport: SportKey, values: FieldValues): string {
   if (sport === "climb") return values.discipline === "lead" || values.discipline === "top_rope" ? "voie" : "bloc";
   return "passage";
 }
@@ -97,7 +97,7 @@ export function sessionFigure(summary: SessionSummary): SessionFigure {
   const duration = summary.durationSeconds === null ? null : durationFigure(summary.durationSeconds);
   switch (sport.archetype) {
     case "strength": {
-      const details = [summary.strengthSets > 0 ? plural(summary.strengthSets, "série") : null, summary.effort === null ? null : effortLabel(summary.effort)];
+      const details = [summary.strength === null ? null : plural(summary.strength.sets, "série"), summary.effort === null ? null : effortLabel(summary.effort)];
       return { figure: duration, details: details.filter((part): part is string => part !== null) };
     }
     case "itemized": {
