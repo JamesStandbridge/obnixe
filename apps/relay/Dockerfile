@@ -4,6 +4,8 @@ WORKDIR /repo
 RUN npm install --global pnpm@11.20.0
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
 COPY patches patches
+COPY packages/core/package.json packages/core/
+COPY packages/core/src/agent/limits.ts packages/core/src/agent/
 COPY apps/relay/package.json apps/relay/
 RUN pnpm install --frozen-lockfile --filter obnixe-relay
 COPY apps/relay apps/relay

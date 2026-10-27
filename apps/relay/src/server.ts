@@ -4,19 +4,28 @@ import type { AddressInfo } from "node:net";
 import type { Duplex } from "node:stream";
 import { WebSocketServer } from "ws";
 import type { RawData, WebSocket } from "ws";
+import { maxFrameBytes, maxRelayMessageBytes } from "@obnixe/core/agent/limits";
 import { clientAddress } from "./address.ts";
 import { TokenBucket } from "./bucket.ts";
 import { parseClientMessage, relayVersion } from "./messages.ts";
 import type { BridgeNotice, ClientMessage, PhoneNotice, Refusal, Role } from "./messages.ts";
 
 export interface RelayLimits {
+  /** Largest text a phone may send: one protocol frame. */
   readonly maxFrameBytes: number;
+  /** Largest message on any socket: a frame inside a bridge envelope. */
+  readonly maxMessageBytes: number;
+  /** Data queued for one receiver beyond which it is dropped as not reading; at least one message. */
+  readonly maxBufferedBytes: number;
+  /** Data queued for every receiver at once beyond which the receiver being written to is dropped. */
+  readonly maxTotalBufferedBytes: number;
   readonly maxConnections: number;
   readonly maxConnectionsPerAddress: number;
   readonly connectBurst: number;
   readonly connectsPerSecond: number;
   readonly maxRooms: number;
   readonly maxRoomsPerConnection: number;
+  readonly maxRoomsPerAddress: number;
   readonly messageBurst: number;
   readonly messagesPerSecond: number;
   readonly byteBurst: number;
@@ -26,17 +35,22 @@ export interface RelayLimits {
   readonly pingIntervalMs: number;
 }
 
+/** Sized for one 256 MB machine: about 60 MB of idle sockets at the connection cap plus the buffered data budget. */
 export const defaultLimits: RelayLimits = {
-  maxFrameBytes: 256 * 1024,
-  maxConnections: 10_000,
-  maxConnectionsPerAddress: 32,
+  maxFrameBytes,
+  maxMessageBytes: maxRelayMessageBytes,
+  maxBufferedBytes: 2 * maxRelayMessageBytes,
+  maxTotalBufferedBytes: 64 * 1024 * 1024,
+  maxConnections: 2000,
+  maxConnectionsPerAddress: 16,
   connectBurst: 20,
   connectsPerSecond: 0.5,
-  maxRooms: 20_000,
+  maxRooms: 4000,
   maxRoomsPerConnection: 16,
+  maxRoomsPerAddress: 64,
   messageBurst: 200,
   messagesPerSecond: 50,
-  byteBurst: 2 * 1024 * 1024,
+  byteBurst: 2 * maxRelayMessageBytes,
   bytesPerSecond: 512 * 1024,
   joinTimeoutMs: 10_000,
   peerWaitMs: 30_000,
@@ -80,7 +94,9 @@ const normalClosure = 1000;
 const goingAway = 1001;
 const unsupportedData = 1003;
 const policyViolation = 1008;
+const messageTooBig = 1009;
 const shutdownGraceMs = 2000;
+const pressureBytes = 64 * 1024;
 const socketPath = "/v1";
 const healthPath = "/healthz";
 
@@ -104,6 +120,16 @@ function refuseUpgrade(socket: Duplex, status: number, text: string): void {
   socket.end(`HTTP/1.1 ${status} ${text}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
 }
 
+function increment(counts: Map<string, number>, key: string): void {
+  counts.set(key, (counts.get(key) ?? 0) + 1);
+}
+
+function decrement(counts: Map<string, number>, key: string): void {
+  const count = (counts.get(key) ?? 1) - 1;
+  if (count > 0) counts.set(key, count);
+  else counts.delete(key);
+}
+
 /**
  * Rendezvous relay: pairs at most one bridge and one phone per room and forwards their text frames without reading them.
  * Everything it carries is already sealed end to end, so it only has to stay available and refuse abuse.
@@ -113,9 +139,12 @@ export class RelayServer {
   private readonly limits: RelayLimits;
   private readonly now: () => number;
   private readonly connections = new Set<Connection>();
-  private readonly perAddress = new Map<string, number>();
+  private readonly connectionsPerAddress = new Map<string, number>();
+  private readonly roomsPerAddress = new Map<string, number>();
   private readonly connectBuckets = new Map<string, TokenBucket>();
   private readonly rooms = new Map<string, Room>();
+  /** Receivers with a noticeable send queue, the only ones that count toward the total buffered budget. */
+  private readonly pressured = new Set<Connection>();
   private http: Server | null = null;
   private sockets: WebSocketServer | null = null;
   private heartbeat: ReturnType<typeof setInterval> | null = null;
@@ -128,7 +157,7 @@ export class RelayServer {
   }
 
   async listen(): Promise<number> {
-    const sockets = new WebSocketServer({ noServer: true, maxPayload: this.limits.maxFrameBytes });
+    const sockets = new WebSocketServer({ noServer: true, maxPayload: this.limits.maxMessageBytes });
     const http = createServer((request, response) => this.respond(request, response));
     http.on("upgrade", (request: IncomingMessage, socket: Duplex, head: Buffer) => this.upgrade(request, socket, head));
     await new Promise<void>((resolve, reject) => {
@@ -192,7 +221,7 @@ export class RelayServer {
       return;
     }
     const address = clientAddress(request, this.options.proxyHops);
-    if ((this.perAddress.get(address) ?? 0) >= this.limits.maxConnectionsPerAddress || !this.connectBucket(address).take(1, this.now())) {
+    if ((this.connectionsPerAddress.get(address) ?? 0) >= this.limits.maxConnectionsPerAddress || !this.connectBucket(address).take(1, this.now())) {
       refuseUpgrade(socket, 429, "Too Many Requests");
       return;
     }
@@ -221,7 +250,7 @@ export class RelayServer {
     };
     connection.timer = setTimeout(() => this.drop(connection, policyViolation, "join timeout"), this.limits.joinTimeoutMs);
     this.connections.add(connection);
-    this.perAddress.set(address, (this.perAddress.get(address) ?? 0) + 1);
+    increment(this.connectionsPerAddress, address);
     socket.on("message", (data, isBinary) => this.receive(connection, data, isBinary));
     socket.on("pong", () => {
       connection.alive = true;
@@ -237,16 +266,17 @@ export class RelayServer {
       return;
     }
     const now = this.now();
-    if (!connection.messages.take(1, now) || !connection.bytes.take(byteLength(data), now)) {
+    const size = byteLength(data);
+    if (!connection.messages.take(1, now) || !connection.bytes.take(size, now)) {
       this.drop(connection, policyViolation, "rate");
       return;
     }
-    const text = rawText(data);
     if (connection.role === "phone") {
-      this.fromPhone(connection, text);
+      if (size > this.limits.maxFrameBytes) this.drop(connection, messageTooBig, "frame too large");
+      else this.fromPhone(connection, rawText(data));
       return;
     }
-    const message = parseClientMessage(text);
+    const message = parseClientMessage(rawText(data));
     if (message === null || (connection.role === null && message.type !== "join")) {
       this.drop(connection, policyViolation, "protocol");
       return;
@@ -261,7 +291,13 @@ export class RelayServer {
       this.drop(phone, policyViolation, "no peer");
       return;
     }
-    this.toBridge(room.bridge, { type: "frame", room: id, data: text });
+    const notice: BridgeNotice = { type: "frame", room: id, data: text };
+    const envelope = JSON.stringify(notice);
+    if (Buffer.byteLength(envelope) > this.limits.maxMessageBytes) {
+      this.drop(phone, messageTooBig, "frame too large");
+      return;
+    }
+    this.send(room.bridge, envelope);
   }
 
   private control(bridge: Connection, message: ClientMessage): void {
@@ -273,6 +309,10 @@ export class RelayServer {
         this.leave(bridge, message.room);
         return;
       case "frame": {
+        if (Buffer.byteLength(message.data) > this.limits.maxFrameBytes) {
+          this.drop(bridge, messageTooBig, "frame too large");
+          return;
+        }
         const room = this.rooms.get(message.room);
         if (room?.bridge === bridge && room.phone !== null) this.send(room.phone, message.data);
         return;
@@ -281,8 +321,7 @@ export class RelayServer {
         const room = this.rooms.get(message.room);
         if (room?.bridge !== bridge || room.phone === null) return;
         const phone = room.phone;
-        room.phone = null;
-        phone.rooms.delete(message.room);
+        this.unseat(room, message.room, "phone");
         this.toBridge(bridge, { type: "peer_left", room: message.room });
         this.dismiss(phone);
         return;
@@ -326,39 +365,70 @@ export class RelayServer {
       return;
     }
     const existing = this.rooms.get(id);
-    const refusal = this.refusalFor(existing, "bridge", bridge.rooms.size >= this.limits.maxRoomsPerConnection);
+    const refusal = existing !== undefined && existing.bridge !== null ? "occupied" : this.capacityRefusal(bridge, existing);
     if (refusal !== null) {
       this.refuse(bridge, "bridge", id, refusal);
       return;
     }
     const room = existing ?? { bridge: null, phone: null };
-    room.bridge = bridge;
-    this.rooms.set(id, room);
-    bridge.rooms.add(id);
+    this.seat(room, id, "bridge", bridge);
     this.toBridge(bridge, { type: "joined", room: id });
     if (room.phone !== null) this.connect(id, bridge, room.phone);
   }
 
+  /** A new phone takes the slot over, so a phone that roamed is not locked out by its own half-dead socket. */
   private joinPhone(phone: Connection, id: string): void {
     const existing = this.rooms.get(id);
-    const refusal = this.refusalFor(existing, "phone", false);
+    const refusal = this.capacityRefusal(phone, existing);
     if (refusal !== null) {
       this.refuse(phone, "phone", id, refusal);
       return;
     }
     const room = existing ?? { bridge: null, phone: null };
-    room.phone = phone;
-    this.rooms.set(id, room);
-    phone.rooms.add(id);
+    const previous = room.phone;
+    if (previous !== null) {
+      this.unseat(room, id, "phone");
+      if (room.bridge !== null) this.toBridge(room.bridge, { type: "peer_left", room: id });
+      this.dismiss(previous);
+    }
+    this.seat(room, id, "phone", phone);
     if (room.bridge !== null) this.connect(id, room.bridge, phone);
     else phone.timer = setTimeout(() => this.drop(phone, normalClosure, "no bridge"), this.limits.peerWaitMs);
   }
 
-  private refusalFor(room: Room | undefined, role: Role, tooManyRooms: boolean): Refusal | null {
-    if (tooManyRooms) return "rooms";
-    if (room === undefined) return this.rooms.size >= this.limits.maxRooms ? "busy" : null;
-    const holder = role === "bridge" ? room.bridge : room.phone;
-    return holder === null ? null : "occupied";
+  private capacityRefusal(connection: Connection, room: Room | undefined): Refusal | null {
+    if (connection.rooms.size >= this.limits.maxRoomsPerConnection) return "rooms";
+    if ((this.roomsPerAddress.get(connection.address) ?? 0) >= this.limits.maxRoomsPerAddress) return "rooms";
+    if (room === undefined && this.rooms.size >= this.limits.maxRooms) return "busy";
+    return null;
+  }
+
+  private seat(room: Room, id: string, role: Role, connection: Connection): void {
+    switch (role) {
+      case "bridge":
+        room.bridge = connection;
+        break;
+      case "phone":
+        room.phone = connection;
+        break;
+      default: {
+        const unreachable: never = role;
+        throw new Error(`Unhandled role ${String(unreachable)}`);
+      }
+    }
+    this.rooms.set(id, room);
+    connection.rooms.add(id);
+    increment(this.roomsPerAddress, connection.address);
+  }
+
+  /** Frees one slot of a room and deletes the room once both slots are free. */
+  private unseat(room: Room, id: string, role: Role): void {
+    const connection = role === "bridge" ? room.bridge : room.phone;
+    if (connection === null) return;
+    if (role === "bridge") room.bridge = null;
+    else room.phone = null;
+    if (connection.rooms.delete(id)) decrement(this.roomsPerAddress, connection.address);
+    if (room.bridge === null && room.phone === null && this.rooms.get(id) === room) this.rooms.delete(id);
   }
 
   private connect(id: string, bridge: Connection, phone: Connection): void {
@@ -385,15 +455,12 @@ export class RelayServer {
   }
 
   private leave(bridge: Connection, id: string): void {
-    if (!bridge.rooms.delete(id)) return;
     const room = this.rooms.get(id);
-    if (room === undefined) return;
-    room.bridge = null;
+    if (room?.bridge !== bridge) return;
     const phone = room.phone;
-    room.phone = null;
-    this.rooms.delete(id);
+    this.unseat(room, id, "bridge");
     if (phone !== null) {
-      phone.rooms.delete(id);
+      this.unseat(room, id, "phone");
       this.dismiss(phone);
     }
   }
@@ -407,25 +474,22 @@ export class RelayServer {
   private detach(connection: Connection): void {
     if (connection.timer !== null) clearTimeout(connection.timer);
     connection.timer = null;
-    for (const id of connection.rooms) {
+    this.pressured.delete(connection);
+    for (const id of [...connection.rooms]) {
       const room = this.rooms.get(id);
       if (room === undefined) continue;
       if (room.bridge === connection) {
-        room.bridge = null;
         const phone = room.phone;
-        room.phone = null;
+        this.unseat(room, id, "bridge");
         if (phone !== null) {
-          phone.rooms.delete(id);
+          this.unseat(room, id, "phone");
           this.dismiss(phone);
         }
-      }
-      if (room.phone === connection) {
-        room.phone = null;
+      } else if (room.phone === connection) {
+        this.unseat(room, id, "phone");
         if (room.bridge !== null) this.toBridge(room.bridge, { type: "peer_left", room: id });
       }
-      if (room.bridge === null && room.phone === null) this.rooms.delete(id);
     }
-    connection.rooms.clear();
   }
 
   private drop(connection: Connection, code: number, reason: string): void {
@@ -435,14 +499,32 @@ export class RelayServer {
 
   private closed(connection: Connection): void {
     this.detach(connection);
-    if (!this.connections.delete(connection)) return;
-    const count = (this.perAddress.get(connection.address) ?? 1) - 1;
-    if (count > 0) this.perAddress.set(connection.address, count);
-    else this.perAddress.delete(connection.address);
+    if (this.connections.delete(connection)) decrement(this.connectionsPerAddress, connection.address);
   }
 
-  private send(connection: Connection, text: string): void {
-    if (connection.socket.readyState === connection.socket.OPEN) connection.socket.send(text);
+  /** Queues `text` unless the receiver stopped reading; such a receiver is cut off so the relay never buffers without bound. */
+  private send(receiver: Connection, text: string): void {
+    if (receiver.socket.readyState !== receiver.socket.OPEN) return;
+    if (this.overloaded(receiver, Buffer.byteLength(text))) {
+      this.options.log(`Dropped a ${receiver.role ?? "client"} that stopped reading.`);
+      this.detach(receiver);
+      receiver.socket.terminate();
+      return;
+    }
+    receiver.socket.send(text);
+  }
+
+  private overloaded(receiver: Connection, size: number): boolean {
+    const queued = receiver.socket.bufferedAmount + size;
+    if (queued > this.limits.maxBufferedBytes) return true;
+    if (queued <= pressureBytes) {
+      this.pressured.delete(receiver);
+      return false;
+    }
+    this.pressured.add(receiver);
+    let total = size;
+    for (const connection of this.pressured) total += connection.socket.bufferedAmount;
+    return total > this.limits.maxTotalBufferedBytes;
   }
 
   private toBridge(bridge: Connection, notice: BridgeNotice): void {
@@ -464,7 +546,7 @@ export class RelayServer {
     }
     const now = this.now();
     for (const [address, bucket] of this.connectBuckets) {
-      if (!this.perAddress.has(address) && bucket.isFull(now)) this.connectBuckets.delete(address);
+      if (!this.connectionsPerAddress.has(address) && bucket.isFull(now)) this.connectBuckets.delete(address);
     }
   }
 }

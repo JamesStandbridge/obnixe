@@ -169,6 +169,9 @@ importers:
 
   apps/relay:
     devDependencies:
+      '@obnixe/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@types/node':
         specifier: ^26.6.5
         version: 26.6.5

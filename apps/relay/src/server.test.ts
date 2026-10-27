@@ -127,7 +127,7 @@ describe("rendezvous", () => {
     expect(late.received[1]).toBe("to second");
   });
 
-  it("refuses a second bridge or phone in a room without disturbing the pair", async () => {
+  it("refuses a second bridge but lets a new phone take the phone slot over", async () => {
     await start();
     const id = room();
     const bridge = await bridgeIn(id);
@@ -136,11 +136,15 @@ describe("rendezvous", () => {
     const intruder = await connect();
     intruder.send({ type: "join", v: 1, role: "bridge", room: id });
     expect(await intruder.nth(0)).toEqual({ type: "refused", room: id, reason: "occupied" });
-    const otherPhone = await phoneIn(id);
-    expect(await otherPhone.nth(0)).toEqual({ type: "refused", reason: "occupied" });
-    expect((await otherPhone.closed).code).toBe(1008);
-    phone.send("still here");
-    await until(() => bridge.received.some((text) => text.includes("still here")), "frame after refusals");
+    const roamed = await phoneIn(id);
+    expect(await roamed.nth(0)).toEqual({ type: "peer" });
+    expect(await phone.closed).toEqual({ code: 1000, reason: "peer_left" });
+    expect(phone.received.at(-1)).toBe(JSON.stringify({ type: "peer_left" }));
+    expect(await bridge.nth(2)).toEqual({ type: "peer_left", room: id });
+    expect(await bridge.nth(3)).toEqual({ type: "peer", room: id });
+    bridge.send({ type: "frame", room: id, data: "to the roamed phone" });
+    await until(() => roamed.received.length === 2, "frame to the new phone");
+    expect(roamed.received[1]).toBe("to the roamed phone");
     expect(intruder.received).toHaveLength(1);
   });
 
@@ -196,13 +200,18 @@ describe("refusals and limits", () => {
   });
 
   it("closes connections exceeding the frame size or the message rate", async () => {
-    await start({ maxFrameBytes: 1024, messageBurst: 5, messagesPerSecond: 1 });
+    await start({ maxFrameBytes: 1024, maxMessageBytes: 1500, messageBurst: 5, messagesPerSecond: 1 });
     const id = room();
     const bridge = await bridgeIn(id);
     const phone = await phoneIn(id);
     await phone.nth(0);
-    phone.send("x".repeat(2048));
-    expect((await phone.closed).code).toBe(1009);
+    phone.send("x".repeat(1200));
+    expect(await phone.closed).toEqual({ code: 1009, reason: "frame too large" });
+    const quoted = await phoneIn(id);
+    await quoted.nth(0);
+    quoted.send('"'.repeat(1000));
+    expect(await quoted.closed).toEqual({ code: 1009, reason: "frame too large" });
+    expect(bridge.socket.readyState).toBe(WebSocket.OPEN);
     await until(() => bridge.received.some((text) => text.includes("peer_left")), "peer_left after oversize");
     for (let index = 0; index < 10; index += 1) bridge.send({ type: "join", v: 1, role: "bridge", room: id });
     expect(await bridge.closed).toEqual({ code: 1008, reason: "rate" });
@@ -222,6 +231,22 @@ describe("refusals and limits", () => {
     expect(await refusedStatus()).toBe("Unexpected server response: 429");
   });
 
+  it("caps the rooms held from one address", async () => {
+    await start({ maxRoomsPerAddress: 3 });
+    const bridge = await bridgeIn(room(), room());
+    const phone = await phoneIn(room());
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const fourth = room();
+    bridge.send({ type: "join", v: 1, role: "bridge", room: fourth });
+    expect(await bridge.nth(2)).toEqual({ type: "refused", room: fourth, reason: "rooms" });
+    const another = await phoneIn(room());
+    expect(await another.nth(0)).toEqual({ type: "refused", reason: "rooms" });
+    phone.socket.close();
+    await until(() => server?.stats().rooms === 2, "phone room released");
+    bridge.send({ type: "join", v: 1, role: "bridge", room: fourth });
+    expect(await bridge.nth(3)).toEqual({ type: "joined", room: fourth });
+  });
+
   it("honours X-Forwarded-For only behind a trusted proxy", async () => {
     await start({ maxConnectionsPerAddress: 1 }, 1);
     await connect({ headers: { "x-forwarded-for": "198.51.100.7, 203.0.113.1" } });
@@ -234,6 +259,42 @@ describe("refusals and limits", () => {
   });
 });
 
+describe("backpressure", () => {
+  const chunk = "x".repeat(60 * 1024);
+  const unthrottled = { maxFrameBytes: 64 * 1024, maxMessageBytes: 80 * 1024, messageBurst: 100_000, messagesPerSecond: 100_000, byteBurst: 1e10, bytesPerSecond: 1e10 };
+
+  it("cuts off a phone that stops reading and tells its bridge", async () => {
+    await start({ ...unthrottled, maxBufferedBytes: 256 * 1024 });
+    const id = room();
+    const bridge = await bridgeIn(id);
+    const phone = await phoneIn(id);
+    await phone.nth(0);
+    phone.socket.pause();
+    for (let index = 0; index < 2000 && !bridge.received.some((text) => text.includes("peer_left")); index += 1) {
+      bridge.send({ type: "frame", room: id, data: chunk });
+      if (index % 50 === 0) await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    await until(() => bridge.received.some((text) => text.includes("peer_left")), "peer_left for the stalled phone");
+    await until(() => server?.stats().connections === 1, "stalled phone dropped");
+    expect(bridge.socket.readyState).toBe(WebSocket.OPEN);
+  });
+
+  it("cuts off a bridge that stops reading once the total buffered budget is spent", async () => {
+    await start({ ...unthrottled, maxBufferedBytes: 1024 * 1024 * 1024, maxTotalBufferedBytes: 256 * 1024 });
+    const id = room();
+    const bridge = await bridgeIn(id);
+    const phone = await phoneIn(id);
+    await phone.nth(0);
+    bridge.socket.pause();
+    for (let index = 0; index < 2000 && !phone.received.some((text) => text.includes("peer_left")); index += 1) {
+      phone.send(chunk);
+      if (index % 50 === 0) await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    expect(await phone.closed).toEqual({ code: 1000, reason: "peer_left" });
+    await until(() => server?.stats().connections === 0 && server.stats().rooms === 0, "stalled bridge dropped");
+  });
+});
+
 describe("timeouts", () => {
   it("drops sockets that never join and phones whose bridge never comes", async () => {
     await start({ joinTimeoutMs: 100, peerWaitMs: 150 });
@@ -241,7 +302,7 @@ describe("timeouts", () => {
     expect(await silent.closed).toEqual({ code: 1008, reason: "join timeout" });
     const lonely = await phoneIn(room());
     expect(await lonely.closed).toEqual({ code: 1000, reason: "no bridge" });
-    expect(server?.stats()).toEqual({ connections: 0, rooms: 0 });
+    await until(() => server?.stats().connections === 0 && server.stats().rooms === 0, "everything released");
   });
 
   it("terminates peers that stop answering pings and reports it to the other side", async () => {
