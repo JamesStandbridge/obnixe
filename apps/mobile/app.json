@@ -78,6 +78,12 @@
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "7a12dadc-3e11-40c0-8871-6924532e6425"
+      }
+    },
+    "owner": "jamesbiolevate"
   }
 }
