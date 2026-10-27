@@ -8,7 +8,7 @@ export interface WeekDay {
   readonly date: LocalDate;
   readonly state: WeekDayState;
   readonly isToday: boolean;
-  readonly sessions: number;
+  readonly sports: readonly SportKey[];
 }
 
 export interface WeekSummary {
@@ -19,7 +19,7 @@ export interface WeekSummary {
   readonly durationSeconds: number;
 }
 
-type DatedSession = Pick<SessionSummary, "localDate" | "durationSeconds">;
+type DatedSession = Pick<SessionSummary, "localDate" | "durationSeconds" | "sport">;
 
 function spread(candidates: readonly LocalDate[], count: number): Set<LocalDate> {
   const picked = new Set<LocalDate>();
@@ -49,8 +49,8 @@ export function weekSummary(today: LocalDate, sessions: readonly DatedSession[],
   return {
     monday,
     days: days.map((date) => {
-      const count = inWeek.filter((item) => item.localDate === date).length;
-      return { date, state: count > 0 ? "done" : planned.has(date) ? "planned" : "rest", isToday: date === today, sessions: count };
+      const done = inWeek.filter((item) => item.localDate === date).map((item) => item.sport);
+      return { date, state: done.length > 0 ? "done" : planned.has(date) ? "planned" : "rest", isToday: date === today, sports: done };
     }),
     sessionsDone: inWeek.length,
     sessionsPlanned: sessionsPerWeek,

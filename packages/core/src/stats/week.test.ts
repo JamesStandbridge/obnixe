@@ -54,8 +54,18 @@ describe("week summary", () => {
     const week = weekSummary(d("2026-10-25"), sessions, 5);
     expect(week.days.map((day) => day.state)).toEqual(["done", "done", "rest", "done", "rest", "done", "planned"]);
     expect(week.days[6]?.isToday).toBe(true);
+    expect(week.days.map((day) => day.sports)).toEqual([["climb"], ["strength"], [], ["run"], [], ["strength"], []]);
     expect(week.sessionsDone).toBe(4);
     expect(week.durationSeconds).toBe((80 + 54 + 42 + 58) * 60);
+  });
+
+  it("lists every sport done on a day in the order the sessions started", () => {
+    seed.session({ sport: "run", date: "2026-10-21", startedAt: at("2026-10-21", "07:00"), minutes: 30, values: { kind: "easy", distance: 5000 } });
+    seed.session({ sport: "strength", date: "2026-10-21", startedAt: at("2026-10-21", "18:00"), minutes: 50 });
+    seed.session({ sport: "run", date: "2026-10-21", startedAt: at("2026-10-21", "20:00"), minutes: 20, values: { kind: "easy", distance: 3000 } });
+    const week = weekSummary(d("2026-10-22"), completedSessions(seed.context.db), null);
+    expect(week.days[2]?.sports).toEqual(["run", "strength", "run"]);
+    expect(week.sessionsDone).toBe(3);
   });
 
   it("spreads the remaining planned sessions from today onward", () => {
