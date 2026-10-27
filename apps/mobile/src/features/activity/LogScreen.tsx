@@ -309,7 +309,7 @@ export function LogScreen() {
         pains: zonePains,
       });
       write(`Nouvelle activité : ${definition.label}`, plan.mutations);
-      router.replace({ pathname: "/session/[id]/review", params: { id: plan.sessionId } });
+      router.replace({ pathname: "/session/[id]/review", params: { id: plan.sessionId, attach: "1" } });
     } catch (error) {
       if (error instanceof FutureSessionError) {
         notify({ text: "Heure dans le futur", ...placement });
