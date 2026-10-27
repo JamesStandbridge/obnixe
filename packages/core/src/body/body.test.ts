@@ -73,7 +73,15 @@ describe("weigh-ins", () => {
     expect(trend.delta30).toBe(74_875 - 75_500);
     expect(trend.days.map((entry) => entry.grams)).toEqual([74_900, 75_100, null, 74_700, 74_800, null, null]);
     expect(trend.days.at(-1)?.localDate).toBe("2026-10-25");
-    expect(weightTrend([], "2026-10-25" as LocalDate)).toMatchObject({ latest: null, average7: null, delta30: null });
+    expect(trend.delta7).toBeNull();
+    expect(weightTrend([], "2026-10-25" as LocalDate)).toMatchObject({ latest: null, average7: null, delta7: null, delta30: null });
+  });
+
+  it("compares the last seven days with the seven before", () => {
+    const point = (date: string, grams: number): WeightPoint => ({ localDate: date as LocalDate, grams });
+    const trend = weightTrend([point("2026-10-12", 75_400), point("2026-10-18", 75_200), point("2026-10-19", 75_000), point("2026-10-25", 74_800)], "2026-10-25" as LocalDate);
+    expect(trend.average7).toBe(74_900);
+    expect(trend.delta7).toBe(74_900 - 75_300);
   });
 });
 

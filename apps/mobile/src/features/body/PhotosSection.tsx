@@ -80,19 +80,36 @@ export function PhotosSection({ photos }: PhotosSectionProps) {
               accessibilityRole="button"
               accessibilityLabel={slot.photo === null ? `${poseLabels[slot.pose]}, prendre une photo` : `${poseLabels[slot.pose]}, ${formatDayMonth(slot.photo.localDate)}`}
               onPress={() => setSheet(slot.photo === null ? { kind: "take", pose: slot.pose } : { kind: "view", pose: slot.pose, photoId: slot.photo.id })}
-              style={[styles.photo, { backgroundColor: colors.surface }]}
+              style={({ pressed }) => [
+                styles.photo,
+                overview.latestDate === null && styles.photoCompact,
+                slot.photo === null ? [styles.photoEmpty, { borderColor: colors.controlBorder }, pressed && { backgroundColor: colors.surface }] : { backgroundColor: colors.surface },
+              ]}
             >
-              {slot.photo === null ? (
-                <View style={[styles.silhouette, { backgroundColor: colors.surface2 }]} />
+              {overview.latestDate === null ? (
+                <View style={styles.photoAddRow}>
+                  <Icon name="plus" size={16} color={colors.text2} />
+                  <Text variant="label" tone="secondary">
+                    {poseLabels[slot.pose]}
+                  </Text>
+                </View>
               ) : (
-                <Image source={{ uri: photoUri(slot.photo.file) }} style={StyleSheet.absoluteFill} contentFit="cover" transition={120} />
+                <>
+                  {slot.photo === null ? (
+                    <View style={styles.photoAdd}>
+                      <Icon name="plus" size={18} color={colors.text2} />
+                    </View>
+                  ) : (
+                    <Image source={{ uri: photoUri(slot.photo.file) }} style={StyleSheet.absoluteFill} contentFit="cover" transition={120} />
+                  )}
+                  <View style={[styles.poseTag, slot.photo !== null && { backgroundColor: colors.bg }]}>
+                    <Text style={styles.poseLabel} tone={slot.photo === null ? "secondary" : "primary"}>
+                      {poseLabels[slot.pose]}
+                      {slot.photo !== null && slot.photo.localDate !== overview.latestDate ? ` · ${formatDayMonth(slot.photo.localDate)}` : ""}
+                    </Text>
+                  </View>
+                </>
               )}
-              <View style={[styles.poseTag, slot.photo !== null && { backgroundColor: colors.bg }]}>
-                <Text style={styles.poseLabel} tone={slot.photo === null ? "secondary" : "primary"}>
-                  {poseLabels[slot.pose]}
-                  {slot.photo !== null && overview.latestDate !== null && slot.photo.localDate !== overview.latestDate ? ` · ${formatDayMonth(slot.photo.localDate)}` : ""}
-                </Text>
-              </View>
             </Pressable>
           ))}
         </View>
@@ -164,7 +181,10 @@ const styles = StyleSheet.create({
   headLink: { marginVertical: -12, marginRight: -10 },
   photos: { flexDirection: "row", gap: 6, marginTop: 10 },
   photo: { flex: 1, aspectRatio: 3 / 4, borderRadius: radii.control, overflow: "hidden", justifyContent: "flex-end" },
-  silhouette: { position: "absolute", left: "33%", top: "18%", width: "34%", height: "64%", borderTopLeftRadius: 40, borderTopRightRadius: 40, borderBottomLeftRadius: 10, borderBottomRightRadius: 10 },
+  photoCompact: { aspectRatio: undefined, height: 52, justifyContent: "center" },
+  photoEmpty: { borderWidth: 1, borderStyle: "dashed" },
+  photoAdd: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0, alignItems: "center", justifyContent: "center", paddingBottom: 18 },
+  photoAddRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 },
   poseTag: { margin: 6, paddingHorizontal: 4, paddingVertical: 2, borderRadius: radii.tag, alignSelf: "flex-start" },
   poseLabel: { fontFamily: fonts.text600, fontSize: 12, lineHeight: 14 },
   privacy: { flexDirection: "row", gap: 10, alignItems: "flex-start", marginTop: 10 },

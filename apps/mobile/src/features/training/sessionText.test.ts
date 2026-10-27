@@ -11,8 +11,10 @@ import {
   distanceFigure,
   durationText,
   fieldValueText,
+  indicatorFigure,
   indicatorText,
   outcomeText,
+  quantityFigure,
   quantityText,
   setsFact,
   timeRange,
@@ -113,6 +115,18 @@ describe("indicators", () => {
     expect(indicatorText(runPace, { distance: 0 }, 3000)).toBeNull();
     expect(indicatorText(runPace, {}, 3000)).toBeNull();
     expect(indicatorText(maxSent, {}, 3000)).toBeNull();
+  });
+
+  it("splits indicator and quantity figures into value and unit", () => {
+    const [runPace] = sports.run.indicators;
+    const [bikeSpeed] = sports.bike.indicators;
+    if (runPace === undefined || bikeSpeed === undefined) throw new Error("Missing indicators");
+    expect(indicatorFigure(runPace, { distance: 13_000 }, 4800)).toEqual({ text: "6:09", unit: "/km" });
+    expect(indicatorFigure(bikeSpeed, { distance: 30_000 }, 3600)).toEqual({ text: "30", unit: "km/h" });
+    expect(indicatorFigure(runPace, {}, 3000)).toBeNull();
+    expect(quantityFigure("elevation_gain", 580, "distance", "kg")).toEqual({ text: "580", unit: "m" });
+    expect(quantityFigure("heart_rate_avg", 151, "heart_rate", "kg")).toEqual({ text: "151", unit: "bpm" });
+    expect(quantityFigure("lengths", 40, "count", "kg")).toEqual({ text: "40", unit: "" });
   });
 
   it("lists the indicators of a finished or running session", () => {

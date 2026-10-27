@@ -11,13 +11,15 @@ import { deviceTimeZone } from "@/format/dates";
 import { formatNumber, formatSigned } from "@/format/numbers";
 import { PadSheet } from "@/ui/PadSheet";
 import type { PadResult } from "@/ui/PadSheet";
-import { Sparkline } from "@/features/body/Sparkline";
+import { WeightChart } from "@/features/body/WeightChart";
 import { LinkButton } from "@/ui/Button";
 import { Section, Row } from "@/ui/Layout";
+import { StatRow } from "@/ui/Stats";
+import type { StatValue } from "@/ui/Stats";
 import { Text } from "@/ui/Text";
 import { StepButton } from "@/ui/Controls";
 import { useTheme } from "@/ui/theme";
-import { fonts, layout, radii } from "@/ui/tokens";
+import { fonts, radii } from "@/ui/tokens";
 
 interface WeightSectionProps {
   readonly weighIns: readonly WeighIn[];
@@ -29,6 +31,7 @@ type DaySheet = { readonly kind: "none" } | { readonly kind: "today" } | { reado
 
 const defaultGrams = 70_000;
 const historyStep = 5;
+const chartDays = 60;
 
 export function WeightSection({ weighIns, massUnit, children }: WeightSectionProps) {
   const { colors } = useTheme();
@@ -66,15 +69,12 @@ export function WeightSection({ weighIns, massUnit, children }: WeightSectionPro
     undoable({ summary: "Pesée supprimée", mutations: [planTrash(environment, "weigh_in", row.id)], message: `Pesée supprimée · ${formatShortDay(row.localDate)}` });
   };
 
-  const context = ((): { readonly lead: string; readonly strong: string; readonly rest: string } | null => {
-    if (touched || trend.today !== null) {
-      if (trend.average7 === null) return null;
-      const average = `Moyenne 7 jours ${formatNumber(gramsToMass(trend.average7, massUnit), unit.decimals)} ${unit.symbol}`;
-      return { lead: "", strong: average, rest: trend.delta30 === null ? "" : ` · ${formatSigned(trend.delta30 / unit.factor, unit.decimals)} ${unit.symbol} en 30 jours` };
-    }
-    if (trend.latest === null) return { lead: "Première pesée", strong: "", rest: "" };
-    return { lead: `${formatRelativeDay(trend.latest.localDate, today)} `, strong: `${formatNumber(gramsToMass(trend.latest.grams, massUnit), unit.decimals)} ${unit.symbol}`, rest: "" };
-  })();
+  const context = touched ? "À enregistrer" : trend.latest === null ? "Première pesée" : formatRelativeDay(trend.latest.localDate, today);
+  const stats: StatValue[] = [];
+  if (trend.average7 !== null) stats.push({ label: "Moyenne 7 j", value: formatNumber(gramsToMass(trend.average7, massUnit), unit.decimals), unit: unit.symbol });
+  if (trend.delta7 !== null) stats.push({ label: "Sur 7 jours", value: formatSigned(trend.delta7 / unit.factor, unit.decimals), unit: unit.symbol });
+  if (trend.delta30 !== null) stats.push({ label: "Sur 30 jours", value: formatSigned(trend.delta30 / unit.factor, unit.decimals), unit: unit.symbol });
+  const formatGrams = (grams: number): string => formatNumber(gramsToMass(grams, massUnit), unit.decimals);
 
   const step = (direction: 1 | -1): void => {
     const next = Math.round((shown + direction / 10) * 10) / 10;
@@ -95,57 +95,68 @@ export function WeightSection({ weighIns, massUnit, children }: WeightSectionPro
   };
 
   const dayRow = sheet.kind === "day" ? weighIns.find((row) => row.localDate === sheet.date) : undefined;
-  const sparkPoints = [...weighIns].filter((row) => row.localDate >= addDays(today, -90)).sort((left, right) => left.localDate.localeCompare(right.localDate));
+  const chartStart = addDays(today, -(chartDays - 1));
+  const chartPoints = points.filter((point) => point.localDate >= chartStart && point.localDate <= today).sort((left, right) => left.localDate.localeCompare(right.localDate));
   const history = [...weighIns].sort((left, right) => right.localDate.localeCompare(left.localDate));
+  const proposed = !touched && trend.latest === null;
 
   return (
     <>
       <View style={styles.weight}>
-        <Text variant="eyebrow" tone="secondary">
-          Pesée du jour
-        </Text>
-        <View style={styles.stepper}>
-          <StepButton size="tall" label="−" accessibilityLabel={massUnit === "kg" ? "Retirer 100 g" : "Retirer 0,1 lb"} disabled={shown <= min} onPress={() => step(-1)} />
+        <View style={[styles.instrument, { backgroundColor: colors.surface }]}>
+          <View style={styles.instrumentHead}>
+            <Text variant="eyebrow" tone="secondary">
+              Poids
+            </Text>
+            <Text variant="caption" style={{ color: touched ? colors.mark : colors.text2 }}>
+              {context}
+            </Text>
+          </View>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={`Saisir le poids, ${label}${!touched && trend.today === null ? ", proposé" : ""}`}
+            accessibilityLabel={`Saisir le poids, ${label}${touched ? ", à enregistrer" : trend.today === null ? ", proposé" : ""}`}
             onPress={() => setSheet({ kind: "today" })}
-            style={({ pressed }) => [styles.stepValue, pressed && { backgroundColor: colors.surface }]}
+            style={({ pressed }) => [styles.figure, pressed && { opacity: 0.7 }]}
           >
-            <Text style={[styles.weightValue, { color: !touched && trend.today === null ? colors.text3 : colors.text }]} maxFontSizeMultiplier={1.1}>
+            <Text style={[styles.weightValue, { color: proposed ? colors.text3 : colors.text }]} maxFontSizeMultiplier={1.1}>
               {formatNumber(shown, unit.decimals)}
             </Text>
-            <Text variant="small" tone="secondary" style={styles.unit}>
+            <Text tone="secondary" style={styles.unit}>
               {unit.symbol}
             </Text>
           </Pressable>
-          <StepButton size="tall" label="+" accessibilityLabel={massUnit === "kg" ? "Ajouter 100 g" : "Ajouter 0,1 lb"} disabled={shown >= max} onPress={() => step(1)} />
+          {stats.length === 0 ? null : <StatRow stats={stats} style={styles.stats} />}
+          {chartPoints.length > 1 ? (
+            <View style={[styles.chart, { borderTopColor: colors.line }]}>
+              <WeightChart
+                points={chartPoints}
+                start={chartStart}
+                end={today}
+                formatValue={formatGrams}
+                accessibilityLabel={`Courbe du poids sur ${chartDays} jours, ${chartPoints.length} pesées, de ${formatGrams(Math.min(...chartPoints.map((point) => point.grams)))} à ${formatGrams(Math.max(...chartPoints.map((point) => point.grams)))} ${unit.symbol}`}
+              />
+            </View>
+          ) : null}
         </View>
-        {context === null ? null : (
-          <Text variant="small" tone="secondary" style={styles.comparison}>
-            {context.lead}
-            <Text style={styles.comparisonStrong}>{context.strong}</Text>
-            {context.rest}
-          </Text>
-        )}
-        <Pressable
-          accessibilityRole="button"
-          accessibilityState={{ disabled: isSaved }}
-          disabled={isSaved}
-          onPress={() => {
-            save(shown, today);
-            setDraft(null);
-          }}
-          style={({ pressed }) => [
-            styles.save,
-            isSaved ? { backgroundColor: colors.surface } : { backgroundColor: pressed ? colors.surfacePress : colors.surface, borderColor: colors.controlBorder, borderWidth: layout.borderControl },
-          ]}
-        >
-          <Text variant="label" tone={isSaved ? "secondary" : "primary"}>
-            {isSaved ? `Pesée enregistrée · ${label}` : savedValue !== null ? `Remplacer par ${label}` : `Enregistrer ${label}`}
-          </Text>
-        </Pressable>
-        <View style={styles.days} accessibilityLabel="7 derniers jours">
+        <View style={styles.stepper}>
+          <StepButton label="−" accessibilityLabel={massUnit === "kg" ? "Retirer 100 g" : "Retirer 0,1 lb"} disabled={shown <= min} onPress={() => step(-1)} />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ disabled: isSaved }}
+            disabled={isSaved}
+            onPress={() => {
+              save(shown, today);
+              setDraft(null);
+            }}
+            style={({ pressed }) => [styles.save, isSaved ? { backgroundColor: colors.surface } : { backgroundColor: pressed ? colors.actPress : colors.actBg }]}
+          >
+            <Text variant="label" tone={isSaved ? "secondary" : "act"} style={isSaved ? undefined : styles.saveLabel}>
+              {isSaved ? `Pesée enregistrée · ${label}` : savedValue !== null ? `Remplacer par ${label}` : `Enregistrer ${label}`}
+            </Text>
+          </Pressable>
+          <StepButton label="+" accessibilityLabel={massUnit === "kg" ? "Ajouter 100 g" : "Ajouter 0,1 lb"} disabled={shown >= max} onPress={() => step(1)} />
+        </View>
+        <View style={[styles.days, { borderColor: colors.line }]} accessibilityLabel="7 derniers jours">
           {trend.days.map((day) => {
             const isToday = day.localDate === today;
             return (
@@ -154,18 +165,15 @@ export function WeightSection({ weighIns, massUnit, children }: WeightSectionPro
                 accessibilityRole="button"
                 accessibilityLabel={`${capitalize(weekdayName(day.localDate))}, ${day.grams === null ? "pas de pesée" : `${formatNumber(gramsToMass(day.grams, massUnit), unit.decimals)} ${unit.symbol}`}`}
                 onPress={() => setSheet({ kind: "day", date: day.localDate })}
-                style={({ pressed }) => [
-                  styles.day,
-                  { backgroundColor: pressed ? colors.surfacePress : isToday ? colors.surface2 : colors.surface },
-                  isToday && { borderBottomColor: colors.mark, borderBottomWidth: 3 },
-                ]}
+                style={({ pressed }) => [styles.day, pressed && { backgroundColor: colors.surfacePress }]}
               >
-                <Text style={styles.dayInitial} tone="secondary">
+                <Text style={styles.dayInitial} tone={isToday ? "primary" : "tertiary"}>
                   {weekdayInitial(day.localDate)}
                 </Text>
                 <Text style={styles.dayValue} tone={day.grams === null ? "tertiary" : "primary"}>
                   {day.grams === null ? "–" : formatNumber(gramsToMass(day.grams, massUnit), unit.decimals)}
                 </Text>
+                <View style={[styles.dayMark, { backgroundColor: isToday ? colors.mark : "transparent" }]} />
               </Pressable>
             );
           })}
@@ -175,12 +183,7 @@ export function WeightSection({ weighIns, massUnit, children }: WeightSectionPro
       {children}
 
       {history.length === 0 ? null : (
-        <Section title="Pesées · 90 jours">
-          {sparkPoints.length > 1 ? (
-            <View style={styles.spark}>
-              <Sparkline values={sparkPoints.map((row) => row.grams)} />
-            </View>
-          ) : null}
+        <Section title="Pesées">
           {history.slice(0, historyLength).map((row, index, list) => (
             <Row
               key={row.id}
@@ -228,17 +231,20 @@ export function WeightSection({ weighIns, massUnit, children }: WeightSectionPro
 
 const styles = StyleSheet.create({
   weight: { marginTop: 18, gap: 10 },
-  stepper: { flexDirection: "row", alignItems: "center", gap: 6 },
-  stepValue: { flex: 1, height: 72, borderRadius: radii.control, flexDirection: "row", alignItems: "baseline", justifyContent: "center", gap: 6 },
-  weightValue: { fontFamily: fonts.figure800, fontSize: 64, lineHeight: 72, letterSpacing: -0.6 },
-  unit: { fontFamily: fonts.text600 },
-  comparison: { textAlign: "center" },
-  comparisonStrong: { fontFamily: fonts.text600, fontSize: 15 },
-  save: { minHeight: 48, borderRadius: radii.control, alignItems: "center", justifyContent: "center", paddingHorizontal: 14 },
-  days: { flexDirection: "row", gap: 2, borderRadius: radii.panel, overflow: "hidden" },
-  day: { flex: 1, minHeight: 52, paddingVertical: 10, alignItems: "center", gap: 6 },
+  instrument: { borderRadius: radii.panel, padding: 16, paddingBottom: 14 },
+  instrumentHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
+  figure: { flexDirection: "row", alignItems: "baseline", alignSelf: "flex-start", gap: 6, minHeight: 44, marginTop: 6 },
+  weightValue: { fontFamily: fonts.figure800, fontSize: 76, lineHeight: 78, letterSpacing: -1.6 },
+  unit: { fontFamily: fonts.figure700, fontSize: 22, lineHeight: 24 },
+  stats: { marginTop: 10 },
+  chart: { marginTop: 14, paddingTop: 12, borderTopWidth: 1 },
+  stepper: { flexDirection: "row", alignItems: "stretch", gap: 6 },
+  save: { flex: 1, minHeight: 56, borderRadius: radii.control, alignItems: "center", justifyContent: "center", paddingHorizontal: 12 },
+  saveLabel: { fontFamily: fonts.text700, fontSize: 16 },
+  days: { flexDirection: "row", borderTopWidth: 1, borderBottomWidth: 1 },
+  day: { flex: 1, minHeight: 56, paddingTop: 10, alignItems: "center", gap: 5 },
   dayInitial: { fontFamily: fonts.text700, fontSize: 12, lineHeight: 12 },
   dayValue: { fontFamily: fonts.figure700, fontSize: 16, lineHeight: 17 },
-  spark: { marginTop: 12, marginBottom: 4 },
+  dayMark: { marginTop: "auto", alignSelf: "stretch", marginHorizontal: 8, height: 3, borderTopLeftRadius: 2, borderTopRightRadius: 2 },
   more: { alignItems: "center", marginTop: 4 },
 });
