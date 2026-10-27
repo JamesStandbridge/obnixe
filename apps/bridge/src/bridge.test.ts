@@ -567,6 +567,7 @@ describe("trusted reconnection", () => {
     expect(second.statuses).toEqual(["resuming", "open"]);
     expect(second.sent.some((frame) => frame.type === "hello")).toBe(false);
     expect(second.paired).toEqual([]);
+    await until(() => endpoint.status().phone === "connected", "bridge session open");
     expect(endpoint.status()).toEqual({ phone: "connected", device: "iPhone", client: "Cursor" });
     expect((await client.callTool({ name: "list_sports", arguments: {} })).isError).toBe(false);
 
