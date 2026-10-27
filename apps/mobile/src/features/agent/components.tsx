@@ -129,9 +129,9 @@ export function ScanIntro({ onScan }: ScanIntroProps) {
   return (
     <View style={styles.scan}>
       <Text tone="secondary" style={styles.scanText}>
-        Sur le Mac, lance <Text style={[styles.command, { backgroundColor: colors.surface }]}>obnixe-bridge pair</Text> : un QR code s'affiche. Le téléphone s'y relie sans rien saisir.
+        Sur l'ordinateur de ton agent (Cursor, Claude...), lance <Text style={[styles.command, { backgroundColor: colors.surface }]}>obnixe-bridge pair</Text> : un QR code s'affiche. Le téléphone s'y relie sans rien saisir.
       </Text>
-      <PrimaryButton label="Scanner le QR code du Mac" onPress={onScan} />
+      <PrimaryButton label="Scanner le QR code de l'ordinateur" onPress={onScan} />
     </View>
   );
 }
@@ -170,7 +170,7 @@ export function PairingSteps({ code }: PairingStepsProps) {
   const { colors } = useTheme();
   const steps: readonly ReactNode[] = [
     <>
-      Sur le Mac, lance <Text style={[styles.command, { backgroundColor: colors.surface }]}>obnixe-bridge pair {code}</Text>
+      Sur l'ordinateur, lance <Text style={[styles.command, { backgroundColor: colors.surface }]}>obnixe-bridge pair {code}</Text>
     </>,
     "Garde cet écran ouvert pendant la connexion",
   ];
@@ -211,15 +211,15 @@ export function Dot({ network }: DotProps) {
 }
 
 function networkLabel(network: NetworkState, host: string | null): string {
-  if (host === null) return "Indique l'adresse IP du Mac";
+  if (host === null) return "Indique l'adresse IP de l'ordinateur";
   switch (network) {
     case "reachable":
-      return `${isTailscaleHost(host) ? "Tailscale actif" : "Mac joignable"} · ${host}`;
+      return `${isTailscaleHost(host) ? "Tailscale actif" : "Ordinateur joignable"} · ${host}`;
     case "unreachable":
-      return `Mac injoignable · ${host}`;
+      return `Ordinateur injoignable · ${host}`;
     case "dialing":
     case "idle":
-      return `Recherche du Mac · ${host}`;
+      return `Recherche de l'ordinateur · ${host}`;
     default: {
       const unreachable: never = network;
       return unreachable;
@@ -239,7 +239,7 @@ export function NetworkLine({ network, host, onPress }: NetworkLineProps) {
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={host === null ? label : `${label}. Modifier l'adresse du Mac`}
+      accessibilityLabel={host === null ? label : `${label}. Modifier l'adresse de l'ordinateur`}
       onPress={onPress}
       style={({ pressed }) => [styles.network, pressed && { backgroundColor: colors.surface }]}
     >
@@ -429,11 +429,11 @@ export function JoinPanel({ mac, network, host }: JoinPanelProps) {
     >
       <View style={styles.statusHeader}>
         <Dot network={network} />
-        <Text style={styles.statusEyebrow}>{lost ? "Mac introuvable" : "Appairage…"}</Text>
+        <Text style={styles.statusEyebrow}>{lost ? "Ordinateur introuvable" : "Appairage…"}</Text>
       </View>
       <Text style={styles.statusTitle}>{mac}</Text>
       <Text variant="small" tone="secondary">
-        {lost ? "Mets le téléphone sur le même Wi-Fi que le Mac, ou active Tailscale. Nouvel essai dans un instant." : host === null ? "QR code lu" : `QR code lu, essai de ${host}`}
+        {lost ? "Mets le téléphone sur le même Wi-Fi que l'ordinateur, ou active Tailscale. Nouvel essai dans un instant." : host === null ? "QR code lu" : `QR code lu, essai de ${host}`}
       </Text>
     </View>
   );
@@ -454,7 +454,7 @@ export function ResumePanel({ mac, network }: ResumePanelProps) {
       </View>
       <Text style={styles.statusTitle}>{mac}</Text>
       <Text variant="small" tone="secondary">
-        Mac déjà appairé, pas de code à saisir
+        Ordinateur déjà appairé, pas de code à saisir
       </Text>
     </View>
   );
@@ -470,12 +470,12 @@ export function ForgetMac({ mac, onPress }: ForgetMacProps) {
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`Oublier ce Mac, ${mac}`}
+      accessibilityLabel={`Oublier cet ordinateur, ${mac}`}
       onPress={onPress}
       style={({ pressed }) => [styles.forget, { borderTopColor: colors.line }, pressed && { backgroundColor: colors.surface }]}
     >
       <View style={styles.rowMain}>
-        <Text variant="bodyStrong">Oublier ce Mac</Text>
+        <Text variant="bodyStrong">Oublier cet ordinateur</Text>
         <Text variant="small" tone="secondary">
           il faudra scanner un nouveau QR code
         </Text>
@@ -494,7 +494,7 @@ interface ForgetMacSheetProps {
 export function ForgetMacSheet({ open, mac, onClose, onConfirm }: ForgetMacSheetProps) {
   return (
     <Sheet open={open} title={`Oublier ${mac} ?`} context="Le téléphone ne s'y reconnectera plus tout seul. Pour relier un agent, il faudra scanner un nouveau QR code." onClose={onClose}>
-      <SheetButton label="Oublier ce Mac" onPress={onConfirm} style={styles.sheetButton} />
+      <SheetButton label="Oublier cet ordinateur" onPress={onConfirm} style={styles.sheetButton} />
     </Sheet>
   );
 }
@@ -515,8 +515,8 @@ export function InviteSheet({ invite, replacing, onClose, onConfirm }: InviteShe
   }, [invite]);
   const context =
     replacing === null
-      ? "Ce téléphone ouvrira ton suivi aux agents lancés sur ce Mac, quand l'écran Agent est ouvert."
-      : `Ce téléphone ouvrira ton suivi aux agents lancés sur ce Mac, à la place de ${replacing}.`;
+      ? "Ce téléphone ouvrira ton suivi aux agents lancés sur cet ordinateur, quand l'écran Agent est ouvert."
+      : `Ce téléphone ouvrira ton suivi aux agents lancés sur cet ordinateur, à la place de ${replacing}.`;
   return (
     <Sheet open={invite !== null} title={`Relier ${shown?.name ?? ""} ?`} context={context} onClose={onClose}>
       <View style={[styles.inviteHosts, { borderColor: colors.line }]}>
@@ -529,7 +529,7 @@ export function InviteSheet({ invite, replacing, onClose, onConfirm }: InviteShe
           </Text>
         ))}
       </View>
-      <SheetButton label="Relier ce Mac" onPress={() => (shown === null ? undefined : onConfirm(shown))} style={styles.sheetButton} />
+      <SheetButton label="Relier cet ordinateur" onPress={() => (shown === null ? undefined : onConfirm(shown))} style={styles.sheetButton} />
     </Sheet>
   );
 }
@@ -551,7 +551,7 @@ export function HostSheet({ open, host, onClose, onSave }: HostSheetProps) {
     if (normalized !== null) onSave(normalized);
   };
   return (
-    <Sheet open={open} title="Adresse du Mac" context="Adresse IP du Mac sur le Wi-Fi ou sur Tailscale, listée par obnixe-bridge pair. Une fois relié, le téléphone suit seul ses changements d'adresse." onClose={onClose}>
+    <Sheet open={open} title="Adresse de l'ordinateur" context="Adresse IP de l'ordinateur sur le Wi-Fi ou sur Tailscale, listée par obnixe-bridge pair. Une fois relié, le téléphone suit seul ses changements d'adresse." onClose={onClose}>
       <TextField
         value={draft}
         onChangeText={setDraft}
@@ -561,7 +561,7 @@ export function HostSheet({ open, host, onClose, onSave }: HostSheetProps) {
         keyboardType="url"
         returnKeyType="done"
         onSubmitEditing={save}
-        accessibilityLabel="Adresse du Mac"
+        accessibilityLabel="Adresse de l'ordinateur"
         autoFocus
       />
       <SheetButton label="Enregistrer" onPress={save} disabled={normalized === null} style={styles.sheetButton} />

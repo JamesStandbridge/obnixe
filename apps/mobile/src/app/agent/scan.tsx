@@ -86,7 +86,7 @@ function Viewfinder() {
           </Pressable>
         </View>
         <Text variant="title" accessibilityRole="header" style={{ color: camera.text }}>
-          Scanne le QR code du Mac
+          Scanne le QR code de l'ordinateur
         </Text>
       </View>
       <View style={styles.middle}>
@@ -101,7 +101,7 @@ function Viewfinder() {
       </View>
       <View style={[styles.shade, styles.bottom, { paddingBottom: insets.bottom + 20 }]}>
         <Text style={[styles.hint, { color: problem === null ? camera.text2 : camera.warn }]} accessibilityLiveRegion="polite">
-          {problem === null ? "Lance obnixe-bridge pair dans le terminal du Mac, puis vise le code." : inviteProblemText(problem)}
+          {problem === null ? "Lance obnixe-bridge pair dans un terminal de l'ordinateur, puis vise le code." : inviteProblemText(problem)}
         </Text>
         <LinkButton label="Pas de caméra ? Saisir l'adresse" onPress={switchToManual} style={styles.bottomLink} />
       </View>
@@ -126,7 +126,7 @@ export default function Scan() {
   return (
     <PermissionAsk
       title="Caméra refusée"
-      detail="Autorise la caméra pour Obnixe dans les réglages du téléphone, ou relie le Mac avec son adresse et un code."
+      detail="Autorise la caméra pour Obnixe dans les réglages du téléphone, ou relie l'ordinateur avec son adresse et un code."
       action="Ouvrir les réglages"
       onAction={() => void Linking.openSettings()}
     />
