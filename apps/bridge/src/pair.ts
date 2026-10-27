@@ -28,8 +28,8 @@ export async function postPairingCode(controlPort: number, code: string): Promis
   return (await response.json()) as PairResult;
 }
 
-export async function postInvite(controlPort: number): Promise<InviteResult> {
-  const response = await control(controlPort, "/invite", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+export async function postInvite(controlPort: number, fresh: boolean): Promise<InviteResult> {
+  const response = await control(controlPort, "/invite", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ fresh }) });
   return (await response.json()) as InviteResult;
 }
 
@@ -70,8 +70,6 @@ function describeInvite(state: InviteState): string | null {
       return `Connected to ${state.device}. ${state.client} can use Obnixe while the Agent screen stays open; next time the phone reconnects by itself.`;
     case "expired":
       return "The QR code expired. Run `obnixe-bridge pair` again for a new one.";
-    case "refused":
-      return "Too many wrong attempts, the QR code is no longer valid. Run `obnixe-bridge pair` again.";
     case "failed":
       return `Pairing interrupted: ${state.message}`;
     default: {
@@ -92,10 +90,10 @@ async function waitForInvite(options: PairCommandOptions, ticket: InviteTicket):
 }
 
 async function runInvite(options: PairCommandOptions, write: (line: string) => void): Promise<number> {
-  const result = await postInvite(options.controlPort);
+  const result = await postInvite(options.controlPort, true);
   switch (result.kind) {
     case "no_address":
-      write("This Mac has no IPv4 address the phone can dial. Unset OBNIXE_PHONE_HOST or set it to an IPv4 address.");
+      write("This Mac has no private network address the phone can dial (Wi-Fi, Ethernet or Tailscale). Join the phone's network, or set OBNIXE_PHONE_HOST to an IPv4 address.");
       return 1;
     case "ready":
       break;

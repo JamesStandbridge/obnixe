@@ -69,9 +69,10 @@ it("serves the QR page of the running bridge with the addresses it listens on", 
   });
   const client = new Client({ name: "cursor-vscode", version: "1.0.0" });
   await client.connect(transport);
-  const html = await (await fetch(`http://127.0.0.1:${controlPort}/pair`)).text();
-  const href = /id="invite" href="([^"]+)"/.exec(html)?.[1] ?? "";
-  const invite = parseInvite(href.replace(/&amp;/g, "&"));
+  expect((await fetch(`http://127.0.0.1:${controlPort}/pair`)).status).toBe(200);
+  const response = await fetch(`http://127.0.0.1:${controlPort}/invite`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ fresh: false }) });
+  const { ticket } = (await response.json()) as { ticket: { url: string } };
+  const invite = parseInvite(ticket.url, Date.now());
   expect(invite.bridgeId).toBe((JSON.parse(readFileSync(configFile, "utf8")) as { bridgeId: string }).bridgeId);
   expect(invite.hosts).toEqual([expect.stringMatching(/^127\.0\.0\.1:\d+$/)]);
   expect(invite.relay).toBeNull();

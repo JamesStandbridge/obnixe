@@ -33,6 +33,9 @@ import type { BridgeMessage, Frame, HandshakeSecrets, PairingSecrets, PairingTra
 import { toBase64 } from "./encoding.ts";
 import { phoneHostsSchema } from "./hosts.ts";
 
+/** A bridge other than the trusted one answered on a remembered address; the caller should try another address. */
+export class ForeignBridgeError extends ProtocolError {}
+
 export type PhoneLinkStatus = "proving" | "waiting" | "resuming" | "open" | "closed";
 
 export interface PhoneSocket {
@@ -112,6 +115,8 @@ export interface PhoneSessionOptions {
   readonly device: string;
   readonly deviceId: string;
   readonly pairing: PhonePairing | null;
+  /** Whether a phone holding `pairing` may pair with the code when another bridge answers, instead of refusing it. */
+  readonly pairOtherBridges: boolean;
   readonly revocation: PhoneRevocation | null;
   readonly randomBytes: RandomBytes;
   readonly now: () => number;
@@ -307,6 +312,7 @@ export class PhoneSession {
       this.resume(pairing, transcript, shared);
       return;
     }
+    if (pairing !== null && !this.options.pairOtherBridges) throw new ForeignBridgeError("Another bridge answered on the address of the trusted Mac");
     this.state = { kind: "proving" };
     this.options.handlers.onStatus("proving");
     this.send({

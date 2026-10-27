@@ -69,10 +69,15 @@ export class PairingFile {
     return state.revoked.includes(pairingId) ? { kind: "revoked" } : { kind: "unknown" };
   }
 
-  /** Trusts a freshly paired phone, replacing any earlier pairing of the same device. */
+  /** Trusts a freshly paired phone; an earlier pairing of the same device is revoked, so its secret no longer resumes. */
   remember(pairing: BridgePairing): void {
     const state = this.load();
-    this.save({ ...state, pairings: [...state.pairings.filter((candidate) => candidate.deviceId !== pairing.deviceId), pairing] });
+    const replaced = state.pairings.filter((candidate) => candidate.deviceId === pairing.deviceId).map((candidate) => candidate.pairingId);
+    this.save({
+      ...state,
+      pairings: [...state.pairings.filter((candidate) => candidate.deviceId !== pairing.deviceId), pairing],
+      revoked: [...state.revoked, ...replaced].slice(-maxRevoked),
+    });
   }
 
   revoke(pairingId: string): BridgePairing | null {

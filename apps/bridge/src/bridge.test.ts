@@ -51,6 +51,8 @@ let client: Client;
 let skew = 0;
 let phoneHosts: PhoneHosts;
 let relayUrl: string | null;
+let hostLabel: string;
+const errors: unknown[] = [];
 const logs: string[] = [];
 const deviceId = generateIdentity(bytes);
 
@@ -95,6 +97,7 @@ function connectPhone(code: string, options: PhoneOptions = {}): SimulatedPhone 
     device: "iPhone",
     deviceId,
     pairing: options.pairing ?? null,
+    pairOtherBridges: true,
     revocation: options.revocation ?? null,
     randomBytes: bytes,
     now: Date.now,
@@ -142,8 +145,12 @@ function storedPairing(phone: SimulatedPhone): PhonePairing {
   return { ...learned, lastHost: null, relay: null };
 }
 
+function scan(url: string): PairingInvite {
+  return parseInvite(url, Date.now());
+}
+
 async function freshInvite(): Promise<InviteTicket> {
-  const result = await postInvite(control.port);
+  const result = await postInvite(control.port, true);
   if (result.kind !== "ready") throw new Error("Expected an invite");
   return result.ticket;
 }
@@ -171,8 +178,9 @@ async function startBridge(): Promise<void> {
   endpoint = new PhoneEndpoint({
     port: 0,
     hosts: () => phoneHosts,
-    hostLabel: "MacBook Pro",
+    hostLabel,
     relayUrl,
+    onError: (error) => errors.push(error),
     pairings,
     randomBytes: bytes,
     log: (line) => logs.push(line),
@@ -218,6 +226,8 @@ beforeEach(async () => {
   skew = 0;
   phoneHosts = { bind: ["127.0.0.1", "::1"], advertise: ["127.0.0.1"], source: "interfaces" };
   relayUrl = null;
+  hostLabel = "MacBook Pro";
+  errors.length = 0;
   configDir = mkdtempSync(join(tmpdir(), "obnixe-bridge-"));
   pairings = new PairingFile(join(configDir, "obnixe", "bridge.json"), bytes);
   await startBridge();
@@ -225,6 +235,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await stopBridge();
+  expect(errors).toEqual([]);
   rmSync(configDir, { recursive: true, force: true });
 });
 
@@ -342,8 +353,16 @@ describe("pairing", () => {
 describe("QR pairing", () => {
   it("pairs the first phone that proves the token, without a code, and only once", async () => {
     const ticket = await freshInvite();
-    const invite = parseInvite(ticket.url);
-    expect(invite).toEqual({ bridgeId: pairings.bridgeId(), token: expect.any(Uint8Array), name: "MacBook Pro", hosts: [`127.0.0.1:${phonePort}`], relay: null });
+    const invite = scan(ticket.url);
+    expect(invite).toEqual({
+      bridgeId: pairings.bridgeId(),
+      token: expect.any(Uint8Array),
+      name: "MacBook Pro",
+      hosts: [`127.0.0.1:${phonePort}`],
+      expiresAt: ticket.expiresAt,
+      relay: null,
+    });
+    expect(ticket.expiresAt % 1000).toBe(0);
     expect(await getInviteStatus(control.port)).toEqual({ id: ticket.id, state: { kind: "waiting", expiresAt: ticket.expiresAt } });
 
     const phone = scannedPhone(invite);
@@ -364,7 +383,7 @@ describe("QR pairing", () => {
   });
 
   it("expires the token after five minutes", async () => {
-    const invite = parseInvite((await freshInvite()).url);
+    const invite = scan((await freshInvite()).url);
     skew = inviteTtlMs + 1;
     const phone = scannedPhone(invite);
     await until(() => phone.rejections.length > 0, "expired token");
@@ -372,23 +391,22 @@ describe("QR pairing", () => {
     expect((await getInviteStatus(control.port))?.state).toEqual({ kind: "expired" });
   });
 
-  it("refuses a wrong token and burns the QR code after too many failures", async () => {
-    const invite = parseInvite((await freshInvite()).url);
-    for (let attempt = 0; attempt < 5; attempt += 1) {
+  it("refuses wrong tokens one attempt at a time without burning the QR code", async () => {
+    const ticket = await freshInvite();
+    const invite = scan(ticket.url);
+    for (let attempt = 0; attempt < 8; attempt += 1) {
       const intruder = scannedPhone(invite, bytes(32));
       await until(() => intruder.rejections.length > 0, "wrong token");
       expect(intruder.rejections).toEqual(["code"]);
       expect(intruder.paired).toEqual([]);
     }
-    expect((await getInviteStatus(control.port))?.state).toEqual({ kind: "refused" });
-    const late = scannedPhone(invite);
-    await until(() => late.rejections.length > 0, "burnt token");
-    expect(late.rejections).toEqual(["expired"]);
-    expect(pairings.list()).toEqual([]);
+    expect((await getInviteStatus(control.port))?.state).toEqual({ kind: "waiting", expiresAt: ticket.expiresAt });
+    const phone = scannedPhone(invite);
+    await until(() => phone.statuses.includes("open"), "token session after intruders");
   });
 
   it("invalidates an older QR code when a new one is created, and keeps a code pairing working", async () => {
-    const older = parseInvite((await freshInvite()).url);
+    const older = scan((await freshInvite()).url);
     const newer = await freshInvite();
     const stale = scannedPhone(older);
     await until(() => stale.rejections.length > 0, "stale token");
@@ -398,20 +416,21 @@ describe("QR pairing", () => {
     await pairedPhone();
   });
 
-  it("serves the live QR code on a page only loopback hosts can load", async () => {
+  it("serves a page that creates the invitation only through a JSON POST", async () => {
     const response = await fetch(`http://127.0.0.1:${control.port}/pair`);
     expect(response.status).toBe(200);
     expect(response.headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
     expect(response.headers.get("access-control-allow-origin")).toBeNull();
     const html = await response.text();
-    expect(html).toContain("<svg");
-    const href = /id="invite" href="([^"]+)"/.exec(html)?.[1];
-    if (href === undefined) throw new Error("No invite link on the page");
-    const invite = parseInvite(href.replace(/&amp;/g, "&"));
-    const live = await getInviteStatus(control.port);
-    const second = await (await fetch(`http://127.0.0.1:${control.port}/pair`)).text();
-    expect(second).toContain(`data-invite="${live?.id ?? ""}"`);
-    expect(await getInviteStatus(control.port)).toEqual(live);
+    expect(html).toContain('fetch("/invite", { method: "POST", headers: { "content-type": "application/json" }');
+    expect(await getInviteStatus(control.port)).toBeNull();
+
+    const posted = await fetch(`http://127.0.0.1:${control.port}/invite`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ fresh: false }) });
+    expect(posted.status).toBe(201);
+    const body = (await posted.json()) as { kind: string; ticket: InviteTicket; svg: string };
+    expect(body.svg).toContain("<svg");
+    const reused = await postInvite(control.port, false);
+    expect(reused).toMatchObject({ kind: "ready", ticket: body.ticket });
 
     const forged = await new Promise<number | undefined>((resolve) => {
       get({ host: "127.0.0.1", port: control.port, path: "/pair", headers: { host: "obnixe.example:7430" } }, (answer) => {
@@ -420,10 +439,12 @@ describe("QR pairing", () => {
       });
     });
     expect(forged).toBe(403);
-    const posted = await fetch(`http://127.0.0.1:${control.port}/invite`, { method: "POST", headers: { "content-type": "text/plain" }, body: "{}" });
-    expect(posted.status).toBe(415);
+    const plain = await fetch(`http://127.0.0.1:${control.port}/invite`, { method: "POST", headers: { "content-type": "text/plain" }, body: JSON.stringify({ fresh: true }) });
+    expect(plain.status).toBe(415);
+    const malformed = await fetch(`http://127.0.0.1:${control.port}/invite`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+    expect(malformed.status).toBe(400);
 
-    const phone = scannedPhone(invite);
+    const phone = scannedPhone(scan(body.ticket.url));
     await until(() => phone.statuses.includes("open"), "page token session");
   });
 
@@ -440,48 +461,81 @@ describe("QR pairing", () => {
     if (link === undefined) throw new Error("No link printed");
     expect(opened).toEqual([`http://127.0.0.1:${control.port}/pair`]);
     expect(printed).toContain("\u2580");
-    scannedPhone(parseInvite(link));
+    expect((await postInvite(control.port, false)).kind).toBe("ready");
+    scannedPhone(scan(link));
     expect(await run).toBe(0);
     expect(printed).toContain("Connected to iPhone.");
   });
 
-  it("carries the relay rendezvous when the bridge has one", async () => {
+  it("gives every invitation its own random relay room when the bridge has a relay", async () => {
     await stopBridge();
     relayUrl = "wss://relay.obnixe.app/v1";
     await startBridge();
-    const first = parseInvite((await freshInvite()).url);
-    const second = parseInvite((await freshInvite()).url);
-    expect(first.relay).toEqual({ url: "wss://relay.obnixe.app/v1", room: expect.stringMatching(/^[A-Za-z0-9_-]{22}$/) });
-    expect(second.relay).toEqual(first.relay);
+    const first = scan((await freshInvite()).url);
+    const second = scan((await freshInvite()).url);
+    expect(first.relay).toEqual({ url: "wss://relay.obnixe.app/v1", room: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/) });
+    expect(second.relay?.room).not.toBe(first.relay?.room);
+  });
+
+  it("truncates a long Mac name on code points", async () => {
+    await stopBridge();
+    hostLabel = "\u{1F3C3}".repeat(70);
+    await startBridge();
+    expect(scan((await freshInvite()).url).name).toBe("\u{1F3C3}".repeat(64));
   });
 });
 
 describe("addresses", () => {
-  it("tells the phone where the bridge listens and follows address changes", async () => {
+  it("announces only bound addresses and follows address changes", async () => {
+    phoneHosts = { bind: ["127.0.0.1", "::1"], advertise: ["127.0.0.1", "192.168.1.24"], source: "interfaces" };
+    await stopBridge();
+    await startBridge();
     const phone = await pairedPhone();
     expect(storedPairing(phone).hosts).toEqual([`127.0.0.1:${phonePort}`]);
 
-    phoneHosts = { bind: ["127.0.0.1"], advertise: ["127.0.0.1", "192.168.1.24"], source: "interfaces" };
-    await endpoint.refreshHosts();
+    phoneHosts = { bind: ["::1"], advertise: ["127.0.0.1", "192.168.1.24"], source: "interfaces" };
+    await Promise.all([endpoint.refreshHosts(), endpoint.refreshHosts()]);
     await until(() => phone.hosts.length === 1, "announced hosts");
-    expect(phone.hosts).toEqual([[`127.0.0.1:${phonePort}`, `192.168.1.24:${phonePort}`]]);
-    const dropped = new WebSocket(`ws://[::1]:${phonePort}`);
+    expect(phone.hosts).toEqual([[]]);
+    const dropped = new WebSocket(`ws://127.0.0.1:${phonePort}`);
     expect(await new Promise<string>((resolve) => dropped.on("error", (error) => resolve(error.message)))).toContain("ECONNREFUSED");
 
     phoneHosts = { bind: ["127.0.0.1", "::1"], advertise: ["127.0.0.1", "192.168.1.24"], source: "interfaces" };
     await endpoint.refreshHosts();
-    expect(phone.hosts).toHaveLength(1);
+    await until(() => phone.hosts.length === 2, "announced hosts again");
+    expect(phone.hosts[1]).toEqual([`127.0.0.1:${phonePort}`]);
     const resumed = connectPhone("000000", { host: "[::1]", pairing: storedPairing(phone) });
-    await until(() => resumed.statuses.includes("open"), "resume on the new address");
-    expect(resumed.hosts).toEqual([[`127.0.0.1:${phonePort}`, `192.168.1.24:${phonePort}`]]);
+    await until(() => resumed.statuses.includes("open"), "resume on another address");
+  });
+
+  it("stops rescanning once closed", async () => {
+    await stopBridge();
+    await endpoint.refreshHosts();
+    await startBridge();
+    expect(errors).toEqual([]);
   });
 
   it("refuses to create a QR code without an address the phone can dial", async () => {
     await stopBridge();
-    phoneHosts = { bind: ["::1"], advertise: [], source: "override" };
+    phoneHosts = { bind: ["::1"], advertise: [], source: "interfaces" };
     await startBridge();
-    expect(await postInvite(control.port)).toEqual({ kind: "no_address" });
-    expect((await fetch(`http://127.0.0.1:${control.port}/pair`)).status).toBe(409);
+    expect(await postInvite(control.port, true)).toEqual({ kind: "no_address" });
+    expect((await fetch(`http://127.0.0.1:${control.port}/invite`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ fresh: false }) })).status).toBe(409);
+  });
+});
+
+describe("handshake slots", () => {
+  it("keeps phones waiting for a code from blocking a resume, a QR pairing or fresh sockets", async () => {
+    const pairing = storedPairing(await pairedPhone());
+    const waiting = Array.from({ length: 12 }, (_, index) => connectPhone("482917", { host: index % 2 === 0 ? "127.0.0.1" : "[::1]" }));
+    await until(() => waiting.filter((phone) => phone.rejections.includes("replaced")).length === 10, "oldest code hellos replaced");
+    expect(waiting.filter((phone) => phone.statuses.includes("waiting") && phone.rejections.length === 0)).toHaveLength(2);
+    expect(waiting.flatMap((phone) => phone.closeCodes)).not.toContain(1013);
+
+    const resumed = connectPhone("000000", { pairing });
+    await until(() => resumed.statuses.includes("open"), "resume while code hellos wait");
+    const scanned = scannedPhone(scan((await freshInvite()).url));
+    await until(() => scanned.statuses.includes("open"), "QR pairing while code hellos wait");
   });
 });
 
@@ -583,6 +637,19 @@ describe("trusted reconnection", () => {
     expect(phone.acknowledged).toEqual([revocation]);
     expect(storedPairing(phone).pairingId).not.toBe(pairing.pairingId);
     expect(pairings.list().map((entry) => entry.pairingId)).toEqual([storedPairing(phone).pairingId]);
+  });
+
+  it("revokes the earlier pairing when the same phone pairs again", async () => {
+    const firstPhone = await pairedPhone();
+    const first = storedPairing(firstPhone);
+    firstPhone.session.close("user");
+    await until(() => endpoint.status().phone === "none", "first session closed");
+    const second = storedPairing(await pairedPhone());
+    expect(pairings.list().map((entry) => entry.pairingId)).toEqual([second.pairingId]);
+    expect(pairings.lookup(first.pairingId).kind).toBe("revoked");
+    const stale = connectPhone("000000", { pairing: first });
+    await until(() => stale.rejections.length > 0, "stale pairing");
+    expect(stale.rejections).toEqual(["revoked"]);
   });
 
   it("forgets from the file when no bridge is running", async () => {

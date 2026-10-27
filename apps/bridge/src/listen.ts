@@ -51,8 +51,9 @@ function scannedAdvertise(interfaces: InterfaceTable): readonly string[] {
 }
 
 /**
- * By default the listener binds loopback, every private LAN IPv4 address and every Tailscale address, never a public one.
- * The override binds a single address; a wildcard override still announces the scanned addresses.
+ * By default the listener binds loopback, every private LAN IPv4 address and every Tailscale address, never a public one,
+ * and announces only the LAN and Tailscale ones. The override binds a single address; a wildcard override still announces
+ * the scanned addresses, and an explicit IPv4 override, loopback included, is announced as is.
  */
 export function selectPhoneHosts(interfaces: InterfaceTable, override: string | undefined): PhoneHosts {
   if (override !== undefined && override !== "") {
@@ -61,5 +62,5 @@ export function selectPhoneHosts(interfaces: InterfaceTable, override: string | 
     return { bind: [override], advertise: wildcard ? scannedAdvertise(interfaces) : isIPv4(override) ? [override] : [], source: "override" };
   }
   const advertise = scannedAdvertise(interfaces);
-  return { bind: [loopbackHost, ...advertise], advertise: advertise.length === 0 ? [loopbackHost] : advertise, source: "interfaces" };
+  return { bind: [loopbackHost, ...advertise], advertise, source: "interfaces" };
 }

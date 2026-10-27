@@ -25,7 +25,7 @@ import {
   sharedSecret,
 } from "./protocol.ts";
 import type { EphemeralKeyPair, Frame, HandshakeSecrets, PairingSecrets, PairingTranscript, RejectionReason } from "./protocol.ts";
-import { PhoneSession, parsePhonePairing, phoneRevocation } from "./session.ts";
+import { ForeignBridgeError, PhoneSession, parsePhonePairing, phoneRevocation } from "./session.ts";
 import type { LearnedPairing, PhoneLinkStatus, PhonePairing, PhoneRevocation, PhoneSecret } from "./session.ts";
 
 const bytes = (length: number): Uint8Array => new Uint8Array(randomBytes(length));
@@ -141,6 +141,7 @@ interface Trust {
   readonly pairing?: PhonePairing;
   readonly revocation?: PhoneRevocation;
   readonly secret?: PhoneSecret;
+  readonly pairOtherBridges?: boolean;
 }
 
 function harness(phoneCode: string, trust: Trust = {}): Harness {
@@ -157,6 +158,7 @@ function harness(phoneCode: string, trust: Trust = {}): Harness {
     device: "iPhone",
     deviceId,
     pairing: trust.pairing ?? null,
+    pairOtherBridges: trust.pairOtherBridges ?? true,
     revocation: trust.revocation ?? null,
     randomBytes: bytes,
     now: () => 0,
@@ -428,6 +430,10 @@ describe("trusted resume", () => {
     await helloFrom(target, simulatedBridge(bytes(16)));
     expect(target.sent.some((frame) => frame.type === "resume")).toBe(false);
     expect(target.statuses).toEqual(["proving", "waiting"]);
+
+    const strict = harness(code, { pairing, pairOtherBridges: false });
+    await expect(strict.session.receive(encodeFrame(challengeOf(simulatedBridge(bytes(16)))))).rejects.toThrow(ForeignBridgeError);
+    expect(strict.sent).toEqual([]);
 
     const honest = harness(code, { pairing });
     const bridge = simulatedBridge();

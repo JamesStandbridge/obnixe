@@ -1,10 +1,3 @@
-import { svgQr } from "./qr.ts";
-import type { InviteTicket } from "./phone.ts";
-
-function escapeHtml(text: string): string {
-  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-}
-
 export function pagePolicy(nonce: string): string {
   return `default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`;
 }
@@ -37,16 +30,33 @@ a { color: var(--text); }
 const script = `
 const status = document.getElementById("status");
 const label = document.getElementById("label");
-const id = document.body.dataset.invite;
-const expiresAt = Number(document.body.dataset.expires);
+const code = document.getElementById("code");
+let id = null;
+let expiresAt = 0;
+let timer = null;
 function show(text, tone) {
   label.textContent = text;
   status.dataset.tone = tone;
-  if (tone !== "live") clearInterval(timer);
+  if (tone !== "live" && timer !== null) clearInterval(timer);
 }
 function clock() {
   const seconds = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
   return Math.floor(seconds / 60) + ":" + String(seconds % 60).padStart(2, "0");
+}
+async function load() {
+  const response = await fetch("/invite", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ fresh: false }), cache: "no-store" });
+  const result = await response.json();
+  if (result.kind !== "ready") return show("Ce Mac n'a aucune adresse privée joignable par le téléphone (Wi-Fi, Ethernet ou Tailscale).", "stale");
+  const ticket = result.ticket;
+  id = ticket.id;
+  expiresAt = ticket.expiresAt;
+  code.innerHTML = result.svg;
+  document.getElementById("name").textContent = ticket.name;
+  document.getElementById("hosts").textContent = ticket.hosts.join(", ");
+  document.getElementById("invite").href = ticket.url;
+  document.body.dataset.invite = ticket.id;
+  timer = setInterval(tick, 1000);
+  tick();
 }
 async function poll() {
   const response = await fetch("/invite", { cache: "no-store" });
@@ -60,22 +70,20 @@ async function poll() {
     return show(state.device + " est relié à ce Mac. Tu peux fermer cette page.", "done");
   }
   if (state.kind === "expired") return show("QR code expiré. Recharge la page pour en créer un autre.", "stale");
-  if (state.kind === "refused") return show("Trop d'essais refusés. Recharge la page pour en créer un autre.", "stale");
   return show("Appairage interrompu : " + state.message, "stale");
 }
-function tick() {
-  poll().catch((error) => {
-    if (!(error instanceof TypeError)) throw error;
-    show("Le bridge ne répond plus. Relance Cursor ou Codex, puis obnixe-bridge pair.", "stale");
-  });
+function unreachable(error) {
+  if (!(error instanceof TypeError)) throw error;
+  show("Le bridge ne répond plus. Relance Cursor ou Codex, puis obnixe-bridge pair.", "stale");
 }
-const timer = setInterval(tick, 1000);
-tick();
+function tick() {
+  poll().catch(unreachable);
+}
+load().catch(unreachable);
 `;
 
-/** Pairing page served on the control port: the QR code of the live invitation, refreshed until it is used or expires. */
-export function pairPage(ticket: InviteTicket, nonce: string): string {
-  const hosts = ticket.hosts.map((host) => `<code>${escapeHtml(host)}</code>`).join(", ");
+/** Pairing page served on the control port; its script fetches the live invitation and follows it until it is used or expires. */
+export function pairPage(nonce: string): string {
   return `<!doctype html>
 <html lang="fr">
 <head>
@@ -85,23 +93,23 @@ export function pairPage(ticket: InviteTicket, nonce: string): string {
 <title>Obnixe · Relier un téléphone</title>
 <style>${style}</style>
 </head>
-<body data-invite="${escapeHtml(ticket.id)}" data-expires="${ticket.expiresAt}">
+<body>
 <main>
-<p class="eyebrow">obnixe-bridge · ${escapeHtml(ticket.name)}</p>
+<p class="eyebrow">obnixe-bridge · <span id="name"></span></p>
 <h1>Scanne ce code avec ton téléphone</h1>
 <p class="lead">Le téléphone se relie à ce Mac sans rien saisir.</p>
-<div class="code" role="img" aria-label="QR code d'appairage">${svgQr(ticket.url)}</div>
-<p class="status" id="status" data-tone="live" aria-live="polite"><span class="dot"></span><span id="label">Valable 5:00, une seule fois</span></p>
+<div class="code" id="code" role="img" aria-label="QR code d'appairage"></div>
+<p class="status" id="status" data-tone="live" aria-live="polite"><span class="dot"></span><span id="label">Préparation du QR code…</span></p>
 <ol>
 <li><span>1</span>Dans Obnixe, ouvre Aujourd'hui puis Connecter un agent</li>
-<li><span>2</span>Touche Scanner le QR code du Mac et vise ce code</li>
+<li><span>2</span>Touche Scanner le QR code du Mac, vise ce code et confirme</li>
 <li><span>3</span>Garde l'écran Agent ouvert pendant la connexion</li>
 </ol>
 <details>
 <summary>Le téléphone ne trouve pas le Mac ?</summary>
-<p>Il doit être sur le même Wi-Fi ou sur Tailscale. Adresses annoncées : ${hosts}.</p>
+<p>Il doit être sur le même Wi-Fi ou sur Tailscale. Adresses annoncées : <code id="hosts"></code>.</p>
 <p>Sans caméra : sur le téléphone, touche Saisir l'adresse, puis lance <code>obnixe-bridge pair 123456</code> avec le code affiché.</p>
-<p><a id="invite" href="${escapeHtml(ticket.url)}">Lien d'appairage</a> (s'ouvre dans Obnixe sur le téléphone)</p>
+<p><a id="invite" href="#">Lien d'appairage</a> (s'ouvre dans Obnixe sur le téléphone)</p>
 </details>
 </main>
 <script nonce="${nonce}">${script}</script>

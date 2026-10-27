@@ -47,7 +47,7 @@ function describeListening(hosts: PhoneHosts, port: number): string {
     case "override":
       return `Waiting for the phone on ${listed} (OBNIXE_PHONE_HOST).`;
     case "interfaces":
-      return hosts.advertise.every((address) => address === "127.0.0.1")
+      return hosts.advertise.length === 0
         ? `No private network address found (Wi-Fi, Ethernet or Tailscale), so the bridge only listens on ${listed} and the phone cannot reach it. Join the phone's network and the bridge will pick the address up.`
         : `Waiting for the phone on ${listed}.`;
     default: {
@@ -77,6 +77,7 @@ async function serve(): Promise<void> {
     pairings,
     randomBytes: (length) => new Uint8Array(randomBytes(length)),
     log,
+    onError: (error) => log(`Address rescan failed: ${error instanceof Error ? error.message : String(error)}`),
   });
   let control: ControlServer | null = null;
   try {

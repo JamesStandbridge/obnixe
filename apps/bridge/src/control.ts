@@ -4,6 +4,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { pagePolicy, pairPage } from "./page.ts";
 import type { InviteResult, PairResult, PhoneEndpoint } from "./phone.ts";
+import { svgQr } from "./qr.ts";
 
 const maxBody = 1024;
 
@@ -18,6 +19,28 @@ export interface PairRequest {
 
 function isPairRequest(value: unknown): value is PairRequest {
   return typeof value === "object" && value !== null && "code" in value && typeof value.code === "string";
+}
+
+export interface InviteRequest {
+  readonly fresh: boolean;
+}
+
+function isInviteRequest(value: unknown): value is InviteRequest {
+  return typeof value === "object" && value !== null && "fresh" in value && typeof value.fresh === "boolean";
+}
+
+/** The invite result, with the QR code drawn as SVG for the page. */
+function inviteBody(result: InviteResult): unknown {
+  switch (result.kind) {
+    case "ready":
+      return { ...result, svg: svgQr(result.ticket.url) };
+    case "no_address":
+      return result;
+    default: {
+      const unreachable: never = result;
+      throw new Error(`Unhandled invite result ${JSON.stringify(unreachable)}`);
+    }
+  }
 }
 
 function pairStatus(result: PairResult): number {
@@ -58,24 +81,11 @@ function json(response: ServerResponse, status: number, body: unknown): void {
   response.writeHead(status, { ...privateHeaders, "content-type": "application/json" }).end(JSON.stringify(body));
 }
 
-function servePage(endpoint: PhoneEndpoint, response: ServerResponse): void {
-  const result = endpoint.invite();
-  switch (result.kind) {
-    case "ready": {
-      const nonce = randomBytes(16).toString("base64");
-      response
-        .writeHead(200, { ...privateHeaders, "content-type": "text/html; charset=utf-8", "content-security-policy": pagePolicy(nonce), "x-frame-options": "DENY", "referrer-policy": "no-referrer" })
-        .end(pairPage(result.ticket, nonce));
-      return;
-    }
-    case "no_address":
-      response.writeHead(409, { ...privateHeaders, "content-type": "text/plain; charset=utf-8" }).end("Ce Mac n'a aucune adresse IPv4 joignable par le téléphone. Retire OBNIXE_PHONE_HOST ou indique une adresse IPv4.");
-      return;
-    default: {
-      const unreachable: never = result;
-      throw new Error(`Unhandled invite result ${JSON.stringify(unreachable)}`);
-    }
-  }
+function servePage(response: ServerResponse): void {
+  const nonce = randomBytes(16).toString("base64");
+  response
+    .writeHead(200, { ...privateHeaders, "content-type": "text/html; charset=utf-8", "content-security-policy": pagePolicy(nonce), "x-frame-options": "DENY", "referrer-policy": "no-referrer" })
+    .end(pairPage(nonce));
 }
 
 function readBody(request: IncomingMessage): Promise<string | null> {
@@ -104,8 +114,8 @@ function parseJson(text: string): unknown {
 
 /**
  * Localhost-only HTTP port used by `obnixe-bridge pair` and `forget`, and serving the QR page at /pair. Requires a
- * loopback Host against DNS rebinding and a JSON content type on writes so other sites cannot post codes; responses carry
- * no CORS header, so other origins cannot read the invitation.
+ * loopback Host against DNS rebinding and a JSON content type on every write, invitations included, so other sites can
+ * neither post codes nor create a token without a preflight; responses carry no CORS header, so other origins cannot read them.
  */
 export async function startControl(endpoint: PhoneEndpoint, port: number): Promise<ControlServer> {
   const server = createServer((request, response) => {
@@ -135,7 +145,7 @@ async function handle(endpoint: PhoneEndpoint, request: IncomingMessage, respons
     return;
   }
   if (request.method === "GET" && request.url === "/pair") {
-    servePage(endpoint, response);
+    servePage(response);
     return;
   }
   if (request.method === "GET" && request.url === "/invite") {
@@ -148,8 +158,14 @@ async function handle(endpoint: PhoneEndpoint, request: IncomingMessage, respons
       json(response, 415, { error: "json_required" });
       return;
     }
-    const result = endpoint.renewInvite();
-    json(response, inviteStatus(result), result);
+    const body = await readBody(request);
+    const parsed = body === null ? null : parseJson(body);
+    if (!isInviteRequest(parsed)) {
+      json(response, 400, { error: "invalid_request" });
+      return;
+    }
+    const result = endpoint.invite(parsed.fresh);
+    json(response, inviteStatus(result), inviteBody(result));
     return;
   }
   if (request.method === "POST" && request.url === "/pair") {

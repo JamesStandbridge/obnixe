@@ -12,7 +12,7 @@ const inviteBridgeIdBytes = 16;
 const maxRoomBytes = 64;
 const relayUrlPattern = /^wss:\/\/[A-Za-z0-9](?:[A-Za-z0-9.-]{0,252}[A-Za-z0-9])?(?::\d{1,5})?(?:\/[A-Za-z0-9._~%/-]*)?$/;
 
-export type InviteErrorReason = "format" | "version";
+export type InviteErrorReason = "format" | "version" | "expired";
 
 export class InviteError extends Error {
   readonly reason: InviteErrorReason;
@@ -31,14 +31,21 @@ export interface RelayEndpoint {
 
 /**
  * Content of the QR code shown by `obnixe-bridge pair`: who the bridge is, the one-time pairing token that replaces the
- * code, and where to dial it. `bridgeId` is standard base64 like every other identity of the protocol.
+ * code, where to dial it and when the token expires. `bridgeId` is standard base64 like every other identity of the
+ * protocol; `expiresAt` is in milliseconds, carried in whole seconds.
  */
 export interface PairingInvite {
   readonly bridgeId: string;
   readonly token: Uint8Array;
   readonly name: string;
   readonly hosts: readonly string[];
+  readonly expiresAt: number;
   readonly relay: RelayEndpoint | null;
+}
+
+/** Truncates to whole code points so a name never ends with half a surrogate pair. */
+export function truncateName(name: string): string {
+  return Array.from(name).slice(0, maxInviteNameLength).join("");
 }
 
 export function isRelayUrl(text: string): boolean {
@@ -68,11 +75,20 @@ const querySchema = z
     v: z.literal(String(inviteVersion)),
     b: base64UrlBytes(inviteBridgeIdBytes, inviteBridgeIdBytes),
     t: base64UrlBytes(pairingTokenBytes, pairingTokenBytes),
-    n: z.string().trim().min(1).max(maxInviteNameLength),
+    n: z
+      .string()
+      .trim()
+      .min(1)
+      .refine((name) => Array.from(name).length <= maxInviteNameLength, "Name too long"),
     h: z
       .string()
       .transform((text) => text.split(","))
-      .pipe(phoneHostsSchema.min(1)),
+      .pipe(phoneHostsSchema)
+      .refine((hosts) => hosts.length > 0, "No host"),
+    e: z
+      .string()
+      .regex(/^[1-9]\d{0,11}$/)
+      .transform((seconds) => Number(seconds) * 1000),
     r: z.string().refine(isRelayUrl, "Expected a wss:// URL").optional(),
     room: base64UrlBytes(1, maxRoomBytes).optional(),
   })
@@ -101,8 +117,8 @@ function queryOf(text: string): Record<string, string> {
   return Object.fromEntries(query);
 }
 
-/** Parses the text of a scanned QR code or an opened deep link; throws an InviteError for anything else. */
-export function parseInvite(text: string): PairingInvite {
+/** Parses the text of a scanned QR code or an opened deep link at time `now`; throws an InviteError for anything else or a stale invite. */
+export function parseInvite(text: string, now: number): PairingInvite {
   const query = queryOf(text.trim());
   const version = query.v;
   if (version !== String(inviteVersion)) {
@@ -110,8 +126,9 @@ export function parseInvite(text: string): PairingInvite {
   }
   const parsed = querySchema.safeParse(query);
   if (!parsed.success) throw new InviteError("format", `Malformed invite: ${parsed.error.message}`);
-  const { b, t, n, h, r, room } = parsed.data;
-  return { bridgeId: toBase64(b), token: t, name: n, hosts: h, relay: r === undefined || room === undefined ? null : { url: r, room: toBase64Url(room) } };
+  const { b, t, n, h, e, r, room } = parsed.data;
+  if (e <= now) throw new InviteError("expired", "The invite expired");
+  return { bridgeId: toBase64(b), token: t, name: n, hosts: h, expiresAt: e, relay: r === undefined || room === undefined ? null : { url: r, room: toBase64Url(room) } };
 }
 
 interface Parameter {
@@ -126,6 +143,7 @@ export function formatInvite(invite: PairingInvite): string {
     { key: "t", value: toBase64Url(invite.token) },
     { key: "n", value: encodeURIComponent(invite.name) },
     { key: "h", value: invite.hosts.join(",") },
+    { key: "e", value: String(Math.floor(invite.expiresAt / 1000)) },
   ];
   if (invite.relay !== null) parameters.push({ key: "r", value: encodeURIComponent(invite.relay.url) }, { key: "room", value: invite.relay.room });
   return `${inviteScheme}?${parameters.map((parameter) => `${parameter.key}=${parameter.value}`).join("&")}`;

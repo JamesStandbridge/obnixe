@@ -39,10 +39,11 @@ describe("phone listen hosts", () => {
     });
   });
 
-  it("falls back to loopback alone without any private address", () => {
+  it("listens on loopback alone without any private address and announces nothing unless loopback is set explicitly", () => {
     const offline: InterfaceTable = { lo0: laptop.lo0, en7: laptop.en7, utun0: undefined };
-    expect(selectPhoneHosts(offline, undefined)).toEqual({ bind: ["127.0.0.1"], advertise: ["127.0.0.1"], source: "interfaces" });
-    expect(selectPhoneHosts({ lo0: [ipv4("100.100.100.100", true)] }, "")).toEqual({ bind: ["127.0.0.1"], advertise: ["127.0.0.1"], source: "interfaces" });
+    expect(selectPhoneHosts(offline, undefined)).toEqual({ bind: ["127.0.0.1"], advertise: [], source: "interfaces" });
+    expect(selectPhoneHosts({ lo0: [ipv4("100.100.100.100", true)] }, "")).toEqual({ bind: ["127.0.0.1"], advertise: [], source: "interfaces" });
+    expect(selectPhoneHosts(offline, "127.0.0.1")).toEqual({ bind: ["127.0.0.1"], advertise: ["127.0.0.1"], source: "override" });
   });
 
   it("honours a valid override and refuses anything else", () => {

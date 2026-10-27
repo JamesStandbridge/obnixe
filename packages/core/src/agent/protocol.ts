@@ -11,7 +11,6 @@ import { Base64Error, Utf8Error, fromBase64, fromUtf8, toBase64 } from "./encodi
 import { phoneHostsSchema } from "./hosts.ts";
 
 export const protocolVersion = 3;
-export const defaultPhonePort = 7429;
 export const defaultControlPort = 7430;
 export const pairingCodeTtlMs = 5 * 60_000;
 export const maxPairingAttempts = 5;

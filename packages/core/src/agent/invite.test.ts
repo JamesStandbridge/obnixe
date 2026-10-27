@@ -1,22 +1,24 @@
 import { randomBytes } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { Base64Error, fromBase64Url, toBase64, toBase64Url } from "./encoding.ts";
-import { InviteError, formatInvite, parseInvite, pairingTokenBytes } from "./invite.ts";
+import { InviteError, formatInvite, parseInvite, pairingTokenBytes, truncateName } from "./invite.ts";
 import type { InviteErrorReason, PairingInvite } from "./invite.ts";
 
 const bytes = (length: number): Uint8Array => new Uint8Array(randomBytes(length));
 
+const now = Date.UTC(2026, 9, 26, 22, 0);
 const invite: PairingInvite = {
   bridgeId: toBase64(bytes(16)),
   token: bytes(pairingTokenBytes),
   name: "MacBook Pro de James",
   hosts: ["192.168.1.24:7429", "10.0.0.5:7429", "100.101.12.7:7429"],
+  expiresAt: now + 300_000,
   relay: null,
 };
 
 function reasonOf(text: string): InviteErrorReason | null {
   try {
-    parseInvite(text);
+    parseInvite(text, now);
     return null;
   } catch (error) {
     if (error instanceof InviteError) return error.reason;
@@ -46,10 +48,10 @@ describe("pairing invite", () => {
   it("formats the shared URL and parses it back", () => {
     const url = formatInvite(invite);
     expect(url).toBe(
-      `obnixe://pair?v=1&b=${toBase64Url(Buffer.from(invite.bridgeId, "base64"))}&t=${toBase64Url(invite.token)}&n=MacBook%20Pro%20de%20James&h=192.168.1.24:7429,10.0.0.5:7429,100.101.12.7:7429`,
+      `obnixe://pair?v=1&b=${toBase64Url(Buffer.from(invite.bridgeId, "base64"))}&t=${toBase64Url(invite.token)}&n=MacBook%20Pro%20de%20James&h=192.168.1.24:7429,10.0.0.5:7429,100.101.12.7:7429&e=${Math.floor(invite.expiresAt / 1000)}`,
     );
-    expect(parseInvite(url)).toEqual(invite);
-    expect(parseInvite(` ${url.replace("%20", "+")}\n`)).toEqual(invite);
+    expect(parseInvite(url, now)).toEqual(invite);
+    expect(parseInvite(` ${url.replace("%20", "+")}\n`, now)).toEqual(invite);
   });
 
   it("carries the relay rendezvous through when present", () => {
@@ -57,7 +59,7 @@ describe("pairing invite", () => {
     const relayed: PairingInvite = { ...invite, relay: { url: "wss://relay.obnixe.app/v1", room } };
     const url = formatInvite(relayed);
     expect(url).toContain(`&r=wss%3A%2F%2Frelay.obnixe.app%2Fv1&room=${room}`);
-    expect(parseInvite(url)).toEqual(relayed);
+    expect(parseInvite(url, now)).toEqual(relayed);
     expect(reasonOf(withParameter(url, "room", null))).toBe("format");
     expect(reasonOf(withParameter(formatInvite(invite), "r", "wss%3A%2F%2Frelay.obnixe.app"))).toBe("format");
     expect(reasonOf(withParameter(url, "r", "ws%3A%2F%2Frelay.obnixe.app"))).toBe("format");
@@ -79,12 +81,21 @@ describe("pairing invite", () => {
       withParameter(url, "n", ""),
       withParameter(url, "n", "%E0%A4%A"),
       withParameter(url, "n", "x".repeat(65)),
+      withParameter(url, "n", encodeURIComponent("\u{1F3C3}".repeat(65))),
       withParameter(url, "h", ""),
-      withParameter(url, "h", "192.168.1.24"),
       withParameter(url, "h", "192.168.1.24:0"),
+      withParameter(url, "h", "192.168.1.24:07429"),
+      withParameter(url, "h", "192.168.1.24:65536"),
       withParameter(url, "h", "192.168.1.256:7429"),
-      withParameter(url, "h", "192.168.1.24:7429,192.168.1.24:7429"),
+      withParameter(url, "h", "192.168.01.24:7429"),
       withParameter(url, "h", "[fd7a::1]:7429"),
+      withParameter(url, "h", "macbook.local:7429"),
+      withParameter(url, "h", "8.8.8.8:7429"),
+      withParameter(url, "h", "172.32.0.1:7429"),
+      withParameter(url, "h", "169.254.1.1:7429"),
+      withParameter(url, "e", null),
+      withParameter(url, "e", "017"),
+      withParameter(url, "e", "-5"),
       withParameter(url, "h", Array.from({ length: 9 }, (_, index) => `10.0.0.${index + 1}:7429`).join(",")),
       `${url}&x=1`,
       `${url}&t=${token}`,
@@ -92,6 +103,21 @@ describe("pairing invite", () => {
       `${url}#fragment`,
     ];
     for (const text of tampered) expect(reasonOf(text), text).toBe("format");
+  });
+
+  it("normalizes and deduplicates hosts and counts the name in code points", () => {
+    const url = withParameter(formatInvite(invite), "h", "192.168.1.24,192.168.1.24:7429,127.0.0.1:9000");
+    expect(parseInvite(url, now).hosts).toEqual(["192.168.1.24:7429", "127.0.0.1:9000"]);
+    const runner = "\u{1F3C3}".repeat(64);
+    expect(parseInvite(withParameter(url, "n", encodeURIComponent(runner)), now).name).toBe(runner);
+    expect(truncateName(`${"a".repeat(63)}\u{1F3C3}b`)).toBe(`${"a".repeat(63)}\u{1F3C3}`);
+  });
+
+  it("drops an expired invite without exposing its content", () => {
+    const url = formatInvite(invite);
+    expect(reasonOf(url)).toBeNull();
+    expect(() => parseInvite(url, invite.expiresAt)).toThrow(InviteError);
+    expect(() => parseInvite(url, invite.expiresAt + 1)).toThrow(expect.objectContaining({ reason: "expired" }));
   });
 
   it("tells a newer invite version apart from garbage", () => {
