@@ -22,6 +22,7 @@
   "scripts": {
     "start": "node --experimental-strip-types src/main.ts",
     "build": "node scripts/build.mjs",
+    "sea": "node scripts/build.mjs && node scripts/sea.mjs",
     "prepublishOnly": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
@@ -34,6 +35,7 @@
     "@types/ws": "^8.18.2",
     "esbuild": "^0.28.2",
     "obnixe-relay": "workspace:*",
+    "postject": "1.0.0-alpha.6",
     "typescript": "^7.0.2",
     "uqr": "^0.1.3",
     "vitest": "^5.0.5",
