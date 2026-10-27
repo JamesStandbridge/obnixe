@@ -19,4 +19,6 @@ export async function shareAsideCopy(_copy: AsideCopy): Promise<ShareOutcome> {
 
 export async function shareSeparately(_copy: AsideCopy): Promise<void> {}
 
+export function sweepExports(): void {}
+
 export function deleteAsideCopy(_copy: AsideCopy): void {}

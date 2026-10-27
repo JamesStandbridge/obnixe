@@ -1,6 +1,6 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { StyleSheet, View } from "react-native";
-import { deleteAsideCopy, listAsideCopies, shareAsideCopy, shareSeparately } from "@/features/data/asideCopies";
+import { deleteAsideCopy, listAsideCopies, shareAsideCopy, shareSeparately, sweepExports } from "@/features/data/asideCopies";
 import type { AsideCopy } from "@/features/data/asideCopies";
 import { fileSize, longDateTime } from "@/features/data/format";
 import { capitalize } from "@/format/labels";
@@ -38,6 +38,10 @@ export function AsideSheet({ open, aside, onClose }: AsideSheetProps) {
   const [sharing, setSharing] = useState<string | null>(null);
   const [separate, setSeparate] = useState<SeparateShare | null>(null);
 
+  useEffect(() => {
+    if (open) sweepExports();
+  }, [open]);
+
   const close = (): void => {
     setConfirming(null);
     setSeparate(null);
@@ -62,7 +66,7 @@ export function AsideSheet({ open, aside, onClose }: AsideSheetProps) {
 
   if (separate !== null) {
     return (
-      <Sheet open={open} title={`${separate.fileCount} fichiers à garder ensemble`} context="Cette copie ne peut pas être réunie en un seul fichier. Partage-les tous vers le même dossier, sans les renommer." onClose={close}>
+      <Sheet open={open} title={`${separate.fileCount} fichiers à garder ensemble`} context="Cette copie ne peut pas être réunie en un seul fichier. Partage-les ensemble vers le même dossier, sans les renommer." onClose={close}>
         <View style={styles.confirm}>
           <MenuItem
             label={`Partager les ${separate.fileCount} fichiers`}
