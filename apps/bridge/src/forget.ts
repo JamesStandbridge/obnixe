@@ -28,7 +28,7 @@ export async function runForget(options: ForgetCommandOptions): Promise<number> 
     if (!(error instanceof BridgeUnreachableError)) throw error;
     devices = options.pairings.revokeAll().map((pairing) => pairing.device);
   }
-  const line = devices.length === 0 ? "No phone is paired with this Mac." : `Forgot ${devices.join(", ")}. The phone will ask for a new code.`;
+  const line = devices.length === 0 ? "No phone is paired with this computer." : `Forgot ${devices.join(", ")}. The phone will ask for a new code.`;
   options.output.write(`${line}\n`);
   return 0;
 }
