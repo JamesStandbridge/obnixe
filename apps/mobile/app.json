@@ -11,7 +11,7 @@
       "bundleIdentifier": "com.jamesstandbridge.obnixe",
       "infoPlist": {
         "NSCameraUsageDescription": "Obnixe utilise la caméra pour lire le QR code d'appairage affiché par obnixe-bridge et pour prendre tes photos de progression, gardées sur ce téléphone.",
-        "NSLocalNetworkUsageDescription": "Obnixe se connecte à obnixe-bridge sur ton Mac, via le Wi-Fi ou Tailscale, pour qu'un agent lise et note tes séances."
+        "NSLocalNetworkUsageDescription": "Obnixe se connecte à obnixe-bridge sur ton ordinateur, via le Wi-Fi ou Tailscale, pour qu'un agent lise et note tes séances."
       }
     },
     "android": {

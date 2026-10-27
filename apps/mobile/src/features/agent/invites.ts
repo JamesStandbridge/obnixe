@@ -37,7 +37,7 @@ export function inviteProblemText(reason: InviteErrorReason): string {
     case "version":
       return "QR code trop récent, mets à jour Obnixe";
     case "expired":
-      return "QR code expiré, relance obnixe-bridge pair sur le Mac";
+      return "QR code expiré, relance obnixe-bridge pair sur l'ordinateur";
     default: {
       const unreachable: never = reason;
       return unreachable;

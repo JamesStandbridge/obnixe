@@ -79,7 +79,7 @@ function Pairing({ view, settings, manual, onToggleManual, onEditHost }: Pairing
   const detail = totals.connections === 0 ? "Aucune connexion pour l'instant" : `${plural(totals.connections, "connexion", "connexions")} · ${changeCount(totals.writes)}`;
   return (
     <>
-      <Heading title="Relie Cursor à ton suivi" />
+      <Heading title="Relie un agent à ton suivi" />
       <ScanIntro onScan={openScanner} />
       <ManualToggle open={manual} onPress={onToggleManual} />
       {manual ? (
@@ -129,7 +129,7 @@ function Resuming({ view, settings, onEditHost, onForget }: ResumingProps) {
     <>
       <ResumePanel mac={view.mac} network={view.network} />
       <NetworkLine network={view.network} host={view.host} onPress={onEditHost} />
-      {view.network === "unreachable" ? <LinkButton label="Scanner le QR code du Mac" onPress={openScanner} style={styles.rescan} /> : null}
+      {view.network === "unreachable" ? <LinkButton label="Scanner le QR code de l'ordinateur" onPress={openScanner} style={styles.rescan} /> : null}
       <AgentPermissions settings={settings} connected={false} photoCount={photoCount} onChange={setPermission} />
       <HistoryLink detail="connexions précédentes" onPress={openLog} />
       <ForgetMac mac={view.mac} onPress={onForget} />
@@ -223,13 +223,13 @@ function noticeText(notice: LinkNotice): string {
     case "code_refused":
       return "Code refusé trop de fois, nouveau code";
     case "version":
-      return "Mets à jour obnixe-bridge sur le Mac";
+      return "Mets à jour obnixe-bridge sur l'ordinateur";
     case "forgotten":
-      return "Le Mac ne reconnaît plus ce téléphone, scanne un nouveau QR code";
+      return "L'ordinateur ne reconnaît plus ce téléphone, scanne un nouveau QR code";
     case "invite_refused":
       return "QR code déjà utilisé ou remplacé, relance obnixe-bridge pair";
     case "invite_expired":
-      return "QR code expiré, relance obnixe-bridge pair sur le Mac";
+      return "QR code expiré, relance obnixe-bridge pair sur l'ordinateur";
     default: {
       const unreachable: never = notice;
       return unreachable;
@@ -248,7 +248,7 @@ function bottomLabel(view: LinkView, knownMac: string | null): string {
     case "connected":
       return "Couper la connexion";
     case "disconnected":
-      return knownMac === null ? "Relier un Mac" : "Reconnecter";
+      return knownMac === null ? "Relier un ordinateur" : "Reconnecter";
     default: {
       const unreachable: never = view;
       return unreachable;
