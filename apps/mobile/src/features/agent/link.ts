@@ -15,6 +15,8 @@ import type { PhoneLinkStatus, PhonePairing, PhoneRevocation, RejectionReason } 
 import type { ConnectionEndReason, EpochMs, Id } from "@obnixe/schema";
 import { db, environment } from "@/data/database";
 import { bridgeUrl } from "@/features/agent/host";
+import { openDirectSocket } from "@/features/agent/socket";
+import type { LinkSocket } from "@/features/agent/socket";
 import {
   deleteForgottenNotice,
   deletePairing,
@@ -97,7 +99,7 @@ export class AgentLink {
   private forgottenNotice: string | null;
   private current: LinkView;
   private spare: PairingCode | null = null;
-  private socket: WebSocket | null = null;
+  private socket: LinkSocket | null = null;
   private session: PhoneSession | null = null;
   private redial: ReturnType<typeof setTimeout> | null = null;
   private watch: ReturnType<typeof setInterval> | null = null;
@@ -230,10 +232,8 @@ export class AgentLink {
     this.session?.markClosed();
     this.session = null;
     if (socket !== null) {
-      socket.onopen = null;
       socket.onmessage = null;
       socket.onclose = null;
-      socket.onerror = null;
       socket.close();
     }
   }
@@ -241,7 +241,11 @@ export class AgentLink {
   private dial(): void {
     const view = this.current;
     if ((view.kind !== "pairing" && view.kind !== "resuming") || this.host === null) return;
-    const socket = new WebSocket(bridgeUrl(this.host));
+    this.attach(openDirectSocket(bridgeUrl(this.host)));
+  }
+
+  /** Runs a new phone session over `socket`, dialed directly or obtained from dialRelay, and makes it the current one. */
+  private attach(socket: LinkSocket): void {
     const session = new PhoneSession({
       code: this.dialCode().code,
       device: deviceName(),
@@ -264,8 +268,8 @@ export class AgentLink {
     this.socket = socket;
     this.session = session;
     this.setNetwork("dialing");
-    socket.onmessage = (event: MessageEvent) => {
-      session.receive(String(event.data)).catch((error: unknown) => this.onSessionFailed(socket, session, error));
+    socket.onmessage = (text) => {
+      session.receive(text).catch((error: unknown) => this.onSessionFailed(socket, session, error));
     };
     socket.onclose = () => this.onSocketClosed(socket, session);
   }
@@ -314,7 +318,7 @@ export class AgentLink {
   }
 
   /** Ends the connection with a recorded reason; errors other than protocol violations go to the global handler as non-fatal. */
-  private onSessionFailed(socket: WebSocket, session: PhoneSession, error: unknown): void {
+  private onSessionFailed(socket: LinkSocket, session: PhoneSession, error: unknown): void {
     const reason: ConnectionEndReason = error instanceof ProtocolError ? "protocol" : "error";
     const connectionId = session.connectionId;
     if (socket === this.socket && connectionId !== null) {
@@ -363,7 +367,7 @@ export class AgentLink {
     }
   }
 
-  private onSocketClosed(socket: WebSocket, session: PhoneSession): void {
+  private onSocketClosed(socket: LinkSocket, session: PhoneSession): void {
     if (socket !== this.socket) return;
     const connectionId = session.connectionId;
     const wasOpen = !session.isClosed;

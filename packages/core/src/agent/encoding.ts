@@ -66,6 +66,16 @@ export function toBase64(bytes: Uint8Array): string {
   return output;
 }
 
+export function toBase64Url(bytes: Uint8Array): string {
+  return toBase64(bytes).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+export function fromBase64Url(text: string): Uint8Array {
+  if (!/^[A-Za-z0-9_-]*$/.test(text)) throw new Base64Error();
+  const standard = text.replace(/-/g, "+").replace(/_/g, "/");
+  return fromBase64(standard + "=".repeat((4 - (standard.length % 4)) % 4));
+}
+
 export function fromBase64(text: string): Uint8Array {
   if (text.length % 4 !== 0) throw new Base64Error();
   const padding = text.endsWith("==") ? 2 : text.endsWith("=") ? 1 : 0;

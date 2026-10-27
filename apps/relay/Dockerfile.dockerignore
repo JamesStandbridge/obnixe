@@ -1,0 +1,11 @@
+*
+!package.json
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
+!tsconfig.base.json
+!patches
+!packages/core/package.json
+!packages/core/src/agent/limits.ts
+!apps/relay
+apps/relay/node_modules
+apps/relay/dist

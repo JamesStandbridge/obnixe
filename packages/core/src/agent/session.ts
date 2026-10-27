@@ -12,6 +12,7 @@ import {
   derivePairingSecrets,
   deriveResumeSecrets,
   encodeFrame,
+  fitsSealedFrame,
   generateEphemeralKeyPair,
   heartbeatTimeoutMs,
   identityBytes,
@@ -389,7 +390,9 @@ export class PhoneSession {
             this.reply(state, { jsonrpc: "2.0", id: message.id, error: { code: rpcErrorCodes.internal, message: "The phone failed to run the tool" } });
             this.close("error");
           } else {
-            this.reply(state, { jsonrpc: "2.0", id: message.id, result: outcome });
+            const answer: PhoneMessage = { jsonrpc: "2.0", id: message.id, result: outcome };
+            if (fitsSealedFrame(answer)) this.reply(state, answer);
+            else this.reply(state, { jsonrpc: "2.0", id: message.id, result: { text: "The answer is too large to send; narrow the request.", isError: true } satisfies ToolOutcome });
           }
         }
         return;

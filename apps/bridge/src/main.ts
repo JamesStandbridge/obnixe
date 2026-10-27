@@ -2,7 +2,7 @@
 import { randomBytes } from "node:crypto";
 import { networkInterfaces } from "node:os";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { defaultControlPort, defaultPhonePort } from "@obnixe/core/agent/wire";
+import { defaultControlPort, defaultPhonePort, defaultRelayUrl, isRelayUrl } from "@obnixe/core/agent/wire";
 import { startControl } from "./control.ts";
 import type { ControlServer } from "./control.ts";
 import { runForget } from "./forget.ts";
@@ -21,8 +21,16 @@ function port(name: string, fallback: number): number {
   return parsed;
 }
 
-const phonePort = port("OBNIXE_PHONE_PORT", defaultPhonePort);
+function relayUrl(): string | null {
+  const value = process.env.OBNIXE_RELAY_URL ?? defaultRelayUrl;
+  if (value === "") return null;
+  if (!isRelayUrl(value)) throw new Error(`OBNIXE_RELAY_URL must be a ws:// or wss:// URL, got ${value}`);
+  return value;
+}
+
+const phonePort = process.env.OBNIXE_PHONE_PORT === "off" ? null : port("OBNIXE_PHONE_PORT", defaultPhonePort);
 const controlPort = port("OBNIXE_CONTROL_PORT", defaultControlPort);
+const relay = relayUrl();
 const pairings = new PairingFile(pairingFilePath(process.env), (length) => new Uint8Array(randomBytes(length)));
 
 function log(line: string): void {
@@ -33,7 +41,7 @@ function isAddressInUse(error: unknown): boolean {
   return error instanceof Error && "code" in error && error.code === "EADDRINUSE";
 }
 
-function describeListening(host: PhoneHost): string {
+function describeListening(host: PhoneHost, phonePort: number): string {
   switch (host.source) {
     case "override":
       return `Waiting for the phone on ${host.address}:${phonePort} (OBNIXE_PHONE_HOST).`;
@@ -50,15 +58,18 @@ function describeListening(host: PhoneHost): string {
 
 async function serve(): Promise<void> {
   const host = selectPhoneHost(networkInterfaces(), process.env.OBNIXE_PHONE_HOST);
-  const endpoint = new PhoneEndpoint({ port: phonePort, listenHost: host.address, hostLabel: hostLabel(), pairings, randomBytes: (length) => new Uint8Array(randomBytes(length)), log });
+  const endpoint = new PhoneEndpoint({ port: phonePort ?? 0, listenHost: host.address, hostLabel: hostLabel(), pairings, randomBytes: (length) => new Uint8Array(randomBytes(length)), log });
   let control: ControlServer | null = null;
   try {
-    await endpoint.listen();
+    if (phonePort !== null) await endpoint.listen();
     control = await startControl(endpoint, controlPort);
-    log(describeListening(host));
+    if (phonePort !== null) log(describeListening(host, phonePort));
+    else log("The direct phone listener is off (OBNIXE_PHONE_PORT=off).");
+    if (relay !== null) endpoint.connectRelay(relay);
   } catch (error) {
     if (!isAddressInUse(error)) throw error;
-    const message = `Another Obnixe bridge already uses port ${phonePort} or ${controlPort}. Only one MCP client can reach the phone at a time; close the other one or set OBNIXE_PHONE_PORT and OBNIXE_CONTROL_PORT.`;
+    const ports = phonePort === null ? `port ${controlPort}` : `port ${phonePort} or ${controlPort}`;
+    const message = `Another Obnixe bridge already uses ${ports}. Only one MCP client can reach the phone at a time; close the other one or set OBNIXE_PHONE_PORT and OBNIXE_CONTROL_PORT.`;
     endpoint.markUnavailable(message);
     log(message);
   }
@@ -86,8 +97,11 @@ Cursor: open ${cursorInstallLink}
   or add to ~/.cursor/mcp.json: { "mcpServers": { "obnixe": ${JSON.stringify(serverConfig)} } }
 Codex: codex mcp add obnixe -- npx -y obnixe-bridge
 
-The phone dials ws://<Tailscale address of this Mac>:${phonePort}. The listener binds the first Tailscale IPv4 address
-(100.64.0.0/10), or 127.0.0.1 when there is none; OBNIXE_PHONE_HOST overrides the address and OBNIXE_PHONE_PORT the port.
+The phone dials ws://<Tailscale address of this Mac>:${phonePort ?? defaultPhonePort}. The listener binds the first Tailscale IPv4 address
+(100.64.0.0/10), or 127.0.0.1 when there is none; OBNIXE_PHONE_HOST overrides the address and OBNIXE_PHONE_PORT the port
+(off disables the listener).
+Away from that network the phone reaches the bridge through the relay set by OBNIXE_RELAY_URL (wss://...), which only
+forwards end-to-end sealed frames${relay === null ? "; no relay is configured" : `; currently ${relay}`}.
 Pairing uses http://127.0.0.1:${controlPort} (OBNIXE_CONTROL_PORT).
 A paired phone reconnects without a code using the secret kept in ${pairings.path} (OBNIXE_BRIDGE_CONFIG).
 `;
