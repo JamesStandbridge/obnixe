@@ -368,6 +368,7 @@ describe("bridge behind the relay", () => {
     const resumed = connectPhone({ kind: "relay", relayUrl, room: pairingRelayRoom(pairing) }, "000000", pairing);
     await until(() => resumed.statuses.includes("open"), "resume through the pairing room");
     expect(resumed.statuses).toEqual(["resuming", "open"]);
+    await until(() => bridge.status().phone === "connected", "bridge session open");
     expect((await bridge.callTool("list_programs", {})).isError).toBe(false);
   }, 30_000);
 
@@ -462,6 +463,7 @@ describe("bridge behind the relay", () => {
     const relayed = connectPhone({ kind: "relay", relayUrl, room: pairingRelayRoom(pairing) }, "000000", pairing);
     await until(() => relayed.statuses.includes("open"), "resumed through the relay");
     expect(relayed.statuses).toEqual(["resuming", "open"]);
+    await until(async () => (await controlStatus(controlPort)) === "connected", "bridge session open");
     const sports = await relayedBridge.callTool({ name: "list_sports", arguments: {} });
     expect(sports.isError).toBe(false);
     expect(JSON.parse(textOf(sports)).catalogVersion).toBe(1);
