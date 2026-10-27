@@ -1,7 +1,7 @@
 import { unwatchFile, watchFile } from "node:fs";
 import { WebSocket } from "ws";
 import type { RawData } from "ws";
-import { ProtocolError, encodeRelayMessage, generateRelayRoom, pairingRelayRoom, parseRelayToBridge, relayProtocolVersion, relaySocketUrl } from "@obnixe/core/agent/wire";
+import { ProtocolError, encodeRelayMessage, maxRelayMessageBytes, generateRelayRoom, pairingRelayRoom, parseRelayToBridge, relayProtocolVersion, relaySocketUrl } from "@obnixe/core/agent/wire";
 import type { RandomBytes, RelayClientMessage, RelayRefusal, RelayToBridge } from "@obnixe/core/agent/wire";
 import { PairingFileError } from "./pairings.ts";
 import type { PairingFile } from "./pairings.ts";
@@ -12,7 +12,7 @@ const defaultFirstRetryMs = 1000;
 const maxRetryMs = 60_000;
 const rejoinMs = 10_000;
 const watchIntervalMs = 2000;
-const maxRelayPayload = 4 * 1024 * 1024;
+const stableMs = 30_000;
 
 /** What a QR invite needs so a new phone can reach this bridge through the relay. */
 export interface RelayInvite {
@@ -46,6 +46,7 @@ interface RoomState {
 
 /** A phone reached through one relay room. The relay pings the phone itself and reports a dead one with `peer_left`. */
 class RelayedPeer implements PeerSocket {
+  readonly transport = "relay";
   readonly origin: string;
   onmessage: ((text: string) => void) | null = null;
   onclose: (() => void) | null = null;
@@ -95,6 +96,7 @@ export class RelayLink {
   private readonly rooms = new Map<string, RoomState>();
   private socket: WebSocket | null = null;
   private reconnect: ReturnType<typeof setTimeout> | null = null;
+  private stable: ReturnType<typeof setTimeout> | null = null;
   private retries = 0;
   private invite: string | null = null;
   private reachability: Reachability = "unknown";
@@ -147,6 +149,8 @@ export class RelayLink {
     unwatchFile(this.options.pairings.path);
     if (this.reconnect !== null) clearTimeout(this.reconnect);
     this.reconnect = null;
+    if (this.stable !== null) clearTimeout(this.stable);
+    this.stable = null;
     for (const state of this.rooms.values()) this.release(state);
     this.rooms.clear();
     const socket = this.socket;
@@ -206,10 +210,14 @@ export class RelayLink {
 
   private connect(): void {
     if (this.stopped) return;
-    const socket = new WebSocket(relaySocketUrl(this.options.relayUrl), { maxPayload: maxRelayPayload });
+    const socket = new WebSocket(relaySocketUrl(this.options.relayUrl), { maxPayload: maxRelayMessageBytes });
     this.socket = socket;
     socket.on("open", () => {
-      this.retries = 0;
+      // An open alone does not reset the backoff: a relay that accepts and drops at once would otherwise be hammered.
+      this.stable = setTimeout(() => {
+        this.stable = null;
+        this.retries = 0;
+      }, stableMs);
       for (const state of this.rooms.values()) this.join(state);
     });
     socket.on("message", (data, isBinary) => this.receive(socket, data, isBinary));
@@ -239,6 +247,7 @@ export class RelayLink {
     switch (message.type) {
       case "joined":
         if (state !== undefined) state.joined = true;
+        this.retries = 0;
         this.announce("up", `Reachable through the relay ${this.options.relayUrl}.`);
         return;
       case "refused":
@@ -297,6 +306,8 @@ export class RelayLink {
   private disconnected(socket: WebSocket): void {
     if (socket !== this.socket) return;
     this.socket = null;
+    if (this.stable !== null) clearTimeout(this.stable);
+    this.stable = null;
     for (const state of [...this.rooms.values()]) {
       this.release(state);
       if (state.leaving) this.rooms.delete(state.room);

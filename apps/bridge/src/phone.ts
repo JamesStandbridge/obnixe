@@ -16,6 +16,7 @@ import {
   heartbeatIntervalMs,
   identityBytes,
   isPairingCode,
+  maxFrameBytes,
   maxPairingAttempts,
   nonceBytes,
   openingBytes,
@@ -44,6 +45,7 @@ import type { RelayInvite } from "./relay.ts";
 
 const maxPending = 8;
 const maxPendingPerOrigin = 2;
+const maxRelayedPending = 4;
 const defaultHandshakeTimeoutMs = 10_000;
 const defaultProofTimeoutMs = 10_000;
 const policyViolation = 1008;
@@ -169,7 +171,7 @@ export class PhoneEndpoint {
       });
     });
     this.http = http;
-    this.sockets = new WebSocketServer({ server: http, maxPayload: 4 * 1024 * 1024 });
+    this.sockets = new WebSocketServer({ server: http, maxPayload: maxFrameBytes });
     this.sockets.on("connection", (socket, request) => this.accept(new DirectPeer(socket, remoteAddress(request))));
     this.startHeartbeat();
     return (http.address() as AddressInfo).port;
@@ -268,20 +270,25 @@ export class PhoneEndpoint {
     }
   }
 
+  private relayedPending(): number {
+    return [...this.pendings.values()].filter((pending) => pending.socket.transport === "relay").length;
+  }
+
   private startHeartbeat(): void {
     this.heartbeat ??= setInterval(() => this.tick(), heartbeatIntervalMs);
   }
 
   /**
    * Admits a phone. An origin only ever replaces its own oldest pending handshake, and once every slot is taken new
-   * sockets are turned away, so a flood from other addresses or rooms cannot evict a phone waiting for its code.
+   * sockets are turned away, so a flood from other addresses or rooms cannot evict a phone waiting for its code. Relayed
+   * peers never get more than `maxRelayedPending` slots, so some always remain for phones on the direct listener.
    */
   private accept(socket: PeerSocket): void {
     const origin = socket.origin;
     const sameOrigin = [...this.pendings.values()].filter((pending) => pending.origin === origin);
     const oldest = sameOrigin[0];
     if (sameOrigin.length >= maxPendingPerOrigin && oldest !== undefined) this.reject(oldest, "replaced");
-    else if (this.pendings.size >= maxPending) {
+    else if (this.pendings.size >= maxPending || (socket.transport === "relay" && this.relayedPending() >= maxRelayedPending)) {
       this.options.log(`Refused a connection from ${origin}: too many phones are already waiting to pair.`);
       socket.close(tryAgainLater, "busy");
       return;
@@ -356,8 +363,18 @@ export class PhoneEndpoint {
     }
   }
 
+  /**
+   * Code pairing is refused through the relay: its operator could relay the hello, crack the 6-digit code offline from the
+   * phone proof while the user types it, and become a trusted phone. Relayed peers may only resume a pairing.
+   */
   private receiveHello(pending: Pending, frame: Extract<Frame, { type: "hello" }>): void {
     if (pending.hello !== null) throw new ProtocolError("Unexpected second hello");
+    if (pending.socket.transport === "relay") {
+      this.options.log(`Refused to pair ${frame.device} through the relay: pair once on the same network, it then reconnects through the relay.`);
+      this.forget(pending);
+      pending.socket.close(policyViolation, "pairing requires a direct connection");
+      return;
+    }
     if (frame.version !== protocolVersion) {
       this.reject(pending, "version");
       return;

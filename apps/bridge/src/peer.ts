@@ -1,7 +1,10 @@
 import type { RawData, WebSocket } from "ws";
 
+export type PeerTransport = "direct" | "relay";
+
 /** One phone connection as PhoneEndpoint sees it, whether the phone dialed the bridge directly or came through the relay. */
 export interface PeerSocket {
+  readonly transport: PeerTransport;
   /** Key of the flood rules on pending handshakes: the remote address of a direct socket, the room of a relayed peer. */
   readonly origin: string;
   onmessage: ((text: string) => void) | null;
@@ -23,6 +26,7 @@ export function rawText(data: RawData): string {
 
 /** A WebSocket the phone dialed on the direct listener; binary frames are not part of the protocol and close it. */
 export class DirectPeer implements PeerSocket {
+  readonly transport = "direct";
   readonly origin: string;
   onmessage: ((text: string) => void) | null = null;
   onclose: (() => void) | null = null;

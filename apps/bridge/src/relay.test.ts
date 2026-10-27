@@ -26,12 +26,14 @@ import {
   relaySocketUrl,
   renameConnectionClient,
   runAgentTool,
+  toBase64,
 } from "@obnixe/core";
 import type { PhoneLinkStatus, PhonePairing } from "@obnixe/core";
 import { createTestContext } from "@obnixe/core/testing";
 import type { TestContext } from "@obnixe/core/testing";
 import { settings } from "@obnixe/schema";
 import { PairingFile } from "./pairings.ts";
+import type { BridgePairing } from "./pairings.ts";
 import { PhoneEndpoint } from "./phone.ts";
 
 const bytes = (length: number): Uint8Array => new Uint8Array(randomBytes(length));
@@ -49,6 +51,11 @@ interface TestPhone {
   readonly paired: PhonePairing[];
   readonly relayNotices: string[];
   readonly state: { peered: boolean; closed: boolean };
+}
+
+interface RawPhone {
+  readonly received: string[];
+  readonly state: { closed: boolean };
 }
 
 interface CliResult {
@@ -167,23 +174,42 @@ function storedPairing(phone: TestPhone): PhonePairing {
   return pairing;
 }
 
-function startEndpoint(pairings: PairingFile): PhoneEndpoint {
-  const started = new PhoneEndpoint({ port: 0, hostLabel: "MacBook Pro", pairings, randomBytes: bytes, log: (line) => logs.push(line), callTimeoutMs: 5000 });
-  started.connectRelay(relayUrl);
-  endpoint = started;
-  return started;
+interface StartedEndpoint {
+  readonly bridge: PhoneEndpoint;
+  readonly directUrl: string;
 }
 
-async function pairThroughInvite(bridge: PhoneEndpoint): Promise<TestPhone> {
-  const invite = bridge.openInviteRoom();
-  if (invite === null) throw new Error("No relay configured");
-  expect(invite.relayUrl).toBe(relayUrl);
-  const phone = connectPhone({ kind: "relay", relayUrl: invite.relayUrl, room: invite.room }, "482917");
-  await until(() => bridge.status().phone === "waiting", "hello through the relay");
-  expect(await bridge.pair("482917")).toEqual({ kind: "paired", device: "iPhone", client: "Agent" });
+async function startEndpoint(pairings: PairingFile): Promise<StartedEndpoint> {
+  const bridge = new PhoneEndpoint({ port: 0, listenHost: "127.0.0.1", hostLabel: "MacBook Pro", pairings, randomBytes: bytes, log: (line) => logs.push(line), callTimeoutMs: 5000 });
+  endpoint = bridge;
+  const port = await bridge.listen();
+  bridge.connectRelay(relayUrl);
+  return { bridge, directUrl: `ws://127.0.0.1:${port}` };
+}
+
+async function pairDirectly(started: StartedEndpoint): Promise<TestPhone> {
+  const phone = connectPhone({ kind: "direct", url: started.directUrl }, "482917");
+  await until(() => started.bridge.status().phone === "waiting", "hello on the direct listener");
+  expect(await started.bridge.pair("482917")).toEqual({ kind: "paired", device: "iPhone", client: "Agent" });
   await until(() => phone.statuses.includes("open"), "open session");
-  bridge.closeInviteRoom();
   return phone;
+}
+
+function fakePairing(index: number): BridgePairing {
+  return { pairingId: toBase64(bytes(16)), deviceId: toBase64(bytes(16)), device: `Phone ${index}`, secret: toBase64(bytes(32)), pairedAt: Date.now() };
+}
+
+function rawRelayPhone(room: string): RawPhone {
+  const socket = new WebSocket(relaySocketUrl(relayUrl));
+  phones.push(socket);
+  const received: string[] = [];
+  const state = { closed: false };
+  socket.on("open", () => socket.send(encodeRelayMessage({ type: "join", v: relayProtocolVersion, role: "phone", room })));
+  socket.on("message", (data) => received.push(String(data)));
+  socket.on("close", () => {
+    state.closed = true;
+  });
+  return { received, state };
 }
 
 async function startBridgeProcess(env: Readonly<Record<string, string>>): Promise<Client> {
@@ -249,19 +275,27 @@ afterEach(async () => {
 });
 
 describe("bridge behind the relay", () => {
-  it("pairs a new phone through an invite room, then resumes it through the room of its pairing", async () => {
+  it("refuses code pairing through the relay, then resumes a directly paired phone through the room of its pairing", async () => {
     const pairings = new PairingFile(configFile, bytes);
-    const bridge = startEndpoint(pairings);
-    const first = await pairThroughInvite(bridge);
+    const started = await startEndpoint(pairings);
+    const { bridge } = started;
+    const invite = bridge.openInviteRoom();
+    if (invite === null) throw new Error("No relay configured");
+    expect(invite.relayUrl).toBe(relayUrl);
+    const intruder = connectPhone({ kind: "relay", relayUrl, room: invite.room }, "482917");
+    await until(() => intruder.state.closed, "relayed hello refused");
+    expect(intruder.statuses).toContain("waiting");
+    expect(bridge.status().phone).toBe("none");
+    expect(logs.some((line) => line.startsWith("Refused to pair iPhone through the relay"))).toBe(true);
+    bridge.closeInviteRoom();
+
+    const first = await pairDirectly(started);
     const pairing = storedPairing(first);
     const [stored] = pairings.list();
     if (stored === undefined) throw new Error("The bridge stored no pairing");
     expect(pairingRelayRoom(stored)).toBe(pairingRelayRoom(pairing));
-    expect((await bridge.callTool("list_sports", {})).isError).toBe(false);
-
     first.session.close("user");
     await until(() => bridge.status().phone === "none", "bridge drop");
-    await until(() => first.state.closed, "invite phone closed");
 
     const resumed = connectPhone({ kind: "relay", relayUrl, room: pairingRelayRoom(pairing) }, "000000", pairing);
     await until(() => resumed.statuses.includes("open"), "resumed session");
@@ -276,24 +310,45 @@ describe("bridge behind the relay", () => {
     expect(forgotten.state.peered).toBe(false);
   }, 30_000);
 
-  it("closes the invite room after pairing and rejoins every room when the relay comes back", async () => {
-    const bridge = startEndpoint(new PairingFile(configFile, bytes));
+  it("leaves a closed invite room and rejoins every room when the relay comes back", async () => {
+    const started = await startEndpoint(new PairingFile(configFile, bytes));
+    const { bridge } = started;
     const invite = bridge.openInviteRoom();
     if (invite === null) throw new Error("No relay configured");
     bridge.closeInviteRoom();
-    const first = await pairThroughInvite(bridge);
-    const pairing = storedPairing(first);
+    const pairing = storedPairing(await pairDirectly(started));
+    await until(() => logs.some((line) => line.startsWith("Reachable through the relay")), "bridge on the relay");
     const stale = connectPhone({ kind: "relay", relayUrl, room: invite.room }, "000000");
     await new Promise((resolve) => setTimeout(resolve, 300));
     expect(stale.state.peered).toBe(false);
 
+    const relayed = connectPhone({ kind: "relay", relayUrl, room: pairingRelayRoom(pairing) }, "000000", pairing);
+    await until(() => relayed.statuses.includes("open"), "resumed through the relay");
     await stopRelay();
-    await until(() => first.state.closed, "phone dropped with the relay");
+    await until(() => relayed.state.closed, "phone dropped with the relay");
     await until(() => bridge.status().phone === "none", "bridge drop");
     await startRelay();
     await until(() => logs.filter((line) => line.startsWith("Reachable through the relay")).length === 2, "bridge back on the relay");
     const resumed = connectPhone({ kind: "relay", relayUrl, room: pairingRelayRoom(pairing) }, "000000", pairing);
     await until(() => resumed.statuses.includes("open"), "resumed after relay restart");
+  }, 30_000);
+
+  it("keeps pending slots for direct phones when relayed peers pile up", async () => {
+    const pairings = new PairingFile(configFile, bytes);
+    const rooms = Array.from({ length: 5 }, (_, index) => {
+      const pairing = fakePairing(index);
+      pairings.remember(pairing);
+      return pairingRelayRoom(pairing);
+    });
+    const started = await startEndpoint(pairings);
+    const relayed = rooms.map((room) => rawRelayPhone(room));
+    await until(() => relayed.filter((phone) => phone.received.some((text) => text.includes('"challenge"'))).length === 4 && relayed.some((phone) => phone.state.closed), "relayed slots full");
+    expect(relayed.filter((phone) => phone.state.closed)).toHaveLength(1);
+    expect(logs.some((line) => line.startsWith("Refused a connection from relay:"))).toBe(true);
+    const direct = Array.from({ length: 2 }, () => connectPhone({ kind: "direct", url: started.directUrl }, "482917"));
+    await until(() => direct.every((phone) => phone.statuses.includes("waiting")), "direct phones admitted");
+    await until(() => logs.filter((line) => line.endsWith("is waiting to pair. Run `obnixe-bridge pair` and enter the code shown on the phone.")).length === 2, "direct hellos held");
+    expect(direct.every((phone) => !phone.state.closed)).toBe(true);
   }, 30_000);
 
   it("serves MCP tool calls to a phone resumed through the relay while the direct listener is off", async () => {
