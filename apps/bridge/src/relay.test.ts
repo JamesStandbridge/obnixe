@@ -350,6 +350,7 @@ describe("bridge behind the relay", () => {
     const phone = connectPhone(inviteRoom, token);
     await until(() => phone.statuses.includes("open"), "token pairing through the relay");
     const pairing = storedPairing(phone);
+    await until(() => bridge.inviteStatus()?.state.kind === "paired", "bridge records the pairing");
     expect(bridge.inviteStatus()?.state).toMatchObject({ kind: "paired", device: "iPhone" });
     const late = connectPhone(inviteRoom, token);
     await until(() => late.state.closed, "spent token refused");
