@@ -55,7 +55,6 @@
         "expo-image-picker",
         {
           "photosPermission": "Obnixe importe tes photos de progression et les garde sur ce téléphone.",
-          "cameraPermission": "Obnixe utilise la caméra pour lire le QR code d'appairage affiché par obnixe-bridge et pour prendre tes photos de progression, gardées sur ce téléphone.",
           "microphonePermission": false
         }
       ],
@@ -63,7 +62,6 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Obnixe utilise la caméra pour lire le QR code d'appairage affiché par obnixe-bridge et pour prendre tes photos de progression, gardées sur ce téléphone.",
           "microphonePermission": false,
           "recordAudioAndroid": false
         }

@@ -18,7 +18,7 @@ import {
   sharedSecret,
   toBase64,
 } from "@obnixe/core";
-import type { BridgeMessage, EphemeralKeyPair, Frame, PairingSecrets, PairingTranscript, PhoneMessage, RejectionReason } from "@obnixe/core";
+import type { BridgeMessage, EphemeralKeyPair, Frame, PairingSecret, PairingSecrets, PairingTranscript, PhoneMessage, RejectionReason } from "@obnixe/core";
 
 export function randomBytes(length: number): Uint8Array {
   return randomFillSync(new Uint8Array(length));
@@ -32,6 +32,8 @@ function sameText(left: Uint8Array, right: Uint8Array): boolean {
 export class FakeWebSocket {
   static readonly created: FakeWebSocket[] = [];
   static bridge: FakeBridge | null = null;
+  /** Bridges answering on a given `host:port`; any other address reaches `bridge`. */
+  static readonly bridges = new Map<string, FakeBridge>();
 
   readonly url: string;
   readonly openedAt: number;
@@ -47,13 +49,14 @@ export class FakeWebSocket {
     this.url = url;
     this.openedAt = Date.now();
     FakeWebSocket.created.push(this);
-    const bridge = FakeWebSocket.bridge;
+    const bridge = FakeWebSocket.bridges.get(url.replace(/^ws:\/\//, "")) ?? FakeWebSocket.bridge;
     queueMicrotask(() => {
       if (this.closed) return;
       if (bridge === null || !bridge.online) {
         this.drop();
         return;
       }
+      this.onopen?.();
       this.connection = bridge.accept(this);
     });
   }
@@ -61,6 +64,7 @@ export class FakeWebSocket {
   static reset(): void {
     FakeWebSocket.created.length = 0;
     FakeWebSocket.bridge = null;
+    FakeWebSocket.bridges.clear();
   }
 
   send(text: string): void {
@@ -117,7 +121,7 @@ class BridgeConnection {
   constructor(bridge: FakeBridge, socket: FakeWebSocket) {
     this.bridge = bridge;
     this.socket = socket;
-    socket.deliver({ type: "challenge", version: protocolVersion, bridge: toBase64(bridge.id), nonce: toBase64(this.nonce), key: toBase64(this.keyPair.publicKey) });
+    if (!bridge.silent) socket.deliver({ type: "challenge", version: protocolVersion, bridge: toBase64(bridge.id), nonce: toBase64(this.nonce), key: toBase64(this.keyPair.publicKey) });
   }
 
   receive(frame: Frame): void {
@@ -125,9 +129,15 @@ class BridgeConnection {
       case "revoke":
         if (!this.bridge.ignoreRevocations) this.bridge.revoke(frame.pairing, decodeBytes(frame.proof));
         return;
-      case "hello":
+      case "hello": {
         this.hello = { transcript: this.transcriptOf(frame), shared: sharedSecret(this.keyPair.secretKey, decodeBytes(frame.key)) };
+        const token = this.bridge.token;
+        if (frame.secret === "token") {
+          if (token === null) this.reject("expired");
+          else void this.commitTo({ kind: "token", token });
+        }
         return;
+      }
       case "resume":
         this.resume(frame);
         return;
@@ -152,10 +162,14 @@ class BridgeConnection {
     }
   }
 
-  async typeCode(code: string): Promise<void> {
+  typeCode(code: string): Promise<void> {
+    return this.commitTo({ kind: "code", code });
+  }
+
+  private async commitTo(secret: PairingSecret): Promise<void> {
     const hello = this.hello;
     if (hello === null) throw new Error("No phone is waiting for a code");
-    const secrets = await derivePairingSecrets({ kind: "code", code }, hello.transcript, hello.shared);
+    const secrets = await derivePairingSecrets(secret, hello.transcript, hello.shared);
     const opening = randomBytes(32);
     const commitment = commitBridgeProof(opening, bridgeProof(secrets));
     this.attempt = { secrets, commitment, opening };
@@ -228,7 +242,9 @@ class BridgeConnection {
 /** Bridge side of the phone protocol, written against the core primitives the real bridge uses. */
 export class FakeBridge {
   readonly id = randomBytes(16);
-  readonly name = "MacBook Pro";
+  name = "MacBook Pro";
+  token: Uint8Array | null = null;
+  silent = false;
   hosts: readonly string[] = [];
   readonly connections: BridgeConnection[] = [];
   readonly revoked: string[] = [];

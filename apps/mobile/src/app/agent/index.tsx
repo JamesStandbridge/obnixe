@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { router } from "expo-router";
 import { callTag, changeCount, connectionRecap, revertState } from "@obnixe/core";
-import type { InviteErrorReason, RevertIndex } from "@obnixe/core";
+import type { PairingInvite, RevertIndex } from "@obnixe/core";
 import type { EpochMs, Id } from "@obnixe/schema";
 import { environment } from "@/data/database";
 import { deviceTimeZone, formatTimeAt } from "@/format/dates";
@@ -18,6 +18,7 @@ import {
   Heading,
   HistoryLink,
   HostSheet,
+  InviteSheet,
   JoinPanel,
   ManualToggle,
   NetworkLine,
@@ -27,7 +28,7 @@ import {
   StatusPanel,
   bottomPanelHeight,
 } from "@/features/agent/components";
-import { usePairingRequests } from "@/features/agent/invites";
+import { inviteProblemText, usePairingRequests } from "@/features/agent/invites";
 import type { PairingRequest } from "@/features/agent/invites";
 import type { LinkNotice, LinkView } from "@/features/agent/link";
 import { saveBridgeHost, setPermission, useAgentSettings, useAgentTotals, useCalls, useConnection, usePhotoCount, useRevertIndex } from "@/features/agent/queries";
@@ -226,22 +227,11 @@ function noticeText(notice: LinkNotice): string {
     case "forgotten":
       return "Le Mac ne reconnaît plus ce téléphone, scanne un nouveau QR code";
     case "invite_refused":
-      return "QR code expiré ou déjà utilisé, relance obnixe-bridge pair";
+      return "QR code déjà utilisé ou remplacé, relance obnixe-bridge pair";
+    case "invite_expired":
+      return "QR code expiré, relance obnixe-bridge pair sur le Mac";
     default: {
       const unreachable: never = notice;
-      return unreachable;
-    }
-  }
-}
-
-function invalidInviteText(reason: InviteErrorReason): string {
-  switch (reason) {
-    case "format":
-      return "Ce QR code ne vient pas d'obnixe-bridge";
-    case "version":
-      return "QR code trop récent, mets à jour Obnixe";
-    default: {
-      const unreachable: never = reason;
       return unreachable;
     }
   }
@@ -280,14 +270,16 @@ export default function Agent() {
     [notify],
   );
   const onNotice = useCallback((notice: LinkNotice) => say(noticeText(notice)), [say]);
-  const { view, knownMac, end, restart, forget, join, cancelJoin } = useAgentLink(settings.bridgeHost, onNotice);
+  const { view, knownMac, knownBridgeId, end, restart, forget, join, cancelJoin } = useAgentLink(settings.bridgeHost, onNotice);
+  const [confirming, setConfirming] = useState<PairingInvite | null>(null);
   usePairingRequests((request: PairingRequest) => {
     switch (request.kind) {
       case "invite":
-        join(request.invite);
+        if (request.invite.bridgeId === knownBridgeId) say(`Déjà relié à ${request.invite.name}`);
+        else setConfirming(request.invite);
         return;
       case "invalid":
-        say(invalidInviteText(request.reason));
+        say(inviteProblemText(request.reason));
         return;
       case "manual":
         setManual(true);
@@ -346,6 +338,15 @@ export default function Agent() {
         onConfirm={() => {
           setForgetting(false);
           forget();
+        }}
+      />
+      <InviteSheet
+        invite={confirming}
+        replacing={knownMac}
+        onClose={() => setConfirming(null)}
+        onConfirm={(invite) => {
+          setConfirming(null);
+          join(invite);
         }}
       />
       <HostSheet

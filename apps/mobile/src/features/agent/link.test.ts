@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { heartbeatTimeoutMs, pairingCodeTtlMs, parsePhonePairing, parsePhoneRevocation } from "@obnixe/core";
-import type { Frame, PhonePairing } from "@obnixe/core";
+import { toBase64 } from "@obnixe/core";
+import type { Frame, PairingInvite, PhonePairing } from "@obnixe/core";
 import { agentConnection } from "@obnixe/schema";
 import type { AgentConnection } from "@obnixe/schema";
 import { AgentLink } from "@/features/agent/link";
 import type { LinkNotice, LinkView } from "@/features/agent/link";
-import { FakeBridge, FakeWebSocket } from "../../../test/fakeBridge.ts";
+import { FakeBridge, FakeWebSocket, randomBytes } from "../../../test/fakeBridge.ts";
 import { db } from "../../../test/mocks/database.ts";
 import { secureItems } from "../../../test/mocks/expoSecureStore.ts";
 import { reportedErrors } from "../../../test/setup.ts";
@@ -210,7 +211,7 @@ describe("trusted resume", () => {
     close(await pairedLink());
     const recorded = openLink();
     expect(recorded.link.knownMac).toBe("MacBook Pro");
-    expect(recorded.link.view).toEqual({ kind: "resuming", mac: "MacBook Pro", network: "dialing" });
+    expect(recorded.link.view).toEqual({ kind: "resuming", mac: "MacBook Pro", network: "dialing", host });
     recorded.link.start();
     await settle();
     expect(recorded.link.view.kind).toBe("connected");
@@ -224,7 +225,7 @@ describe("trusted resume", () => {
     bridge.online = false;
     lastSocket().drop();
     await settle();
-    expect(recorded.link.view).toEqual({ kind: "resuming", mac: "MacBook Pro", network: "dialing" });
+    expect(recorded.link.view).toEqual({ kind: "resuming", mac: "MacBook Pro", network: "dialing", host });
     expect(connections()[0]?.endReason).toBe("network");
 
     const waits: number[] = [];
@@ -236,7 +237,7 @@ describe("trusted resume", () => {
       previous = lastSocket().openedAt;
     }
     expect(waits).toEqual([1000, 2000, 4000, 8000, 16000, 30000, 30000]);
-    expect(recorded.link.view).toEqual({ kind: "resuming", mac: "MacBook Pro", network: "unreachable" });
+    expect(recorded.link.view).toEqual({ kind: "resuming", mac: "MacBook Pro", network: "unreachable", host });
 
     bridge.online = true;
     await advance(30000);
@@ -360,5 +361,159 @@ describe("forgetting the Mac", () => {
     recorded.link.forget();
     expect(secureItems.has(revocationKey)).toBe(false);
     expect(FakeWebSocket.created).toHaveLength(1);
+  });
+});
+
+function remember(hosts: readonly string[], lastHost: string | null): void {
+  const stored = storedPairing();
+  if (stored === null) throw new Error("No stored pairing");
+  secureItems.set(pairingKey, JSON.stringify({ ...stored, hosts, lastHost }));
+}
+
+function bridgeAt(address: string, configure: (other: FakeBridge) => void): FakeBridge {
+  const other = new FakeBridge();
+  configure(other);
+  FakeWebSocket.bridges.set(address, other);
+  return other;
+}
+
+function urls(): string[] {
+  return FakeWebSocket.created.map((socket) => socket.url);
+}
+
+function inviteFor(hosts: readonly string[], lifetimeMs = 300_000): PairingInvite {
+  const token = randomBytes(32);
+  bridge.token = token;
+  return { bridgeId: toBase64(bridge.id), token, name: "MacBook Pro", hosts, expiresAt: Date.now() + lifetimeMs, relay: { url: "wss://relay.obnixe.app/v1", room: "cm9vbQ" } };
+}
+
+describe("remembered addresses", () => {
+  it("tries the last good address first, then the announced ones in order, and learns the new list", async () => {
+    close(await pairedLink());
+    remember(["192.168.1.30:7429", "100.101.12.7:7429"], "192.168.1.30:7429");
+    bridgeAt("192.168.1.30:7429", (other) => {
+      other.online = false;
+    });
+    bridge.hosts = ["192.168.1.31:7429", "100.101.12.7:7429"];
+    const recorded = openLink(null);
+    recorded.link.start();
+    await settle();
+    expect(urls().slice(1)).toEqual(["ws://192.168.1.30:7429", "ws://100.101.12.7:7429"]);
+    expect(recorded.link.view.kind).toBe("connected");
+    expect(storedPairing()).toMatchObject({ lastHost: "100.101.12.7:7429", hosts: ["192.168.1.31:7429", "100.101.12.7:7429"] });
+  });
+
+  it("moves on when an address accepts the socket but never answers within 8 s", async () => {
+    close(await pairedLink());
+    remember(["192.168.1.30:7429", "100.101.12.7:7429"], null);
+    bridgeAt("192.168.1.30:7429", (other) => {
+      other.silent = true;
+    });
+    const recorded = openLink(null);
+    recorded.link.start();
+    await settle();
+    expect(urls().slice(1)).toEqual(["ws://192.168.1.30:7429"]);
+    await advance(7999);
+    expect(urls()).toHaveLength(2);
+    await advance(1);
+    expect(urls().slice(1)).toEqual(["ws://192.168.1.30:7429", "ws://100.101.12.7:7429"]);
+    expect(recorded.link.view.kind).toBe("connected");
+  });
+
+  it("treats another Obnixe Mac on a remembered address as the wrong host and never pairs with it", async () => {
+    close(await pairedLink());
+    const kept = storedPairing();
+    remember(["192.168.1.30:7429", "100.101.12.7:7429"], "192.168.1.30:7429");
+    const stranger = bridgeAt("192.168.1.30:7429", () => undefined);
+    const recorded = openLink(null);
+    recorded.link.start();
+    await settle();
+    expect(stranger.connections).toHaveLength(1);
+    expect(frameTypes(socketAt(1))).toEqual([]);
+    expect(socketAt(1).closed).toBe(true);
+    expect(recorded.link.view.kind).toBe("connected");
+    expect(recorded.notices).toEqual([]);
+    expect(storedPairing()?.pairingId).toBe(kept?.pairingId);
+  });
+
+  it("keeps resuming with backoff when only the stranger answers", async () => {
+    close(await pairedLink());
+    remember(["192.168.1.30:7429"], "192.168.1.30:7429");
+    bridgeAt("192.168.1.30:7429", () => undefined);
+    const recorded = openLink(null);
+    recorded.link.start();
+    await settle();
+    expect(recorded.link.view).toMatchObject({ kind: "resuming", mac: "MacBook Pro" });
+    expect(FakeWebSocket.created.slice(1).flatMap((socket) => socket.sent)).toEqual([]);
+    await advance(1000);
+    expect(urls()).toHaveLength(3);
+    expect(recorded.link.view.kind).toBe("resuming");
+  });
+});
+
+describe("joining with a QR code", () => {
+  it("dials the invite hosts in order, pairs with the token and keeps the relay rendezvous", async () => {
+    bridgeAt("10.0.0.9:7429", (other) => {
+      other.online = false;
+    });
+    bridge.hosts = ["192.168.1.30:7429"];
+    const invite = inviteFor(["10.0.0.9:7429", "192.168.1.30:7429"]);
+    const recorded = openLink(null);
+    recorded.link.start();
+    await settle();
+    recorded.link.join(invite);
+    expect(recorded.link.view).toEqual({ kind: "joining", mac: "MacBook Pro", network: "dialing", host: "10.0.0.9:7429" });
+    await settle();
+    expect(urls()).toEqual(["ws://10.0.0.9:7429", "ws://192.168.1.30:7429"]);
+    expect(lastSocket().sent[0]).toMatchObject({ type: "hello", secret: "token" });
+    expect(recorded.link.view.kind).toBe("connected");
+    expect(storedPairing()).toMatchObject({ bridgeId: toBase64(bridge.id), lastHost: "192.168.1.30:7429", hosts: ["192.168.1.30:7429"], relay: invite.relay });
+  });
+
+  it("stops at the invite expiry with a notice, without touching the trusted Mac", async () => {
+    const recorded = await pairedLink();
+    const kept = storedPairing();
+    bridgeAt("10.0.0.9:7429", (other) => {
+      other.online = false;
+    });
+    const invite = inviteFor(["10.0.0.9:7429"], 10_000);
+    recorded.link.join(invite);
+    await settle();
+    expect(recorded.link.view).toMatchObject({ kind: "joining", network: "unreachable" });
+    await advance(10_000);
+    expect(recorded.notices).toEqual(["invite_expired"]);
+    expect(recorded.link.view.kind).not.toBe("joining");
+    const dialed = urls().length;
+    await advance(10_000);
+    expect(urls().slice(dialed).every((url) => url !== "ws://10.0.0.9:7429")).toBe(true);
+    expect(storedPairing()).toEqual(kept);
+  });
+
+  it("ignores an invite that already expired without ending the open connection", async () => {
+    const recorded = await pairedLink();
+    const kept = storedPairing();
+    const dialed = urls().length;
+    recorded.link.join(inviteFor(["192.168.1.30:7429"], -1));
+    await settle();
+    expect(recorded.notices).toEqual(["invite_expired"]);
+    expect(recorded.link.view.kind).toBe("connected");
+    expect(urls()).toHaveLength(dialed);
+    expect(connections()[0]?.endedAt).toBeNull();
+    expect(storedPairing()).toEqual(kept);
+  });
+});
+
+describe("single link", () => {
+  it("disposes the previous link when another one starts", async () => {
+    const first = openLink();
+    first.link.start();
+    await settle();
+    const second = openLink();
+    second.link.start();
+    await settle();
+    expect(socketAt(0).closed).toBe(true);
+    expect(socketAt(1).closed).toBe(false);
+    await advance(10_000);
+    expect(urls()).toHaveLength(2);
   });
 });

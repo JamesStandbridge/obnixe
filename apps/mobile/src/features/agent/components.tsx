@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { Platform, Pressable, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import type { CallTag } from "@obnixe/core";
+import type { CallTag, PairingInvite } from "@obnixe/core";
 import { ControlButton, PrimaryButton, SheetButton } from "@/ui/Button";
 import { Switch } from "@/ui/Controls";
 import { Icon } from "@/ui/icons/Icon";
@@ -499,6 +499,41 @@ export function ForgetMacSheet({ open, mac, onClose, onConfirm }: ForgetMacSheet
   );
 }
 
+interface InviteSheetProps {
+  readonly invite: PairingInvite | null;
+  readonly replacing: string | null;
+  readonly onClose: () => void;
+  readonly onConfirm: (invite: PairingInvite) => void;
+}
+
+/** Asks before a scanned QR code or an opened link pairs with a Mac, since either can come from anyone. */
+export function InviteSheet({ invite, replacing, onClose, onConfirm }: InviteSheetProps) {
+  const { colors } = useTheme();
+  const [shown, setShown] = useState<PairingInvite | null>(invite);
+  useEffect(() => {
+    if (invite !== null) setShown(invite);
+  }, [invite]);
+  const context =
+    replacing === null
+      ? "Ce téléphone ouvrira ton suivi aux agents lancés sur ce Mac, quand l'écran Agent est ouvert."
+      : `Ce téléphone ouvrira ton suivi aux agents lancés sur ce Mac, à la place de ${replacing}.`;
+  return (
+    <Sheet open={invite !== null} title={`Relier ${shown?.name ?? ""} ?`} context={context} onClose={onClose}>
+      <View style={[styles.inviteHosts, { borderColor: colors.line }]}>
+        <Text variant="caption" tone="secondary">
+          Adresses annoncées
+        </Text>
+        {(shown?.hosts ?? []).map((host) => (
+          <Text key={host} style={styles.inviteHost}>
+            {host}
+          </Text>
+        ))}
+      </View>
+      <SheetButton label="Relier ce Mac" onPress={() => (shown === null ? undefined : onConfirm(shown))} style={styles.sheetButton} />
+    </Sheet>
+  );
+}
+
 interface HostSheetProps {
   readonly open: boolean;
   readonly host: string | null;
@@ -583,4 +618,6 @@ const styles = StyleSheet.create({
   statusEyebrow: { fontFamily: fonts.text700, fontSize: 12, lineHeight: 14, letterSpacing: 0.72, textTransform: "uppercase" },
   statusTitle: { fontFamily: fonts.text700, fontSize: 20, lineHeight: 24 },
   sheetButton: { marginTop: 14 },
+  inviteHosts: { borderTopWidth: 1, borderBottomWidth: 1, paddingVertical: 10, gap: 4 },
+  inviteHost: { fontFamily: monospace, fontSize: 15, lineHeight: 21 },
 });

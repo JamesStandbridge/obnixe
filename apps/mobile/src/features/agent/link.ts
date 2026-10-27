@@ -40,7 +40,7 @@ export type LinkView =
 
 type DialingView = Extract<LinkView, { kind: "pairing" | "joining" | "resuming" }>;
 
-export type LinkNotice = "code_refused" | "version" | "forgotten" | "invite_refused";
+export type LinkNotice = "code_refused" | "version" | "forgotten" | "invite_refused" | "invite_expired";
 
 export interface LinkListener {
   readonly onView: (view: LinkView) => void;
@@ -60,11 +60,14 @@ interface Route {
   reached: boolean;
 }
 
+let activeLink: AgentLink | null = null;
+
 const redialMs = 3000;
 const watchMs = 1000;
 const firstRetryMs = 1000;
 const maxRetryMs = 30_000;
 const hostTimeoutMs = 2500;
+const hostAnswerMs = 8000;
 
 function randomBytes(length: number): Uint8Array {
   const bytes = new Uint8Array(length);
@@ -120,11 +123,11 @@ export class AgentLink {
   private forgottenNotice: string | null;
   private invite: PairingInvite | null = null;
   private current: LinkView;
-  private spare: PairingCode | null = null;
   private socket: WebSocket | null = null;
   private session: PhoneSession | null = null;
   private route: Route | null = null;
   private hostTimer: ReturnType<typeof setTimeout> | null = null;
+  private answerTimer: ReturnType<typeof setTimeout> | null = null;
   private redial: ReturnType<typeof setTimeout> | null = null;
   private watch: ReturnType<typeof setInterval> | null = null;
   private retries = 0;
@@ -148,8 +151,19 @@ export class AgentLink {
     return this.pairing?.bridgeName ?? null;
   }
 
-  start(): void {
+  get knownBridgeId(): string | null {
+    return this.pairing?.bridgeId ?? null;
+  }
+
+  /** Only one link drives the socket: activating one disposes any other, such as a second Agent screen. */
+  private activate(): void {
+    if (activeLink !== null && activeLink !== this) activeLink.dispose("screen_closed");
+    activeLink = this;
     this.watch ??= setInterval(() => this.tick(), watchMs);
+  }
+
+  start(): void {
+    this.activate();
     this.wanted = true;
     this.retries = 0;
     this.invite = null;
@@ -158,9 +172,13 @@ export class AgentLink {
     this.dial();
   }
 
-  /** Pairs with the Mac of a scanned QR code, ending any current connection first. */
+  /** Pairs with the Mac of a scanned QR code the user confirmed, ending any current connection first; a stale invite changes nothing. */
   join(invite: PairingInvite): void {
-    this.watch ??= setInterval(() => this.tick(), watchMs);
+    if (invite.expiresAt <= environment.now()) {
+      this.listener.onNotice("invite_expired");
+      return;
+    }
+    this.activate();
     this.wanted = true;
     this.retries = 0;
     this.closeOpen("user");
@@ -230,6 +248,7 @@ export class AgentLink {
     this.end(reason);
     if (this.watch !== null) clearInterval(this.watch);
     this.watch = null;
+    if (activeLink === this) activeLink = null;
   }
 
   private openingView(): LinkView {
@@ -257,25 +276,18 @@ export class AgentLink {
     if (view.network !== network || view.host !== nextHost) this.setView({ ...view, network, host: nextHost });
   }
 
-  /** Addresses for the next dial: the QR code's while joining, else the typed one first, the last good one and the announced ones. */
+  /** Addresses for the next dial: a host typed meanwhile and the QR code's while joining, else the typed one, the last good one and the announced ones. */
   private candidates(): readonly string[] {
-    if (this.invite !== null) return distinct([this.preferred, ...this.invite.hosts, this.host]);
+    if (this.invite !== null) return distinct([this.preferred, ...this.invite.hosts]);
     if (this.pairing === null) return distinct([this.preferred, this.host]);
     return distinct([this.preferred, this.pairing.lastHost, ...this.pairing.hosts, this.host]);
-  }
-
-  /** Code a dial offers in case the bridge turns out not to be the trusted Mac; it is only shown then. */
-  private dialCode(): PairingCode {
-    const view = this.current;
-    if (view.kind === "pairing") return { code: view.code, expiresAt: view.expiresAt };
-    if (this.spare === null || this.spare.expiresAt <= environment.now()) this.spare = newCode();
-    return this.spare;
   }
 
   private dialSecret(): PhoneSecret {
     const invite = this.invite;
     if (invite !== null) return { kind: "token", token: invite.token, bridgeId: invite.bridgeId };
-    return { kind: "code", code: this.dialCode().code };
+    const view = this.current;
+    return { kind: "code", code: view.kind === "pairing" ? view.code : newCode().code };
   }
 
   private dialedHost(): string | null {
@@ -297,9 +309,15 @@ export class AgentLink {
     this.setView({ kind: "disconnected", connectionId, at: environment.now() });
   }
 
+  private clearAnswerTimer(): void {
+    if (this.answerTimer !== null) clearTimeout(this.answerTimer);
+    this.answerTimer = null;
+  }
+
   private dropSocket(): void {
     if (this.hostTimer !== null) clearTimeout(this.hostTimer);
     this.hostTimer = null;
+    this.clearAnswerTimer();
     const socket = this.socket;
     this.socket = null;
     this.session?.markClosed();
@@ -338,6 +356,7 @@ export class AgentLink {
       device: deviceName(),
       deviceId: this.deviceId,
       pairing: this.invite === null ? this.pairing : null,
+      pairOtherBridges: false,
       revocation: this.revocation,
       randomBytes,
       now: environment.now,
@@ -360,6 +379,10 @@ export class AgentLink {
       this.hostTimer = null;
       if (!route.reached) this.nextHost(socket);
     }, hostTimeoutMs);
+    this.answerTimer = setTimeout(() => {
+      this.answerTimer = null;
+      this.nextHost(socket);
+    }, hostAnswerMs);
     socket.onopen = () => {
       if (socket === this.socket) route.reached = true;
     };
@@ -390,8 +413,18 @@ export class AgentLink {
       case "resuming":
         this.retry();
         return;
-      case "pairing":
       case "joining":
+        if (this.inviteExpired()) {
+          this.leaveInvite("invite_expired");
+          return;
+        }
+        this.setNetwork("unreachable");
+        this.redial = setTimeout(() => {
+          this.redial = null;
+          this.dial();
+        }, redialMs);
+        return;
+      case "pairing":
         this.setNetwork("unreachable");
         this.redial = setTimeout(() => {
           this.redial = null;
@@ -412,16 +445,14 @@ export class AgentLink {
     if (session !== this.session) return;
     switch (status) {
       case "proving":
-        if (this.current.kind === "resuming") {
-          this.setView({ ...this.pairingView(this.dialCode()), network: "reachable", host: this.dialedHost() });
-          this.spare = null;
-        }
         return;
       case "waiting":
       case "resuming":
+        this.clearAnswerTimer();
         this.setNetwork("reachable");
         return;
       case "open": {
+        this.clearAnswerTimer();
         this.retries = 0;
         this.invite = null;
         this.preferred = null;
@@ -446,7 +477,6 @@ export class AgentLink {
 
   private onPaired(learned: LearnedPairing): void {
     this.storePairing({ ...learned, lastHost: this.dialedHost(), relay: this.invite?.relay ?? null });
-    this.spare = null;
     this.listener.onKnownMac(learned.bridgeName);
   }
 
@@ -482,14 +512,14 @@ export class AgentLink {
     switch (reason) {
       case "code":
         if (joining) {
-          this.leaveInvite();
+          this.leaveInvite("invite_refused");
           return;
         }
         this.listener.onNotice("code_refused");
         this.rotateCode();
         return;
       case "expired":
-        if (joining) this.leaveInvite();
+        if (joining) this.leaveInvite("invite_refused");
         else if (this.current.kind === "resuming") this.retry();
         else this.rotateCode();
         return;
@@ -524,8 +554,12 @@ export class AgentLink {
     }
   }
 
-  private leaveInvite(): void {
-    this.listener.onNotice("invite_refused");
+  private inviteExpired(): boolean {
+    return this.invite !== null && this.invite.expiresAt <= environment.now();
+  }
+
+  private leaveInvite(notice: LinkNotice): void {
+    this.listener.onNotice(notice);
     this.start();
   }
 
@@ -571,6 +605,10 @@ export class AgentLink {
 
   private tick(): void {
     const now = environment.now();
+    if (this.current.kind === "joining" && this.inviteExpired()) {
+      this.leaveInvite("invite_expired");
+      return;
+    }
     if (this.current.kind === "pairing" && now >= this.current.expiresAt) {
       this.rotateCode();
       return;
