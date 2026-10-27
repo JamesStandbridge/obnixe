@@ -25,23 +25,32 @@ export function shortTitle(report: Pick<SessionReport, "data">): string {
   return sports[session.sport].label;
 }
 
-export function quantityText(key: string, value: number, dimension: Dimension, unit: MassUnit): string {
+export interface FigureText {
+  readonly text: string;
+  readonly unit: string;
+}
+
+function figureText(figure: FigureText): string {
+  return figure.unit === "" ? figure.text : `${figure.text} ${figure.unit}`;
+}
+
+export function quantityFigure(key: string, value: number, dimension: Dimension, unit: MassUnit): FigureText {
   switch (dimension) {
     case "distance":
-      if (key === "elevation_gain" || key === "pool_length" || value < 1000) return `${formatNumber(value, 0)} m`;
-      return `${formatNumber(value / 1000, value < 10_000 ? 2 : 1)} km`;
+      if (key === "elevation_gain" || key === "pool_length" || value < 1000) return { text: formatNumber(value, 0), unit: "m" };
+      return { text: formatNumber(value / 1000, value < 10_000 ? 2 : 1), unit: "km" };
     case "mass":
-      return `${formatMass(value, unit)} ${unit}`;
+      return { text: formatMass(value, unit), unit };
     case "length":
-      return `${formatNumber(value / 10)} cm`;
+      return { text: formatNumber(value / 10), unit: "cm" };
     case "duration":
-      return formatLongClock(value);
+      return { text: formatLongClock(value), unit: "" };
     case "count":
-      return formatNumber(value, 0);
+      return { text: formatNumber(value, 0), unit: "" };
     case "heart_rate":
-      return `${value} bpm`;
+      return { text: String(value), unit: "bpm" };
     case "power":
-      return `${value} W`;
+      return { text: String(value), unit: "W" };
     default: {
       const unreachable: never = dimension;
       return unreachable;
@@ -49,9 +58,8 @@ export function quantityText(key: string, value: number, dimension: Dimension, u
   }
 }
 
-export interface FigureText {
-  readonly text: string;
-  readonly unit: string;
+export function quantityText(key: string, value: number, dimension: Dimension, unit: MassUnit): string {
+  return figureText(quantityFigure(key, value, dimension, unit));
 }
 
 export function distanceFigure(meters: number): FigureText {
@@ -85,14 +93,19 @@ function operand(name: string, values: FieldValues, durationSeconds: number): nu
   return typeof value === "number" ? value : null;
 }
 
-export function indicatorText(indicator: IndicatorDefinition, values: FieldValues, durationSeconds: number): string | null {
+export function indicatorFigure(indicator: IndicatorDefinition, values: FieldValues, durationSeconds: number): FigureText | null {
   if (indicator.type !== "ratio") return null;
   const numerator = operand(indicator.numerator, values, durationSeconds);
   const denominator = operand(indicator.denominator, values, durationSeconds);
   if (numerator === null || denominator === null || numerator <= 0 || denominator <= 0) return null;
   const ratio = (numerator / denominator) * indicator.per;
-  if (indicator.numerator === "duration") return `${formatClock(ratio)} /${indicator.per === 1000 ? "km" : `${indicator.per} m`}`;
-  return `${formatNumber(ratio / 1000)} km/h`;
+  if (indicator.numerator === "duration") return { text: formatClock(ratio), unit: `/${indicator.per === 1000 ? "km" : `${indicator.per} m`}` };
+  return { text: formatNumber(ratio / 1000), unit: "km/h" };
+}
+
+export function indicatorText(indicator: IndicatorDefinition, values: FieldValues, durationSeconds: number): string | null {
+  const figure = indicatorFigure(indicator, values, durationSeconds);
+  return figure === null ? null : figureText(figure);
 }
 
 export function continuousIndicators(session: Session, now: EpochMs): readonly string[] {

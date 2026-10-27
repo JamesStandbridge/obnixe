@@ -12,7 +12,8 @@ import type { ActiveProgram, ExerciseCatalog } from "@/features/programs/data";
 import { authorLabel, formatLastDone, slotDetail, slotTitle } from "@/features/programs/format";
 import { plural } from "@/format/labels";
 import { ProgramSheet } from "@/features/programs/ProgramSheet";
-import { RotationPanel } from "@/features/programs/RotationPanel";
+import { RotationPanel, RotationTrack } from "@/features/programs/RotationPanel";
+import type { RotationRow } from "@/features/programs/RotationPanel";
 import { VersionDiff, versionSheetContext, versionSheetTitle } from "@/features/programs/VersionDiff";
 import { VersionRow } from "@/features/programs/VersionRows";
 import { ControlButton, LinkButton, PrimaryButton } from "@/ui/Button";
@@ -203,6 +204,19 @@ function ActiveSection({ active, onMore, onSkip }: ActiveSectionProps) {
   const now = environment.now();
   const next = active.next;
   const { entry } = active;
+  const { colors } = useTheme();
+  const rows = draft.slots.map((slot): RotationRow => {
+    const isNext = next?.slot.lineageId === slot.lineageId;
+    const last = active.lastDone.get(slot.lineageId);
+    return {
+      key: slot.lineageId,
+      sport: slot.sport,
+      title: slotTitle(slot),
+      detail: slotDetail(slot),
+      next: isNext,
+      value: isNext ? "Prochaine" : last === undefined ? null : formatLastDone(last, now),
+    };
+  });
   return (
     <View style={styles.active}>
       <View style={styles.activeHead}>
@@ -217,23 +231,11 @@ function ActiveSection({ active, onMore, onSkip }: ActiveSectionProps) {
       <Text tone="secondary">
         v{entry.version.number} · rotation de {plural(draft.slots.length, "séance")} · {entry.version.sessionsPerWeek} par semaine
       </Text>
-      <RotationPanel
-        rows={draft.slots.map((slot) => {
-          const isNext = next?.slot.lineageId === slot.lineageId;
-          const last = active.lastDone.get(slot.lineageId);
-          return {
-            key: slot.lineageId,
-            sport: slot.sport,
-            title: slotTitle(slot),
-            detail: slotDetail(slot),
-            next: isNext,
-            value: isNext ? "Prochaine" : last === undefined ? null : formatLastDone(last, now),
-          };
-        })}
-      />
+      {rows.length === 0 ? null : <RotationTrack rows={rows} />}
+      <RotationPanel rows={rows} />
       <View style={styles.actions}>
-        <ControlButton label="Modifier" onPress={() => router.push(`/program/${entry.program.id}`)} style={styles.action} />
-        {next === null || draft.slots.length < 2 ? null : <ControlButton label={skipLabel(next.slot)} onPress={onSkip} style={styles.action} />}
+        <ControlButton label="Modifier le programme" icon={<Icon name="edit" size={16} color={colors.text} />} onPress={() => router.push(`/program/${entry.program.id}`)} style={styles.action} />
+        {next === null || draft.slots.length < 2 ? null : <LinkButton label={skipLabel(next.slot)} onPress={onSkip} />}
       </View>
     </View>
   );
@@ -297,7 +299,7 @@ const styles = StyleSheet.create({
   active: { marginTop: 18, gap: 6 },
   activeHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", minHeight: 24, marginBottom: -10, marginTop: -10 },
   activeName: { fontFamily: fonts.text700, fontSize: 30, lineHeight: 32, letterSpacing: -0.6 },
-  actions: { marginTop: 4, flexDirection: "row", gap: 6 },
+  actions: { marginTop: 8, flexDirection: "row", alignItems: "center", gap: 8 },
   action: { flex: 1 },
   moreVersions: { alignSelf: "flex-start", marginLeft: -10, marginTop: 4 },
   empty: { marginTop: 8, gap: 6 },

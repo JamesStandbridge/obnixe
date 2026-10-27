@@ -34,6 +34,7 @@ export interface WeightTrend {
   readonly latest: WeightPoint | null;
   readonly today: WeightPoint | null;
   readonly average7: number | null;
+  readonly delta7: number | null;
   readonly delta30: number | null;
   readonly days: readonly DayWeight[];
 }
@@ -88,11 +89,13 @@ export function weightTrend(points: readonly WeightPoint[], today: LocalDate): W
   const sorted = [...points].sort((left, right) => left.localDate.localeCompare(right.localDate));
   const byDay = new Map(sorted.map((point) => [point.localDate, point.grams]));
   const average7 = windowMean(sorted, today, 7);
+  const previousWeek = windowMean(sorted, addDays(today, -7), 7);
   const earlier = windowMean(sorted, addDays(today, -30), 7);
   return {
     latest: sorted.at(-1) ?? null,
     today: byDay.has(today) ? { localDate: today, grams: byDay.get(today) ?? 0 } : null,
     average7,
+    delta7: average7 === null || previousWeek === null ? null : average7 - previousWeek,
     delta30: average7 === null || earlier === null ? null : average7 - earlier,
     days: Array.from({ length: 7 }, (_, index) => {
       const localDate = addDays(today, index - 6);

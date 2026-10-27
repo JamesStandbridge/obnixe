@@ -1,5 +1,6 @@
 import { StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
+import { sleepBuckets } from "@obnixe/schema";
 import type { CheckIn, PainLevel, PainReport, SleepBucket, ZoneKey } from "@obnixe/schema";
 import { formatCompactDay } from "@/features/activity/format";
 import { zoneLabel } from "@/format/labels";
@@ -73,8 +74,18 @@ export function CheckInsSection({ checkIns, pains, tracked }: CheckInsSectionPro
                 <Text style={styles.cellDay} tone="secondary">
                   {formatCompactDay(checkIn.localDate)}
                 </Text>
-                <Text style={[styles.cellEnergy, styles.figure]}>{checkIn.energy ?? "–"}</Text>
-                <Text style={[styles.cellSleep, styles.figure]}>{checkIn.sleep === null ? "–" : sleepLabels[checkIn.sleep]}</Text>
+                <View style={[styles.cellEnergy, styles.visualCell]}>
+                  <EnergyBars energy={checkIn.energy} />
+                  <Text style={styles.figure} tone={checkIn.energy === null ? "tertiary" : "primary"}>
+                    {checkIn.energy ?? "–"}
+                  </Text>
+                </View>
+                <View style={[styles.cellSleep, styles.visualCell]}>
+                  <SleepGauge sleep={checkIn.sleep} />
+                  <Text style={styles.figure} tone={checkIn.sleep === null ? "tertiary" : "primary"} numberOfLines={1}>
+                    {checkIn.sleep === null ? "–" : sleepLabels[checkIn.sleep]}
+                  </Text>
+                </View>
                 {zones.map((zone) => {
                   const level = reports.find((report) => report.zone === zone)?.level;
                   return (
@@ -93,14 +104,52 @@ export function CheckInsSection({ checkIns, pains, tracked }: CheckInsSectionPro
   );
 }
 
+interface EnergyBarsProps {
+  readonly energy: number | null;
+}
+
+function EnergyBars({ energy }: EnergyBarsProps) {
+  const { colors } = useTheme();
+  return (
+    <View style={styles.bars}>
+      {energyLevels.map((level) => (
+        <View key={level} style={[styles.bar, { height: 4 + level * 2.5, backgroundColor: energy !== null && level <= energy ? colors.mark : colors.surface2 }]} />
+      ))}
+    </View>
+  );
+}
+
+interface SleepGaugeProps {
+  readonly sleep: SleepBucket | null;
+}
+
+function SleepGauge({ sleep }: SleepGaugeProps) {
+  const { colors } = useTheme();
+  const filled = sleep === null ? 0 : sleepBuckets.indexOf(sleep) + 1;
+  return (
+    <View style={styles.gauge}>
+      {sleepBuckets.map((bucket, index) => (
+        <View key={bucket} style={[styles.gaugeStep, { backgroundColor: index < filled ? colors.text2 : colors.surface2 }]} />
+      ))}
+    </View>
+  );
+}
+
+const energyLevels = [1, 2, 3, 4, 5] as const;
+
 const styles = StyleSheet.create({
   headLink: { marginVertical: -12, marginRight: -10 },
   empty: { paddingVertical: 14 },
   row: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 44, paddingVertical: 6, borderBottomWidth: 1 },
   header: { fontFamily: fonts.text700, fontSize: 12, lineHeight: 14 },
   cellDay: { width: 58, fontFamily: fonts.text600, fontSize: 14, lineHeight: 16 },
-  cellEnergy: { width: 50 },
-  cellSleep: { width: 56 },
+  cellEnergy: { width: 62 },
+  cellSleep: { width: 92 },
+  visualCell: { flexDirection: "row", alignItems: "center", gap: 8 },
+  bars: { flexDirection: "row", alignItems: "flex-end", gap: 2, height: 17 },
+  bar: { width: 4, borderRadius: 1 },
+  gauge: { flexDirection: "row", gap: 2 },
+  gaugeStep: { width: 7, height: 6, borderRadius: 1 },
   cellZone: { flex: 1, minWidth: 0 },
   zoneCell: { flexDirection: "row", alignItems: "center", gap: 6 },
   figure: { fontFamily: fonts.figure600, fontSize: 15, lineHeight: 17 },
