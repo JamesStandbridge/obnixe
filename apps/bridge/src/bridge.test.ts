@@ -135,7 +135,7 @@ async function pairedPhone(): Promise<SimulatedPhone> {
   const phone = connectPhone("482917");
   await until(() => endpoint.status().phone === "waiting", "hello");
   expect(await postPairingCode(control.port, "482 917")).toEqual({ kind: "paired", device: "iPhone", client: "Cursor" });
-  await until(() => phone.statuses.includes("open"), "open session");
+  await until(() => phone.statuses.includes("open") && endpoint.status().phone === "connected", "open session");
   return phone;
 }
 
@@ -161,7 +161,7 @@ function scannedPhone(invite: PairingInvite, token: Uint8Array = invite.token): 
 
 async function resumedPhone(pairing: PhonePairing): Promise<SimulatedPhone> {
   const phone = connectPhone("000000", { pairing });
-  await until(() => phone.statuses.includes("open"), "resumed session");
+  await until(() => phone.statuses.includes("open") && endpoint.status().phone === "connected", "resumed session");
   return phone;
 }
 
@@ -567,7 +567,6 @@ describe("trusted reconnection", () => {
     expect(second.statuses).toEqual(["resuming", "open"]);
     expect(second.sent.some((frame) => frame.type === "hello")).toBe(false);
     expect(second.paired).toEqual([]);
-    await until(() => endpoint.status().phone === "connected", "bridge session open");
     expect(endpoint.status()).toEqual({ phone: "connected", device: "iPhone", client: "Cursor" });
     expect((await client.callTool({ name: "list_sports", arguments: {} })).isError).toBe(false);
 

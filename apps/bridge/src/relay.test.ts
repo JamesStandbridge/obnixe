@@ -210,7 +210,7 @@ async function pairDirectly(started: StartedEndpoint): Promise<TestPhone> {
   const phone = connectPhone({ kind: "direct", url: started.directUrl }, "482917");
   await until(() => started.bridge.status().phone === "waiting", "hello on the direct listener");
   expect(await started.bridge.pair("482917")).toEqual({ kind: "paired", device: "iPhone", client: "Agent" });
-  await until(() => phone.statuses.includes("open"), "open session");
+  await until(() => phone.statuses.includes("open") && started.bridge.status().phone === "connected", "open session");
   return phone;
 }
 
@@ -317,7 +317,7 @@ describe("bridge behind the relay", () => {
     await until(() => bridge.status().phone === "none", "bridge drop");
 
     const resumed = connectPhone({ kind: "relay", relayUrl, room: pairingRelayRoom(pairing) }, "000000", pairing);
-    await until(() => resumed.statuses.includes("open"), "resumed session");
+    await until(() => resumed.statuses.includes("open") && bridge.status().phone === "connected", "resumed session");
     expect(resumed.statuses).toEqual(["resuming", "open"]);
     expect(resumed.paired).toEqual([]);
     expect((await bridge.callTool("list_programs", {})).isError).toBe(false);
