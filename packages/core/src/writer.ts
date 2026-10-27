@@ -40,6 +40,7 @@ export interface CommitRequest {
   readonly actor: Actor;
   readonly summary: string;
   readonly revertsId: Id | null;
+  readonly companionId?: Id | null;
   readonly mutations: readonly Mutation[];
 }
 
@@ -81,7 +82,7 @@ export function commit(db: ObnixeDatabase, env: Environment, request: CommitRequ
   const now = env.now();
   db.transaction((tx) => {
     tx.insert(changeset)
-      .values({ id: changesetId, author: request.actor.author, connectionId: request.actor.connectionId, summary: request.summary, revertsId: request.revertsId, createdAt: now })
+      .values({ id: changesetId, author: request.actor.author, connectionId: request.actor.connectionId, summary: request.summary, revertsId: request.revertsId, companionId: request.companionId ?? null, createdAt: now })
       .run();
     request.mutations.forEach((mutation, sequence) => {
       const recorded = apply(tx, mutation, changesetId, now);

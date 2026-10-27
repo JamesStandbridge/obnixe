@@ -142,8 +142,10 @@ CREATE TABLE `changeset` (
 	`connection_id` text,
 	`summary` text NOT NULL,
 	`reverts_id` text,
+	`companion_id` text,
 	`created_at` integer NOT NULL,
 	FOREIGN KEY (`connection_id`) REFERENCES `agent_connection`(`id`) ON UPDATE no action ON DELETE no action,
+	FOREIGN KEY (`companion_id`) REFERENCES `changeset`(`id`) ON UPDATE no action ON DELETE no action,
 	CONSTRAINT "changeset_agent" CHECK(("changeset"."author" = 'agent') = ("changeset"."connection_id" IS NOT NULL))
 );
 --> statement-breakpoint

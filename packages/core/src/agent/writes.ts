@@ -13,11 +13,11 @@ import { frenchDay, frenchDistance, frenchDuration, plural } from "./format.ts";
 
 export const futureToleranceMs = 5 * 60_000;
 
-export function commitExercises(db: ObnixeDatabase, env: AgentEnvironment, actor: Actor, plan: ExercisePlan): void {
-  if (plan.created.length === 0) return;
+export function commitExercises(db: ObnixeDatabase, env: AgentEnvironment, actor: Actor, plan: ExercisePlan): Id | null {
+  if (plan.created.length === 0) return null;
   const names = plan.created.map((row) => row.name).join(", ");
   const summary = plan.created.length === 1 ? `Exercice ajouté · ${names}` : `Exercices ajoutés · ${names}`;
-  commit(db, env, { actor, summary, revertsId: null, mutations: plan.created.map((row) => ({ kind: "insert", table: "exercise", row })) });
+  return commit(db, env, { actor, summary, revertsId: null, mutations: plan.created.map((row) => ({ kind: "insert", table: "exercise", row })) });
 }
 
 export function resolved(plan: ExercisePlan, reference: string): ResolvedExercise {
@@ -161,8 +161,8 @@ export function upsertProgram(db: ObnixeDatabase, env: AgentEnvironment, actor: 
     });
   });
 
-  commitExercises(db, env, actor, plan);
-  const changesetId = commit(db, env, { actor, summary: input.summary, revertsId: null, mutations });
+  const companionId = commitExercises(db, env, actor, plan);
+  const changesetId = commit(db, env, { actor, summary: input.summary, revertsId: null, companionId, mutations });
   return {
     kind: "write",
     summary: input.summary,
@@ -305,8 +305,8 @@ export function logStrengthSession(db: ObnixeDatabase, env: AgentEnvironment, ac
       setIndex += 1;
     });
   });
-  commitExercises(db, env, actor, plan);
+  const companionId = commitExercises(db, env, actor, plan);
   const summary = `${sports.strength.label} du ${frenchDay(timing.localDate)} · ${plural(input.exercises.length, "exercice", "exercices")}`;
-  const changesetId = commit(db, env, { actor, summary, revertsId: null, mutations });
+  const changesetId = commit(db, env, { actor, summary, revertsId: null, companionId, mutations });
   return { kind: "write", summary, changesetId, data: { sessionId: row.id, localDate: timing.localDate, createdExercises: plan.created.map((created) => ({ id: created.id, name: created.name })) } };
 }

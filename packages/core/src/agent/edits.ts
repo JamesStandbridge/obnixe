@@ -208,9 +208,9 @@ export function updateStrengthSession(db: ObnixeDatabase, env: AgentEnvironment,
     if (setId !== undefined) mutations.push({ kind: "update", table: "pain_report", key: pain.id, patch: { strengthSetId: setId } });
   }
 
-  commitExercises(db, env, actor, plan);
+  const companionId = commitExercises(db, env, actor, plan);
   const summary = `Séance corrigée · ${sessionLabel(current)} · ${plural(input.exercises.length, "exercice", "exercices")}`;
-  const changesetId = commit(db, env, { actor, summary, revertsId: null, mutations });
+  const changesetId = commit(db, env, { actor, summary, revertsId: null, companionId, mutations });
   return { kind: "write", summary, changesetId, data: { sessionId: current.id, localDate: current.localDate, createdExercises: plan.created.map((row) => ({ id: row.id, name: row.name })) } };
 }
 

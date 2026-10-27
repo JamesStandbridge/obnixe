@@ -133,7 +133,7 @@ interface Harness {
   readonly paired: LearnedPairing[];
   readonly hosts: (readonly string[])[];
   readonly rejections: RejectionReason[];
-  readonly revocationsSent: PhoneRevocation[];
+  readonly revocationsAcknowledged: PhoneRevocation[];
   readonly closed: boolean;
 }
 
@@ -150,7 +150,7 @@ function harness(phoneCode: string, trust: Trust = {}): Harness {
   const paired: LearnedPairing[] = [];
   const hosts: (readonly string[])[] = [];
   const rejections: RejectionReason[] = [];
-  const revocationsSent: PhoneRevocation[] = [];
+  const revocationsAcknowledged: PhoneRevocation[] = [];
   const state = { closed: false };
   const session = new PhoneSession({
     secret: trust.secret ?? { kind: "code", code: phoneCode },
@@ -173,7 +173,7 @@ function harness(phoneCode: string, trust: Trust = {}): Harness {
       onRejected: (reason) => rejections.push(reason),
       onPaired: (pairing) => paired.push(pairing),
       onHosts: (announced) => hosts.push(announced),
-      onRevocationSent: (revocation) => revocationsSent.push(revocation),
+      onRevocationAcknowledged: (revocation) => revocationsAcknowledged.push(revocation),
     },
   });
   return {
@@ -184,7 +184,7 @@ function harness(phoneCode: string, trust: Trust = {}): Harness {
     paired,
     hosts,
     rejections,
-    revocationsSent,
+    revocationsAcknowledged,
     get closed() {
       return state.closed;
     },
@@ -446,14 +446,39 @@ describe("trusted resume", () => {
 
     const elsewhere = harness(code, { revocation });
     await helloFrom(elsewhere, simulatedBridge(bytes(16)));
-    expect(elsewhere.revocationsSent).toEqual([]);
+    expect(elsewhere.sent.map((frame) => frame.type)).toEqual(["hello"]);
+    await elsewhere.session.receive(encodeFrame({ type: "rejected", reason: "code" }));
+    expect(elsewhere.revocationsAcknowledged).toEqual([]);
 
     const target = harness(code, { revocation });
     await helloFrom(target, simulatedBridge());
     expect(target.sent.map((frame) => frame.type)).toEqual(["revoke", "hello"]);
     expect(target.sent[0]).toEqual({ type: "revoke", pairing: pairing.pairingId, proof: revocation.proof });
-    expect(target.revocationsSent).toEqual([revocation]);
     expect(JSON.stringify(target.sent)).not.toContain(pairing.secret);
+  });
+
+  it("only counts a revocation as delivered once the bridge answers after it", async () => {
+    const { pairing } = await trustedPair();
+    const revocation = phoneRevocation(pairing);
+
+    const lost = harness(code, { revocation });
+    await helloFrom(lost, simulatedBridge());
+    lost.session.markClosed();
+    expect(lost.revocationsAcknowledged).toEqual([]);
+
+    const replaced = harness(code, { revocation });
+    await helloFrom(replaced, simulatedBridge());
+    await replaced.session.receive(encodeFrame({ type: "rejected", reason: "replaced" }));
+    expect(replaced.revocationsAcknowledged).toEqual([]);
+
+    const answered = harness(code, { revocation });
+    const bridge = simulatedBridge();
+    const hello = await helloFrom(answered, bridge);
+    expect(answered.revocationsAcknowledged).toEqual([]);
+    await proofFrom(answered, commitTo(await bridgeSecrets(bridge, hello, code)));
+    expect(answered.revocationsAcknowledged).toEqual([revocation]);
+    await answered.session.receive(encodeFrame({ type: "rejected", reason: "code" }));
+    expect(answered.revocationsAcknowledged).toEqual([revocation]);
   });
 });
 

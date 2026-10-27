@@ -62,6 +62,7 @@ interface SimulatedPhone {
   readonly rejections: RejectionReason[];
   readonly paired: LearnedPairing[];
   readonly hosts: (readonly string[])[];
+  readonly acknowledged: PhoneRevocation[];
   readonly closeCodes: number[];
 }
 
@@ -87,6 +88,7 @@ function connectPhone(code: string, options: PhoneOptions = {}): SimulatedPhone 
   const rejections: RejectionReason[] = [];
   const paired: LearnedPairing[] = [];
   const hosts: (readonly string[])[] = [];
+  const acknowledged: PhoneRevocation[] = [];
   const closeCodes: number[] = [];
   const phoneSession = new PhoneSession({
     secret: options.secret ?? { kind: "code", code },
@@ -111,7 +113,7 @@ function connectPhone(code: string, options: PhoneOptions = {}): SimulatedPhone 
       onRejected: (reason) => rejections.push(reason),
       onPaired: (pairing) => paired.push(pairing),
       onHosts: (announced) => hosts.push(announced),
-      onRevocationSent: () => undefined,
+      onRevocationAcknowledged: (revocation) => acknowledged.push(revocation),
     },
   });
   socket.on("message", (data) => {
@@ -123,7 +125,7 @@ function connectPhone(code: string, options: PhoneOptions = {}): SimulatedPhone 
     if (connectionId !== null && !phoneSession.isClosed) closeConnection(context.db, context.env, connectionId, "network");
     phoneSession.markClosed();
   });
-  return { session: phoneSession, socket, sent, statuses, rejections, paired, hosts, closeCodes };
+  return { session: phoneSession, socket, sent, statuses, rejections, paired, hosts, acknowledged, closeCodes };
 }
 
 async function pairedPhone(): Promise<SimulatedPhone> {
@@ -570,12 +572,15 @@ describe("trusted reconnection", () => {
 
   it("drops a pairing the phone revoked before pairing again with a code", async () => {
     const pairing = storedPairing(await pairedPhone());
-    const phone = connectPhone("482917", { revocation: phoneRevocation(pairing) });
+    const revocation = phoneRevocation(pairing);
+    const phone = connectPhone("482917", { revocation });
     await until(() => logs.some((line) => line.includes("forgot this Mac")), "revocation log");
     expect(pairings.list()).toEqual([]);
     expect(pairings.lookup(pairing.pairingId).kind).toBe("revoked");
+    expect(phone.acknowledged).toEqual([]);
     expect(await postPairingCode(control.port, "482917")).toEqual({ kind: "paired", device: "iPhone", client: "Cursor" });
     await until(() => phone.statuses.includes("open"), "new pairing");
+    expect(phone.acknowledged).toEqual([revocation]);
     expect(storedPairing(phone).pairingId).not.toBe(pairing.pairingId);
     expect(pairings.list().map((entry) => entry.pairingId)).toEqual([storedPairing(phone).pairingId]);
   });

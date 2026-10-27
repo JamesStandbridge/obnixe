@@ -104,7 +104,7 @@ export interface PhoneSessionHandlers {
   readonly onRejected: (reason: RejectionReason) => void;
   readonly onPaired: (pairing: LearnedPairing) => void;
   readonly onHosts: (hosts: readonly string[]) => void;
-  readonly onRevocationSent: (revocation: PhoneRevocation) => void;
+  readonly onRevocationAcknowledged: (revocation: PhoneRevocation) => void;
 }
 
 export interface PhoneSessionOptions {
@@ -163,6 +163,7 @@ export class PhoneSession {
   private state: SessionState = { kind: "challenge" };
   private opened: Id | null = null;
   private learned: DerivedPairing | null = null;
+  private unacknowledged: PhoneRevocation | null = null;
   private proofSent = false;
   private queue: Promise<void> = Promise.resolve();
   private lastReceivedAt: number;
@@ -206,6 +207,7 @@ export class PhoneSession {
     if (this.state.kind === "closed") return;
     this.lastReceivedAt = this.options.now();
     const frame = decodeFrame(text);
+    this.acknowledgeRevocation(frame);
     switch (frame.type) {
       case "challenge":
         await this.answerChallenge(frame);
@@ -261,6 +263,17 @@ export class PhoneSession {
     this.options.socket.send(encodeFrame(frame));
   }
 
+  /**
+   * The bridge reads frames in order and drops the socket when it refuses a revocation, so a frame it sends after the
+   * revoke proves it was applied. A `replaced` rejection is the exception: the bridge can send it before reading the revoke.
+   */
+  private acknowledgeRevocation(frame: Frame): void {
+    const revocation = this.unacknowledged;
+    if (revocation === null || (frame.type === "rejected" && frame.reason === "replaced")) return;
+    this.unacknowledged = null;
+    this.options.handlers.onRevocationAcknowledged(revocation);
+  }
+
   private async answerChallenge(frame: Extract<Frame, { type: "challenge" }>): Promise<void> {
     if (this.state.kind !== "challenge") throw new ProtocolError("Unexpected challenge");
     if (frame.version !== protocolVersion) {
@@ -276,7 +289,7 @@ export class PhoneSession {
     const revocation = this.options.revocation;
     if (revocation !== null && sameBytes(decodeBytes(revocation.bridgeId), bridgeId)) {
       this.send({ type: "revoke", pairing: revocation.pairingId, proof: revocation.proof });
-      this.options.handlers.onRevocationSent(revocation);
+      this.unacknowledged = revocation;
     }
     const keyPair = generateEphemeralKeyPair(this.options.randomBytes);
     const transcript: PairingTranscript = {
