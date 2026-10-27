@@ -4,7 +4,7 @@ import type { EpochMs, Exercise, FieldValues, Id, LocalDate, PainReport, Session
 import type { ObnixeDatabase } from "../database.ts";
 import { activeSeconds } from "../activity/freeSession.ts";
 import { trashMutation, trashRetentionMs } from "../data/trash.ts";
-import { planArchiveExercise, planRestoreExercise, planUpdateExercise, usesLoad } from "../programs/exercises.ts";
+import { planArchiveExercise, planExerciseCues, planRestoreExercise, planUpdateExercise, usesLoad } from "../programs/exercises.ts";
 import type { ExerciseInput, ExerciseIssue } from "../programs/exercises.ts";
 import { exerciseUsage, latestVersion } from "../programs/queries.ts";
 import { planActivate, planArchive } from "../programs/status.ts";
@@ -267,9 +267,24 @@ function keepZonesReview(mutation: Mutation, current: Exercise): Mutation | null
   return changed ? { ...mutation, patch } : null;
 }
 
-function exerciseSummary(name: string, details: boolean, archived: boolean | undefined): string {
-  if (!details && archived === true) return `Exercice archivé · ${name}`;
-  if (!details && archived === false) return `Exercice restauré · ${name}`;
+function withCues(mutations: readonly Mutation[], cues: Mutation | null): Mutation[] {
+  if (cues === null || cues.kind !== "update" || cues.table !== "exercise") return [...mutations];
+  const index = mutations.findIndex((mutation) => mutation.kind === "update" && mutation.table === "exercise");
+  const target = mutations[index];
+  if (target === undefined || target.kind !== "update" || target.table !== "exercise") return [cues, ...mutations];
+  return mutations.map((mutation, position) => (position === index ? { ...target, patch: { ...target.patch, ...cues.patch } } : mutation));
+}
+
+interface ExerciseChanges {
+  readonly details: boolean;
+  readonly cuesOnly: boolean;
+  readonly archived: boolean | undefined;
+}
+
+function exerciseSummary(name: string, changes: ExerciseChanges): string {
+  if (!changes.details && changes.archived === true) return `Exercice archivé · ${name}`;
+  if (!changes.details && changes.archived === false) return `Exercice restauré · ${name}`;
+  if (changes.cuesOnly) return `Consignes modifiées · ${name}`;
   return `Exercice modifié · ${name}`;
 }
 
@@ -279,12 +294,14 @@ export function updateExercise(db: ObnixeDatabase, env: AgentEnvironment, actor:
   const next = detailInput(current, zones, input);
   const plan = planUpdateExercise({ exercise: current, zones, inUse: exerciseUsage(db, current.id).inUse, input: next }, db.select().from(exercise).all());
   if (!plan.ok) throw new ToolInputError(exerciseIssueMessage(plan.issue, current));
-  const details = input.zones === undefined ? plan.mutations.flatMap((mutation) => keepZonesReview(mutation, current) ?? []) : [...plan.mutations];
+  const reviewed = input.zones === undefined ? plan.mutations.flatMap((mutation) => keepZonesReview(mutation, current) ?? []) : [...plan.mutations];
+  const cues = input.cues === undefined ? null : planExerciseCues(current, input.cues ?? "");
+  const details = withCues(reviewed, cues);
   const status = input.archived === undefined ? null : input.archived ? planArchiveExercise(current, env.now()) : planRestoreExercise(current);
   const mutations = status === null ? details : [...details, status];
   if (mutations.length === 0) throw new ToolInputError(`Nothing to change: '${current.name}' already has these values.`);
   const name = next.name.trim().replace(/\s+/g, " ");
-  const summary = exerciseSummary(name, details.length > 0, status === null ? undefined : input.archived);
+  const summary = exerciseSummary(name, { details: details.length > 0, cuesOnly: cues !== null && reviewed.length === 0, archived: status === null ? undefined : input.archived });
   const changesetId = commit(db, env, { actor, summary, revertsId: null, mutations });
   const saved = requireExercise(db, current.id);
   return {
@@ -301,6 +318,7 @@ export function updateExercise(db: ObnixeDatabase, env: AgentEnvironment, actor:
       loadStepGrams: saved.loadStepGrams,
       zones: [...zonesOf(db, saved.id)],
       archived: saved.archivedAt !== null,
+      cues: saved.cues,
     },
   };
 }

@@ -1,9 +1,9 @@
-import { useMemo, useRef, useState } from "react";
+import { Fragment, useMemo, useRef, useState } from "react";
 import { PanResponder, View } from "react-native";
 import type { AccessibilityActionEvent, GestureResponderEvent, HostInstance, LayoutChangeEvent } from "react-native";
 import Svg, { Circle, Line, Path, Rect, Text as SvgText } from "react-native-svg";
 import { addDays, dateParts, daysBetween, localDate, mondayOf } from "@obnixe/core";
-import type { ZonePainEvent } from "@obnixe/core";
+import type { SuspensionPeriod, VersionMarker, ZonePainEvent } from "@obnixe/core";
 import { gradeScales } from "@obnixe/schema";
 import type { LocalDate } from "@obnixe/schema";
 import { useTheme } from "@/ui/theme";
@@ -22,6 +22,40 @@ export interface PainStrip {
   readonly events: readonly ZonePainEvent[];
 }
 
+export interface ProgramContext {
+  readonly markers: readonly VersionMarker[];
+  readonly suspensions: readonly SuspensionPeriod[];
+}
+
+export function contextWithin(context: ProgramContext, from: LocalDate, to: LocalDate): ProgramContext {
+  return {
+    markers: context.markers.filter((marker) => marker.localDate >= from && marker.localDate <= to),
+    suspensions: context.suspensions.filter((period) => period.from <= to && (period.to ?? to) >= from),
+  };
+}
+
+export function isSuspendedOn(context: ProgramContext | null, date: LocalDate): boolean {
+  return context !== null && context.suspensions.some((period) => period.from <= date && (period.to === null || date <= period.to));
+}
+
+export function VersionKey() {
+  const { colors } = useTheme();
+  return (
+    <Svg width={8} height={14} viewBox="0 0 8 14">
+      <Line x1={4} x2={4} y1={0} y2={14} stroke={colors.text3} strokeWidth={1.5} strokeDasharray="3 2" />
+    </Svg>
+  );
+}
+
+export function SuspensionKey() {
+  const { colors } = useTheme();
+  return (
+    <Svg width={14} height={12} viewBox="0 0 14 12">
+      <Rect x={0} y={0} width={14} height={12} rx={2} fill={colors.warn} fillOpacity={0.2} />
+    </Svg>
+  );
+}
+
 interface ProgressChartProps {
   readonly series: Series;
   readonly points: readonly ChartPoint[];
@@ -31,6 +65,7 @@ interface ProgressChartProps {
   readonly selected: number;
   readonly onSelect: (index: number) => void;
   readonly strip: PainStrip | null;
+  readonly program: ProgramContext | null;
   readonly valueText: string;
 }
 
@@ -99,7 +134,7 @@ function valueScale(series: Series, points: readonly ChartPoint[]): Scale {
   }
 }
 
-export function ProgressChart({ series, points, from, to, rangeDays, selected, onSelect, strip, valueText }: ProgressChartProps) {
+export function ProgressChart({ series, points, from, to, rangeDays, selected, onSelect, strip, program, valueText }: ProgressChartProps) {
   const { colors } = useTheme();
   const [width, setWidth] = useState(0);
   const origin = useRef(0);
@@ -199,6 +234,22 @@ export function ProgressChart({ series, points, from, to, rangeDays, selected, o
       {...responder.panHandlers}
     >
       <Svg width="100%" height={width === 0 ? 0 : (width * height) / W} viewBox={`0 0 ${W} ${height}`}>
+        {program?.suspensions.map((period) => {
+          const left = x(period.from < from ? from : period.from);
+          const right = x(period.to === null || period.to > to ? to : period.to);
+          return <Rect key={`s${period.from}`} x={left} y={PLOT_TOP - 6} width={Math.max(3, right - left)} height={PLOT_BOTTOM - PLOT_TOP + 6} fill={colors.warn} fillOpacity={0.2} />;
+        })}
+        {program?.markers.map((marker) => {
+          const px = x(marker.localDate);
+          return (
+            <Fragment key={`v${marker.programId}${marker.number}`}>
+              <Line x1={px} x2={px} y1={PLOT_TOP - 12} y2={PLOT_BOTTOM} stroke={colors.text3} strokeWidth={1} strokeDasharray="3 3" />
+              <SvgText x={px > PLOT_RIGHT - 24 ? px - 4 : px + 4} y={PLOT_TOP - 14} textAnchor={px > PLOT_RIGHT - 24 ? "end" : "start"} fill={colors.text2} fontFamily={fonts.figure700} fontSize={12}>
+                {`v${marker.number}`}
+              </SvgText>
+            </Fragment>
+          );
+        })}
         {scale.ticks.map((tick) => (
           <Line key={`g${tick}`} x1={0} x2={PLOT_RIGHT} y1={y(tick)} y2={y(tick)} stroke={colors.line} strokeWidth={1} />
         ))}

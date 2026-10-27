@@ -54,7 +54,7 @@ function exerciseSet(row: ExerciseSetRow): ExerciseSet {
   };
 }
 
-function exerciseIdsWithMerged(db: ObnixeDatabase, exerciseId: Id): Id[] {
+export function exerciseIdsWithMerged(db: ObnixeDatabase, exerciseId: Id): Id[] {
   const merged = db.select({ id: exercise.id }).from(exercise).where(eq(exercise.mergedIntoId, exerciseId)).all();
   return [exerciseId, ...merged.map((row) => row.id)];
 }

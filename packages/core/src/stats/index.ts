@@ -1,4 +1,5 @@
 export * from "./calendar.ts";
+export * from "./chartContext.ts";
 export * from "./checkin.ts";
 export * from "./exercise.ts";
 export * from "./indicators.ts";

@@ -46,6 +46,7 @@
         }
       ],
       "expo-sharing",
+      "expo-notifications",
       "expo-image",
       [
         "expo-image-picker",

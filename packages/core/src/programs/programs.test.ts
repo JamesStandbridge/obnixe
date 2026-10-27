@@ -12,7 +12,7 @@ import type { ProgramChange } from "./diff.ts";
 import { draftFromTree, emptyDraft, withFreshLineages } from "./draft.ts";
 import type { DraftItem, DraftSlot, ProgramDraft } from "./draft.ts";
 import { moveByLineage, removeByLineage, updateItems, updateSlot } from "./edit.ts";
-import { findExerciseByName, planArchiveExercise, planCreateExercise, planUpdateExercise, searchExercises } from "./exercises.ts";
+import { findExerciseByName, normalizeCues, planArchiveExercise, planCreateExercise, planExerciseCues, planUpdateExercise, searchExercises } from "./exercises.ts";
 import type { ExerciseInput } from "./exercises.ts";
 import { planCreateProgram, planPublish } from "./publish.ts";
 import type { PublishIssue, PublishPlan, PublishResult } from "./publish.ts";
@@ -377,5 +377,26 @@ describe("exercises", () => {
     expect(renamed?.nameKey).toBe("developpe couche barre");
     const unchanged = planUpdateExercise({ exercise: renamed as Exercise, zones: ["shoulder_left", "elbow_right"], inUse: true, input: { name: "Développé couché barre", measure: "load_reps", equipment: "barbell", loadMode: "total", baseGrams: null, loadStepGrams: 1250, zones: ["elbow_right", "shoulder_left"] } }, exercises());
     expect(unchanged).toEqual({ ok: true, exerciseId: bench.id, mutations: [] });
+  });
+
+  it("edits technique cues, keeps them through other edits and undoes them", () => {
+    const id = createExercise("Squat barre");
+    const squat = (): Exercise => exercises().find((row) => row.id === id) as Exercise;
+    expect(normalizeCues("   \n  ")).toBeNull();
+    expect(planExerciseCues(squat(), "")).toBeNull();
+    const cues = planExerciseCues(squat(), "Pieds sous les hanches   \n\n\n\nGenoux dans l'axe\n");
+    if (cues === null) throw new Error("No cue change");
+    const changesetId = write([cues], "Consignes · Squat barre");
+    expect(squat().cues).toBe("Pieds sous les hanches\n\nGenoux dans l'axe");
+    expect(planExerciseCues(squat(), "Pieds sous les hanches\n\nGenoux dans l'axe  ")).toBeNull();
+
+    const update = planUpdateExercise({ exercise: squat(), zones: [], inUse: false, input: { name: "Squat barre haute", measure: "load_reps", equipment: "barbell", loadMode: "total", baseGrams: null, loadStepGrams: 2500, zones: [] } }, exercises());
+    if (!update.ok) throw new Error(update.issue.kind);
+    const renameId = write(update.mutations);
+    expect(squat()).toMatchObject({ name: "Squat barre haute", cues: "Pieds sous les hanches\n\nGenoux dans l'axe" });
+
+    revert(context.db, context.env, { actor: { author: "user", connectionId: null }, changesetId: renameId, summary: "Annulation", restoredVersionSummary: (number) => `Retour à la v${number}` });
+    revert(context.db, context.env, { actor: { author: "user", connectionId: null }, changesetId, summary: "Annulation", restoredVersionSummary: (number) => `Retour à la v${number}` });
+    expect(squat()).toMatchObject({ name: "Squat barre", cues: null });
   });
 });

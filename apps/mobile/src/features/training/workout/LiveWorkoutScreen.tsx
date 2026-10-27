@@ -20,6 +20,8 @@ import {
   loadWorkout,
   logSetMutations,
   massToGrams,
+  normalizeCues,
+  planExerciseCues,
   postponeEntryMutations,
   previousSetAt,
   replaceExerciseMutations,
@@ -63,12 +65,15 @@ import { Readout } from "@/features/training/workout/Readout";
 import type { DraftKey } from "@/features/training/workout/Readout";
 import { RestBand } from "@/features/training/workout/RestBand";
 import type { Band } from "@/features/training/workout/RestBand";
+import { cancelRestAlert } from "@/features/training/workout/restAlert";
+import { useRestAlert } from "@/features/training/workout/useRestAlert";
 import { Steps, Track, UpNext } from "@/features/training/workout/WorkoutParts";
 import { ControlButton, LinkButton, PrimaryButton } from "@/ui/Button";
 import { PainMark } from "@/ui/Controls";
 import { Icon } from "@/ui/icons/Icon";
-import { IconButton } from "@/ui/Inputs";
+import { Choices, IconButton } from "@/ui/Inputs";
 import { usePressScale } from "@/ui/motion";
+import { Sheet } from "@/ui/Overlays";
 import { useSnackbar } from "@/ui/SnackbarHost";
 import { Text } from "@/ui/Text";
 import { useTheme } from "@/ui/theme";
@@ -186,6 +191,9 @@ export function LiveWorkoutScreen({ live }: LiveWorkoutScreenProps) {
     return { kind: "done", over: -remaining };
   })();
 
+  const nextSetHint = display === undefined ? "" : `Série ${setIndex + 1} sur ${display.target.sets} · ${display.exercise.name}${isDraftValid(display, draft) ? ` · ${setText(draft, unit)}` : ""}`;
+  const restAlert = useRestAlert(finished || active !== null || lastSet === null || restTotal === null ? null : { restId: lastSet.set.id, endsAt: lastSet.set.completedAt + restTotal * 1000, body: nextSetHint });
+
   const stripShown = band.kind === "running" || band.kind === "done";
   const placement = { aboveTabBar: false, extraOffset: Math.max(0, panelHeight - insets.bottom + (stripShown ? 0 : stripHeight)) } as const;
 
@@ -201,6 +209,7 @@ export function LiveWorkoutScreen({ live }: LiveWorkoutScreenProps) {
       const current = loadWorkout(db(), sessionId);
       if (current === null || current.session.status !== "in_progress") return;
       const at = environment.now();
+      cancelRestAlert();
       if (current.exercises.length > 0 && workoutProgress(current).currentIndex === null) write("Séance terminée", finishMutations(current, at));
       else write("Séance interrompue", interruptMutations(current.session, at));
     });
@@ -339,6 +348,7 @@ export function LiveWorkoutScreen({ live }: LiveWorkoutScreenProps) {
     if (display === undefined) return;
     if (finished) {
       leaving.current = true;
+      cancelRestAlert();
       write("Séance terminée", finishMutations(data, environment.now()));
       router.replace({ pathname: "/session/[id]/review", params: { id: sessionId } });
       return;
@@ -452,6 +462,14 @@ export function LiveWorkoutScreen({ live }: LiveWorkoutScreenProps) {
     setEditing(null);
   };
 
+  const saveCues = (text: string): void => {
+    closeSheet();
+    if (display === undefined) return;
+    const mutation = planExerciseCues(display.exercise, text);
+    if (mutation === null) return;
+    commitUndoable(`Consignes · ${display.exercise.name}`, [mutation], normalizeCues(text) === null ? "Consignes effacées" : "Consignes enregistrées");
+  };
+
   const postpone = (): void => {
     closeSheet();
     if (display === undefined) return;
@@ -490,6 +508,7 @@ export function LiveWorkoutScreen({ live }: LiveWorkoutScreenProps) {
   const finishNow = (): void => {
     closeSheet();
     leaving.current = true;
+    cancelRestAlert();
     write("Séance terminée", finishMutations(data, environment.now()));
     router.replace({ pathname: "/session/[id]/review", params: { id: sessionId } });
   };
@@ -694,9 +713,11 @@ export function LiveWorkoutScreen({ live }: LiveWorkoutScreenProps) {
         title={display?.exercise.name ?? sessionTitle}
         sessionTitle={sessionTitle}
         exerciseId={display?.exercise.id ?? null}
+        cues={display?.exercise.cues ?? null}
         canChange={!finished && display?.entry.status === "pending"}
         canPostpone={display !== undefined && pendingOthers(display.entry.id) > 0}
         onMode={(mode) => setSheet({ open: true, mode })}
+        onSaveCues={saveCues}
         onSkip={skip}
         onPostpone={postpone}
         onReplace={replace}
@@ -709,6 +730,18 @@ export function LiveWorkoutScreen({ live }: LiveWorkoutScreenProps) {
         onFinish={finishNow}
         onClose={closeSheet}
       />
+      <Sheet open={restAlert.explaining && !sheet.open && !pain.open && pad === null} title="Prévenir à la fin du repos" onClose={restAlert.later}>
+        <Text tone="secondary" style={styles.alertText}>
+          Si tu verrouilles l'écran ou changes d'application pendant un repos, Obnixe peut t'envoyer une notification quand il se termine, avec la série suivante. Aucune autre notification.
+        </Text>
+        <Choices<"allow" | "later">
+          items={[
+            { value: "allow", label: "Autoriser les notifications", primary: true },
+            { value: "later", label: "Pas maintenant" },
+          ]}
+          onChoose={(choice) => (choice === "allow" ? restAlert.allow() : restAlert.later())}
+        />
+      </Sheet>
     </View>
   );
 }
@@ -803,5 +836,6 @@ const styles = StyleSheet.create({
   actionCell: { flex: 1 },
   action: { height: 64, borderRadius: radii.panel, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, paddingHorizontal: 12 },
   actionLabel: { fontFamily: fonts.text700, fontSize: 18, flexShrink: 1 },
+  alertText: { marginTop: 4 },
   disabled: { opacity: 0.4 },
 });

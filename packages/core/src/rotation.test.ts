@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import type { Id, LocalDate } from "@obnixe/schema";
-import { nextSlot } from "./rotation.ts";
+import type { EpochMs, Id, LocalDate } from "@obnixe/schema";
+import { nextSlot, planSkipNextSlot } from "./rotation.ts";
 import { createTestContext } from "./testing.ts";
 import type { TestContext } from "./testing.ts";
 import { commit } from "./writer.ts";
@@ -142,6 +142,26 @@ describe("nextSlot", () => {
     complete(first.slotIds[1] as Id);
     publish(programId, 2, ["X", "Y"]);
     expect(nextSlot(context.db)?.slot.lineageId).toBe("X");
+  });
+
+  it("plans a skip of the next slot that advances the rotation, and nothing for a single slot rotation", () => {
+    const programId = activeProgram();
+    publish(programId, 1, ["A"]);
+    expect(planSkipNextSlot(context.db, { now: context.env.now(), timeZone: "Europe/Paris", newId: context.env.newId })).toBeNull();
+    const second = publish(programId, 2, ["A", "B", "C"]);
+    complete(second.slotIds[0] as Id);
+    context.advance(60_000);
+    const plan = planSkipNextSlot(context.db, { now: context.env.now(), timeZone: "Europe/Paris", newId: context.env.newId });
+    expect(plan?.skipped.lineageId).toBe("B");
+    expect(plan?.next.lineageId).toBe("C");
+    expect(plan?.mutation).toMatchObject({ kind: "insert", table: "rotation_skip", row: { programId, slotLineageId: "B", skippedAt: context.env.now(), localDate: "2026-10-24" } });
+    if (plan === null) throw new Error("Nothing to skip");
+    write([plan.mutation]);
+    expect(nextSlot(context.db)?.slot.lineageId).toBe("C");
+    const again = planSkipNextSlot(context.db, { now: (context.env.now() + 1) as EpochMs, timeZone: "Europe/Paris", newId: context.env.newId });
+    if (again === null) throw new Error("Nothing to skip");
+    write([again.mutation]);
+    expect(nextSlot(context.db)?.slot.lineageId).toBe("A");
   });
 
   it("walks the old order from a skipped lineage the same way", () => {

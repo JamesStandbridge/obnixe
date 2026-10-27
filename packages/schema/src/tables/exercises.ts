@@ -16,6 +16,7 @@ export const exercise = sqliteTable(
     baseGrams: integer("base_grams"),
     loadStepGrams: integer("load_step_grams"),
     zonesReviewed: integer("zones_reviewed", { mode: "boolean" }).notNull(),
+    cues: text("cues"),
     mergedIntoId: ref("merged_into_id").references((): AnySQLiteColumn => exercise.id),
     archivedAt: timestamp("archived_at"),
     ...tracked(),

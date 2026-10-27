@@ -10,10 +10,12 @@ const timeZone = z.string().regex(/^(UTC|[A-Z][A-Za-z_]+(\/[A-Za-z0-9_+-]+){1,2}
 const occurred = { localDate, timeZone };
 const optionalText = z.string().trim().min(1).nullable().optional();
 
+export const exerciseCuesMaxLength = 2000;
+
 export const rowSchemas = {
   sport_preference: createInsertSchema(tables.sportPreference),
   exercise: createInsertSchema(tables.exercise)
-    .extend({ name: z.string().trim().min(1) })
+    .extend({ name: z.string().trim().min(1), cues: z.string().trim().min(1).max(exerciseCuesMaxLength).nullable().optional() })
     .refine((row) => row.nameKey === exerciseNameKey(row.name), { path: ["nameKey"] }),
   exercise_zone: createInsertSchema(tables.exerciseZone),
   measurement_kind: createInsertSchema(tables.measurementKind),
