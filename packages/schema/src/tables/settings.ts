@@ -18,6 +18,7 @@ export const settings = sqliteTable(
     agentChangesSeenAt: timestamp("agent_changes_seen_at"),
     bridgeHost: text("bridge_host"),
     restAlertsDeclinedAt: timestamp("rest_alerts_declined_at"),
+    restAlertsAskedAt: timestamp("rest_alerts_asked_at"),
     updatedAt: timestamp("updated_at").notNull(),
   },
   (t) => [

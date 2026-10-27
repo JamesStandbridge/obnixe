@@ -4,8 +4,8 @@ import { useLiveQuery } from "drizzle-orm/expo-sqlite";
 import { settings } from "@obnixe/schema";
 import { db, environment } from "@/data/database";
 import { updateSettings } from "@/data/settings";
-import { cancelRestAlert, requestRestAlerts, restAlertPermission, scheduleRestAlert } from "@/features/training/workout/restAlert";
-import type { RestAlertPermission } from "@/features/training/workout/restAlert";
+import { cancelRestAlert, requestRestAlerts, restAlertSystemState, scheduleRestAlert } from "@/features/training/workout/restAlert";
+import type { RestAlertPermission, RestAlertSystemState } from "@/features/training/workout/restAlert";
 
 export interface RestAlertRequest {
   readonly restId: string;
@@ -29,17 +29,37 @@ export interface RestAlertAccess {
   readonly request: () => void;
 }
 
+function permissionOf(system: RestAlertSystemState | null, asked: boolean): RestAlertPermission | null {
+  switch (system) {
+    case null:
+      return null;
+    case "granted":
+      return "granted";
+    case "blocked":
+      return "denied";
+    case "refused":
+      return asked ? "denied" : "ask";
+    case "undetermined":
+      return "ask";
+    default: {
+      const unreachable: never = system;
+      return unreachable;
+    }
+  }
+}
+
 /** Tracks the system permission, refreshed whenever the app comes back to the foreground, and the in-app postponement. */
 export function useRestAlertAccess(): RestAlertAccess {
-  const [permission, setPermission] = useState<RestAlertPermission | null>(null);
-  const { data: settingsRows } = useLiveQuery(db().select({ declinedAt: settings.restAlertsDeclinedAt }).from(settings));
+  const [system, setSystem] = useState<RestAlertSystemState | null>(null);
+  const { data: settingsRows } = useLiveQuery(db().select({ declinedAt: settings.restAlertsDeclinedAt, askedAt: settings.restAlertsAskedAt }).from(settings));
   const declined = (settingsRows[0]?.declinedAt ?? null) !== null;
+  const permission = permissionOf(system, (settingsRows[0]?.askedAt ?? null) !== null);
 
   useEffect(() => {
     let active = true;
     const check = (): void => {
-      restAlertPermission().then((current) => {
-        if (active) setPermission(current);
+      restAlertSystemState().then((current) => {
+        if (active) setSystem(current);
       }, reportFailure);
     };
     check();
@@ -53,8 +73,8 @@ export function useRestAlertAccess(): RestAlertAccess {
   }, []);
 
   const request = (): void => {
-    updateSettings({ restAlertsDeclinedAt: null });
-    requestRestAlerts().then(setPermission, reportFailure);
+    updateSettings({ restAlertsDeclinedAt: null, restAlertsAskedAt: environment.now() });
+    requestRestAlerts().then(setSystem, reportFailure);
   };
 
   return { permission, declined, request };

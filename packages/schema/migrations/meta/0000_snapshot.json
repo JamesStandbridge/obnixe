@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "6993aa16-8b75-487a-afb1-ba5d7930d576",
+  "id": "85b176f1-854a-4dc0-a313-7789cd0ad9a2",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "check_in": {
@@ -2599,6 +2599,13 @@
         },
         "rest_alerts_declined_at": {
           "name": "rest_alerts_declined_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "rest_alerts_asked_at": {
+          "name": "rest_alerts_asked_at",
           "type": "integer",
           "primaryKey": false,
           "notNull": false,

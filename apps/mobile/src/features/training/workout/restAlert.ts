@@ -13,6 +13,9 @@ import type { NotificationPermissionsStatus } from "expo-notifications";
 
 export type RestAlertPermission = "granted" | "denied" | "ask";
 
+/** Android 13 and later report "refused" both before the first prompt and after a refusal that may still be asked again. */
+export type RestAlertSystemState = "granted" | "blocked" | "refused" | "undetermined";
+
 export interface RestAlert {
   readonly endsAt: number;
   readonly body: string;
@@ -34,13 +37,14 @@ export function configureRestAlerts(): void {
   });
 }
 
-function permissionOf(status: NotificationPermissionsStatus): RestAlertPermission {
+function systemStateOf(status: NotificationPermissionsStatus): RestAlertSystemState {
   if (status.granted) return "granted";
-  return status.canAskAgain ? "ask" : "denied";
+  if (!status.canAskAgain) return "blocked";
+  return status.status === "denied" ? "refused" : "undetermined";
 }
 
-export async function restAlertPermission(): Promise<RestAlertPermission> {
-  return permissionOf(await getPermissionsAsync());
+export async function restAlertSystemState(): Promise<RestAlertSystemState> {
+  return systemStateOf(await getPermissionsAsync());
 }
 
 /** Android 13 and later only show the permission prompt once a channel exists. */
@@ -49,9 +53,9 @@ async function ensureChannel(): Promise<void> {
   await setNotificationChannelAsync(channelId, { name: "Fin du repos", importance: AndroidImportance.HIGH, vibrationPattern: [0, 250, 120, 250] });
 }
 
-export async function requestRestAlerts(): Promise<RestAlertPermission> {
+export async function requestRestAlerts(): Promise<RestAlertSystemState> {
   await ensureChannel();
-  return permissionOf(await requestPermissionsAsync({ ios: { allowAlert: true, allowSound: true, allowBadge: false } }));
+  return systemStateOf(await requestPermissionsAsync({ ios: { allowAlert: true, allowSound: true, allowBadge: false } }));
 }
 
 /** The fixed identifier makes each schedule replace the previous one, even one left by a killed app. */

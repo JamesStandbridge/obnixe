@@ -1,4 +1,4 @@
-import { Linking } from "react-native";
+import { Linking, StyleSheet, View } from "react-native";
 import { useRestAlertAccess } from "@/features/training/workout/useRestAlert";
 import type { RestAlertAccess } from "@/features/training/workout/useRestAlert";
 import { Chevron } from "@/features/data/parts";
@@ -33,7 +33,7 @@ export function RestAlertsRow() {
   const title = "Notifications de fin de repos";
   switch (state) {
     case "unknown":
-      return <Row title={title} last />;
+      return <Row title={title} detail=" " trailing={<View style={styles.chevronSpace} />} last />;
     case "granted":
       return <Row title={title} detail="autorisées" trailing={<Chevron />} onPress={openSystemSettings} last />;
     case "denied":
@@ -48,3 +48,7 @@ export function RestAlertsRow() {
     }
   }
 }
+
+const styles = StyleSheet.create({
+  chevronSpace: { width: 16 },
+});
