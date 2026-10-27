@@ -2,8 +2,8 @@ import { useMemo, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { router } from "expo-router";
 import { draftFromTree } from "@obnixe/core";
-import type { ProgramEntry, VersionEntry, LatestZonePain } from "@obnixe/core";
-import type { Id, ProgramStatus, ZoneKey } from "@obnixe/schema";
+import type { CycleSlotState, ProgramEntry, VersionEntry, LatestZonePain } from "@obnixe/core";
+import type { EpochMs, Id, ProgramStatus, ZoneKey } from "@obnixe/schema";
 import { environment } from "@/data/database";
 import { skipLabel, useProgramActions } from "@/features/programs/actions";
 import type { ProgramActions } from "@/features/programs/actions";
@@ -193,6 +193,23 @@ function ProgramsSheet({ open, sheet, entry, activeEntry, versions, catalog, pai
   }
 }
 
+function rotationValue(state: CycleSlotState, last: EpochMs | undefined, now: EpochMs): string | null {
+  switch (state.kind) {
+    case "done":
+      return `Faite ${formatLastDone(state.at, now)}`;
+    case "skipped":
+      return "Passée";
+    case "next":
+      return "Prochaine";
+    case "pending":
+      return last === undefined ? null : formatLastDone(last, now);
+    default: {
+      const unreachable: never = state;
+      throw new Error(`Unhandled cycle state ${String(unreachable)}`);
+    }
+  }
+}
+
 interface ActiveSectionProps {
   readonly active: ActiveProgram;
   readonly onMore: () => void;
@@ -206,16 +223,9 @@ function ActiveSection({ active, onMore, onSkip }: ActiveSectionProps) {
   const { entry } = active;
   const { colors } = useTheme();
   const rows = draft.slots.map((slot): RotationRow => {
-    const isNext = next?.slot.lineageId === slot.lineageId;
+    const state: CycleSlotState = next?.cycle.find((item) => item.slot.lineageId === slot.lineageId)?.state ?? { kind: "pending" };
     const last = active.lastDone.get(slot.lineageId);
-    return {
-      key: slot.lineageId,
-      sport: slot.sport,
-      title: slotTitle(slot),
-      detail: slotDetail(slot),
-      next: isNext,
-      value: isNext ? "Prochaine" : last === undefined ? null : formatLastDone(last, now),
-    };
+    return { key: slot.lineageId, sport: slot.sport, title: slotTitle(slot), detail: slotDetail(slot), state: state.kind, value: rotationValue(state, last, now) };
   });
   return (
     <View style={styles.active}>
