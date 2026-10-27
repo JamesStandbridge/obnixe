@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, View } from "react-native";
 import { router } from "expo-router";
 import { draftFromTree } from "@obnixe/core";
 import type { ProgramEntry, VersionEntry, LatestZonePain } from "@obnixe/core";
-import type { Id, ProgramSlot, ProgramStatus, ZoneKey } from "@obnixe/schema";
+import type { Id, ProgramStatus, ZoneKey } from "@obnixe/schema";
 import { environment } from "@/data/database";
 import { skipLabel, useProgramActions } from "@/features/programs/actions";
 import type { ProgramActions } from "@/features/programs/actions";
@@ -195,7 +195,7 @@ function ProgramsSheet({ open, sheet, entry, activeEntry, versions, catalog, pai
 interface ActiveSectionProps {
   readonly active: ActiveProgram;
   readonly onMore: () => void;
-  readonly onSkip: (programId: Id, slot: ProgramSlot) => void;
+  readonly onSkip: () => void;
 }
 
 function ActiveSection({ active, onMore, onSkip }: ActiveSectionProps) {
@@ -233,7 +233,7 @@ function ActiveSection({ active, onMore, onSkip }: ActiveSectionProps) {
       />
       <View style={styles.actions}>
         <ControlButton label="Modifier" onPress={() => router.push(`/program/${entry.program.id}`)} style={styles.action} />
-        {next === null || draft.slots.length < 2 ? null : <ControlButton label={skipLabel(next.slot)} onPress={() => onSkip(entry.program.id, next.slot)} style={styles.action} />}
+        {next === null || draft.slots.length < 2 ? null : <ControlButton label={skipLabel(next.slot)} onPress={onSkip} style={styles.action} />}
       </View>
     </View>
   );

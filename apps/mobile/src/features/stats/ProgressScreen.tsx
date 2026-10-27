@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
-import { addDays, trend, zonePainHistory } from "@obnixe/core";
+import { addDays, exerciseVersionMarkers, painSamples, suspensionPeriods, trend, zonePainHistory } from "@obnixe/core";
 import type { GradePyramid } from "@obnixe/core";
 import { db } from "@/data/database";
 import { PainMark, Segmented } from "@/ui/Controls";
@@ -13,13 +13,14 @@ import { Text } from "@/ui/Text";
 import { useTheme } from "@/ui/theme";
 import { fonts, layout, radii } from "@/ui/tokens";
 import { painWords } from "@/features/stats/format";
+import { deviceTimeZone } from "@/format/dates";
 import { capitalize, lowerFirst, zoneLabel } from "@/format/labels";
 import { useLiveValue, useLocalNow } from "@/features/stats/live";
 import { JournalHeader } from "@/features/stats/parts";
 import { loadProgress } from "@/features/stats/progress";
 import type { ChartPoint, PointLink, ProgressCatalog, Series, Subject } from "@/features/stats/progress";
-import { ProgressChart, Sparkline } from "@/features/stats/ProgressChart";
-import type { PainStrip } from "@/features/stats/ProgressChart";
+import { contextWithin, isSuspendedOn, ProgressChart, Sparkline, SuspensionKey, VersionKey } from "@/features/stats/ProgressChart";
+import type { PainStrip, ProgramContext } from "@/features/stats/ProgressChart";
 
 type RangeKey = "28" | "84" | "182" | "365";
 
@@ -77,10 +78,11 @@ function initialSubject(catalog: ProgressCatalog, exercise: string | undefined, 
   return null;
 }
 
-function tags(point: ChartPoint): string[] {
+function tags(point: ChartPoint, program: ProgramContext | null): string[] {
   const result: string[] = [];
   if (point.isRecord) result.push("record");
   if (point.unreliable) result.push("peu fiable");
+  if (isSuspendedOn(program, point.date)) result.push("progression suspendue");
   return result;
 }
 
@@ -130,6 +132,11 @@ export function ProgressScreen() {
     return { label: `${zones.map((zone) => zoneLabel(zone).toLowerCase()).join(", ")} · séance, check-in`, events: zonePainHistory(db(), zones) };
   }, [subject]);
   const pyramid = useMemo(() => (subject !== null && isPyramid ? subject.pyramid(from) : null), [subject, isPyramid, from]);
+  const programContext = useMemo<ProgramContext | null>(() => {
+    if (subject === null || subject.exerciseId === null) return null;
+    return { markers: exerciseVersionMarkers(db(), subject.exerciseId, deviceTimeZone()), suspensions: suspensionPeriods(painSamples(db(), subject.zones), subject.zones) };
+  }, [subject]);
+  const shownContext = useMemo(() => (programContext === null ? null : contextWithin(programContext, from, today)), [programContext, from, today]);
 
   const pickSubject = (id: string): void => {
     setChosen(id);
@@ -215,7 +222,7 @@ export function ProgressScreen() {
               <View style={styles.readoutContext}>
                 <Text variant="small" tone="secondary" style={styles.readoutWhen}>
                   {`${capitalize(point.when)}${point.detail === "" ? "" : ` · ${point.detail}`}`}
-                  {tags(point).length === 0 ? null : <Text variant="small" style={styles.readoutTag}>{` · ${tags(point).join(" · ")}`}</Text>}
+                  {tags(point, shownContext).length === 0 ? null : <Text variant="small" style={styles.readoutTag}>{` · ${tags(point, shownContext).join(" · ")}`}</Text>}
                 </Text>
                 {linkLabel(point.link) === null ? null : (
                   <Pressable accessibilityRole="link" onPress={() => openLink(point.link)} style={styles.readoutLink}>
@@ -236,7 +243,8 @@ export function ProgressScreen() {
               selected={index}
               onSelect={setSelected}
               strip={strip}
-              valueText={`${point.when} : ${series.format(point.value)} ${series.unit}`}
+              program={shownContext}
+              valueText={`${point.when} : ${series.format(point.value)} ${series.unit}${isSuspendedOn(shownContext, point.date) ? ", progression suspendue" : ""}`}
             />
           </>
         )}
@@ -251,7 +259,7 @@ export function ProgressScreen() {
             }}
           />
         </View>
-        <Legend series={series} points={points} isPyramid={isPyramid} pyramid={pyramid} rangeDays={rangeDays} subject={subject} pains={pains.map((event) => event.level)} />
+        <Legend series={series} points={points} isPyramid={isPyramid} pyramid={pyramid} rangeDays={rangeDays} subject={subject} pains={pains.map((event) => event.level)} program={shownContext} />
 
         {series === null || points.length === 0 ? null : (
           <>
@@ -260,7 +268,7 @@ export function ProgressScreen() {
                 <Text variant="bodyStrong">Voir les données</Text>
                 <Icon name={tableOpen ? "collapse" : "expand"} color={colors.text} />
               </Pressable>
-              {tableOpen ? <DataTable series={series} points={points} metricLabel={subject.metrics.find((item) => item.key === metric)?.label ?? "Valeur"} /> : null}
+              {tableOpen ? <DataTable series={series} points={points} metricLabel={subject.metrics.find((item) => item.key === metric)?.label ?? "Valeur"} program={shownContext} /> : null}
             </View>
             <Section title={series.kind === "bars" ? "Dernières semaines" : subject.historyTitle}>
               {[...points]
@@ -335,9 +343,10 @@ interface LegendProps {
   readonly rangeDays: number;
   readonly subject: Subject;
   readonly pains: readonly ("discomfort" | "stop")[];
+  readonly program: ProgramContext | null;
 }
 
-function Legend({ series, points, isPyramid, pyramid, rangeDays, subject, pains }: LegendProps) {
+function Legend({ series, points, isPyramid, pyramid, rangeDays, subject, pains, program }: LegendProps) {
   const { colors } = useTheme();
   const items: { readonly key: string; readonly mark: React.ReactNode; readonly label: string }[] = [];
   if (isPyramid) {
@@ -352,6 +361,8 @@ function Legend({ series, points, isPyramid, pyramid, rangeDays, subject, pains 
       if (pains.includes("stop")) items.push({ key: "stop", mark: <PainMark level="stop" />, label: painWords.stop });
       if (pains.length === 0) items.push({ key: "calm", mark: null, label: "aucune douleur sur la période" });
     }
+    if (program !== null && program.markers.length > 0) items.push({ key: "version", mark: <VersionKey />, label: "nouvelle version du programme" });
+    if (program !== null && program.suspensions.length > 0) items.push({ key: "suspended", mark: <SuspensionKey />, label: "progression suspendue, douleur" });
   }
   if (items.length === 0) return null;
   return (
@@ -413,7 +424,7 @@ function PyramidView({ pyramid }: { readonly pyramid: GradePyramid | null }) {
   );
 }
 
-function DataTable({ series, points, metricLabel }: { readonly series: Series; readonly points: readonly ChartPoint[]; readonly metricLabel: string }) {
+function DataTable({ series, points, metricLabel, program }: { readonly series: Series; readonly points: readonly ChartPoint[]; readonly metricLabel: string; readonly program: ProgramContext | null }) {
   const { colors } = useTheme();
   const rows = [...points].reverse();
   return (
@@ -436,7 +447,7 @@ function DataTable({ series, points, metricLabel }: { readonly series: Series; r
           </Text>
           <Text style={[styles.tableValue, styles.tableFigure]}>{`${series.format(item.value)} ${series.unit}`.trim()}</Text>
           <Text variant="small" tone="secondary" style={styles.tableDetail}>
-            {[item.detail, ...tags(item)].filter((part) => part !== "").join(" · ")}
+            {[item.detail, ...tags(item, program)].filter((part) => part !== "").join(" · ")}
           </Text>
         </View>
       ))}

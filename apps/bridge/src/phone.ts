@@ -2,7 +2,6 @@ import { createServer } from "node:http";
 import type { IncomingMessage, Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { WebSocketServer } from "ws";
-import type { RawData, WebSocket } from "ws";
 import {
   ProtocolError,
   SealedChannel,
@@ -19,6 +18,7 @@ import {
   identityBytes,
   inviteTtlMs,
   isPairingCode,
+  maxFrameBytes,
   maxPairingAttempts,
   nonceBytes,
   openingBytes,
@@ -51,17 +51,20 @@ import type {
   PairingTranscript,
   RandomBytes,
   RejectionReason,
-  RelayEndpoint,
   SessionKeys,
   ToolOutcome,
 } from "@obnixe/core/agent/wire";
 import type { PhoneHosts } from "./listen.ts";
 import type { PairingFile } from "./pairings.ts";
+import { DirectPeer } from "./peer.ts";
+import type { PeerSocket } from "./peer.ts";
+import { RelayLink } from "./relay.ts";
+import type { RelayInvite } from "./relay.ts";
 
 const maxPending = 8;
-const maxPendingPerAddress = 2;
+const maxPendingPerOrigin = 2;
+const maxRelayedPending = 4;
 const maxCodeWaiting = 2;
-const relayRoomBytes = 32;
 const wildcards: readonly string[] = ["0.0.0.0", "::"];
 const defaultHandshakeTimeoutMs = 10_000;
 const defaultProofTimeoutMs = 10_000;
@@ -73,7 +76,6 @@ export interface EndpointOptions {
   readonly port: number;
   readonly hosts: () => PhoneHosts;
   readonly hostLabel: string;
-  readonly relayUrl: string | null;
   readonly pairings: PairingFile;
   /** Receives failures of the background address rescan, which has no caller to throw to. */
   readonly onError: (error: unknown) => void;
@@ -97,8 +99,8 @@ interface Attempt {
 }
 
 interface Pending {
-  readonly socket: WebSocket;
-  readonly address: string;
+  readonly socket: PeerSocket;
+  readonly origin: string;
   readonly bridgeNonce: Uint8Array;
   readonly keyPair: EphemeralKeyPair;
   readonly handshakeTimer: ReturnType<typeof setTimeout>;
@@ -126,14 +128,13 @@ interface Waiter {
 }
 
 interface Active {
-  readonly socket: WebSocket;
+  readonly socket: PeerSocket;
   readonly channel: SealedChannel;
   readonly device: string;
   readonly pairingId: string;
   readonly waiters: Map<number, Waiter>;
   nextId: number;
   open: boolean;
-  alive: boolean;
 }
 
 export type PairResult =
@@ -144,7 +145,7 @@ export type PairResult =
   | { readonly kind: "failed"; readonly message: string };
 
 interface Establishing {
-  readonly socket: WebSocket;
+  readonly socket: PeerSocket;
   readonly device: string;
   readonly pairingId: string;
   readonly keys: SessionKeys;
@@ -179,6 +180,7 @@ export type InviteResult = { readonly kind: "ready"; readonly ticket: InviteTick
 interface Invitation {
   readonly ticket: InviteTicket;
   readonly token: Uint8Array;
+  readonly relay: RelayInvite | null;
   consumed: boolean;
   state: InviteState;
 }
@@ -192,17 +194,21 @@ export interface EndpointStatus {
 export const notConnectedMessage =
   "The Obnixe phone is not connected. Ask the user to open the Agent screen of the Obnixe app (Aujourd'hui, Connecter un agent): a phone paired before reconnects by itself, otherwise ask them to run `obnixe-bridge pair` in a terminal and scan the QR code it shows with Scanner le QR code du Mac, then retry.";
 
-/** WebSocket endpoint the phone dials: verifies pairing proofs, then relays sealed JSON-RPC tool calls to the phone. */
+/**
+ * Endpoint the phone reaches, by dialing the direct WebSocket listeners or through the relay: verifies pairing proofs, then
+ * relays sealed JSON-RPC tool calls to the phone.
+ */
 export class PhoneEndpoint {
   private readonly options: EndpointOptions;
   private readonly now: () => number;
   private readonly bridgeId: string;
-  private readonly pendings = new Map<WebSocket, Pending>();
+  private readonly pendings = new Map<PeerSocket, Pending>();
   private readonly listeners = new Map<string, Server>();
   private port = 0;
   private announced: readonly string[] = [];
   private invitation: Invitation | null = null;
   private sockets: WebSocketServer | null = null;
+  private relay: RelayLink | null = null;
   private refreshing: Promise<void> | null = null;
   private heartbeat: ReturnType<typeof setInterval> | null = null;
   private active: Active | null = null;
@@ -217,8 +223,8 @@ export class PhoneEndpoint {
 
   /** Binds every phone address on one port; the first address picks the port and fails loudly, later ones only log. */
   async listen(): Promise<number> {
-    const sockets = new WebSocketServer({ noServer: true, maxPayload: 4 * 1024 * 1024 });
-    sockets.on("connection", (socket, request) => this.accept(socket, request));
+    const sockets = new WebSocketServer({ noServer: true, maxPayload: maxFrameBytes });
+    sockets.on("connection", (socket, request) => this.accept(new DirectPeer(socket, remoteAddress(request))));
     this.sockets = sockets;
     const hosts = this.options.hosts();
     const [first, ...others] = hosts.bind;
@@ -226,8 +232,30 @@ export class PhoneEndpoint {
     this.port = await this.bind(sockets, first, this.options.port);
     for (const address of others) await this.bindIfAvailable(sockets, address);
     this.announced = this.advertised(hosts);
-    this.heartbeat = setInterval(() => this.tick(), heartbeatIntervalMs);
+    this.startHeartbeat();
     return this.port;
+  }
+
+  /** Also admits phones through the relay at `relayUrl`, in the rooms of the stored pairings and of the pending invite. */
+  connectRelay(relayUrl: string): void {
+    if (this.relay !== null) return;
+    this.relay = new RelayLink({ relayUrl, pairings: this.options.pairings, randomBytes: this.options.randomBytes, onPeer: (peer) => this.accept(peer), log: this.options.log });
+    this.relay.start();
+    this.startHeartbeat();
+  }
+
+  /** Opens a one-time relay room for a first pairing, replacing any pending one; null when no relay is configured. */
+  openInviteRoom(): RelayInvite | null {
+    return this.relay?.openInvite() ?? null;
+  }
+
+  /** Closes the pending invite room once it served its pairing or expired; a phone already connected through it stays. */
+  closeInviteRoom(): void {
+    this.relay?.closeInvite();
+  }
+
+  private startHeartbeat(): void {
+    this.heartbeat ??= setInterval(() => this.tick(), heartbeatIntervalMs);
   }
 
   /** Follows interface changes such as a new DHCP lease: binds new addresses, drops vanished ones and tells the phone. */
@@ -312,14 +340,14 @@ export class PhoneEndpoint {
   invite(fresh: boolean): InviteResult {
     const live = this.liveInvitation();
     if (!fresh && live !== null) return { kind: "ready", ticket: live.ticket };
-    if (this.announced.length === 0) return { kind: "no_address" };
+    if (this.announced.length === 0 && this.relay === null) return { kind: "no_address" };
     const token = this.options.randomBytes(pairingTokenBytes);
     const name = truncateName(this.options.hostLabel);
-    const relay: RelayEndpoint | null = this.options.relayUrl === null ? null : { url: this.options.relayUrl, room: toBase64Url(this.options.randomBytes(relayRoomBytes)) };
+    const relay = this.openInviteRoom();
     const expiresAt = Math.floor((this.now() + inviteTtlMs) / 1000) * 1000;
-    const url = formatInvite({ bridgeId: this.bridgeId, token, name, hosts: this.announced, expiresAt, relay });
+    const url = formatInvite({ bridgeId: this.bridgeId, token, name, hosts: this.announced, expiresAt, relay: relay === null ? null : { url: relay.relayUrl, room: relay.room } });
     const ticket: InviteTicket = { id: toBase64Url(this.options.randomBytes(inviteIdBytes)), url, name, hosts: this.announced, expiresAt };
-    this.invitation = { ticket, token, consumed: false, state: { kind: "waiting", expiresAt } };
+    this.invitation = { ticket, token, relay, consumed: false, state: { kind: "waiting", expiresAt } };
     this.options.log("A pairing QR code is ready for five minutes.");
     return { kind: "ready", ticket };
   }
@@ -335,6 +363,7 @@ export class PhoneEndpoint {
     if (invitation === null || invitation.consumed || invitation.state.kind !== "waiting") return null;
     if (this.now() < invitation.ticket.expiresAt) return invitation;
     invitation.state = { kind: "expired" };
+    if (invitation.relay !== null) this.closeInviteRoom();
     return null;
   }
 
@@ -370,6 +399,7 @@ export class PhoneEndpoint {
   forgetAll(): ForgetResult {
     const forgotten = this.options.pairings.revokeAll();
     for (const pairing of forgotten) this.endTrusted(pairing.pairingId, "pairing forgotten");
+    this.relay?.sync();
     return { devices: forgotten.map((pairing) => pairing.device) };
   }
 
@@ -389,6 +419,8 @@ export class PhoneEndpoint {
       pending.socket.terminate();
     }
     if (this.active !== null) this.drop(this.active, "bridge stopped");
+    this.relay?.close();
+    this.relay = null;
     const sockets = this.sockets;
     this.sockets = null;
     if (sockets !== null) {
@@ -408,16 +440,18 @@ export class PhoneEndpoint {
   /**
    * Admits a dialing phone. Phones waiting for a code typed on the Mac live in their own small pool, so they never take a
    * handshake slot from a resume or a QR pairing. A remote address only ever replaces its own oldest handshake, and once
-   * every slot is taken new sockets are turned away, so a flood from other addresses cannot evict a handshake in progress.
+   * every slot is taken new sockets are turned away, so a flood from other addresses or rooms cannot evict a handshake in
+   * progress. Relayed peers never get more than `maxRelayedPending` slots, so some always remain for the direct listeners.
    */
-  private accept(socket: WebSocket, request: IncomingMessage): void {
-    const address = remoteAddress(request);
+  private accept(socket: PeerSocket): void {
+    const origin = socket.origin;
     const handshaking = [...this.pendings.values()].filter((pending) => pending.hello?.secret !== "code");
-    const sameAddress = handshaking.filter((pending) => pending.address === address);
-    const oldest = sameAddress[0];
-    if (sameAddress.length >= maxPendingPerAddress && oldest !== undefined) this.reject(oldest, "replaced");
-    else if (handshaking.length >= maxPending) {
-      this.options.log(`Refused a connection from ${address}: too many phones are already waiting to pair.`);
+    const sameOrigin = handshaking.filter((pending) => pending.origin === origin);
+    const oldest = sameOrigin[0];
+    const relayed = handshaking.filter((pending) => pending.socket.transport === "relay").length;
+    if (sameOrigin.length >= maxPendingPerOrigin && oldest !== undefined) this.reject(oldest, "replaced");
+    else if (handshaking.length >= maxPending || (socket.transport === "relay" && relayed >= maxRelayedPending)) {
+      this.options.log(`Refused a connection from ${origin}: too many phones are already waiting to pair.`);
       socket.close(tryAgainLater, "busy");
       return;
     }
@@ -429,7 +463,7 @@ export class PhoneEndpoint {
     }, this.options.handshakeTimeoutMs ?? defaultHandshakeTimeoutMs);
     const pending: Pending = {
       socket,
-      address,
+      origin,
       bridgeNonce: this.options.randomBytes(nonceBytes),
       keyPair: generateEphemeralKeyPair(this.options.randomBytes),
       handshakeTimer,
@@ -438,18 +472,14 @@ export class PhoneEndpoint {
       attempts: 0,
     };
     this.pendings.set(socket, pending);
-    socket.on("message", (data, isBinary) => this.receive(socket, data, isBinary));
-    socket.on("close", () => this.closed(socket));
-    socket.on("pong", () => {
-      if (this.active?.socket === socket) this.active.alive = true;
-    });
+    socket.onmessage = (text) => this.receive(socket, text);
+    socket.onclose = () => this.closed(socket);
     this.send(socket, { type: "challenge", version: protocolVersion, bridge: this.bridgeId, nonce: toBase64(pending.bridgeNonce), key: toBase64(pending.keyPair.publicKey) });
   }
 
-  private receive(socket: WebSocket, data: RawData, isBinary: boolean): void {
+  private receive(socket: PeerSocket, text: string): void {
     try {
-      if (isBinary) throw new ProtocolError("Binary frames are not part of the protocol");
-      const frame = decodeFrame(rawText(data));
+      const frame = decodeFrame(text);
       if (this.active?.socket === socket) this.receiveSealed(this.active, frame);
       else this.receiveHandshake(socket, frame);
     } catch (error) {
@@ -462,7 +492,7 @@ export class PhoneEndpoint {
     }
   }
 
-  private receiveHandshake(socket: WebSocket, frame: Frame): void {
+  private receiveHandshake(socket: PeerSocket, frame: Frame): void {
     const pending = this.pendings.get(socket);
     if (pending === undefined) throw new ProtocolError("Unknown socket");
     switch (frame.type) {
@@ -495,8 +525,24 @@ export class PhoneEndpoint {
     }
   }
 
+  /**
+   * Through the relay only a QR token pairs, and only in the room of the live invitation: the relay operator could crack a
+   * 6-digit code offline from the phone proof, never a 256-bit token. Relayed peers otherwise may only resume a pairing.
+   */
+  private relayedHelloAllowed(pending: Pending, frame: Extract<Frame, { type: "hello" }>): boolean {
+    if (pending.socket.transport === "direct") return true;
+    const invitation = this.liveInvitation();
+    return frame.secret === "token" && invitation?.relay !== null && invitation?.relay.room === pending.socket.room;
+  }
+
   private receiveHello(pending: Pending, frame: Extract<Frame, { type: "hello" }>): void {
     if (pending.hello !== null) throw new ProtocolError("Unexpected second hello");
+    if (!this.relayedHelloAllowed(pending, frame)) {
+      this.options.log(`Refused to pair ${frame.device} through the relay: scan a fresh QR code, or pair once on the same network.`);
+      this.forget(pending);
+      pending.socket.close(policyViolation, "pairing through the relay needs the live QR code");
+      return;
+    }
     if (frame.version !== protocolVersion) {
       this.reject(pending, "version");
       return;
@@ -542,7 +588,7 @@ export class PhoneEndpoint {
       case "gone":
         return;
       case "mismatch":
-        this.options.log(`Refused a QR pairing from ${candidate.address}: its proof does not match the QR code.`);
+        this.options.log(`Refused a QR pairing from ${candidate.origin}: its proof does not match the QR code.`);
         this.reject(candidate, "code");
         return;
       case "match": {
@@ -551,6 +597,7 @@ export class PhoneEndpoint {
           return;
         }
         invitation.consumed = true;
+        if (invitation.relay !== null) this.closeInviteRoom();
         const result = await this.welcome(verdict);
         invitation.state = result.kind === "paired" ? { kind: "paired", device: result.device, client: result.client } : { kind: "failed", message: describeFailure(result) };
         return;
@@ -623,6 +670,7 @@ export class PhoneEndpoint {
     if (!sameBytes(decodeBytes(frame.proof, proofBytes), expected)) throw new ProtocolError("Invalid revocation proof");
     this.options.pairings.revoke(frame.pairing);
     this.endTrusted(frame.pairing, "pairing revoked by the phone");
+    this.relay?.sync();
     this.options.log(`${lookup.pairing.device} forgot this Mac; its pairing is revoked.`);
   }
 
@@ -677,6 +725,7 @@ export class PhoneEndpoint {
     const pairingId = toBase64(secrets.pairingId);
     const device = hello.transcript.device;
     this.options.pairings.remember({ pairingId, deviceId: toBase64(hello.transcript.deviceId), device, secret: toBase64(secrets.pairingSecret), pairedAt: this.now() });
+    this.relay?.sync();
     this.send(socket, { type: "welcome", opening: toBase64(opening), proof: toBase64(bridgeProof(secrets)) });
     const result = await this.establish({ socket, device, pairingId, keys: secrets.sessionKeys });
     if (result.kind === "paired") this.options.log(`Connected to ${device}. It will reconnect without a code next time.`);
@@ -698,7 +747,6 @@ export class PhoneEndpoint {
       waiters: new Map(),
       nextId: 1,
       open: false,
-      alive: true,
     };
     this.active = active;
     const reply = await this.request(active, { method: "session.open", params: { client: this.client, host: this.options.hostLabel, hosts: [...this.announced] } });
@@ -736,8 +784,8 @@ export class PhoneEndpoint {
     this.send(active.socket, active.channel.seal(message));
   }
 
-  private send(socket: WebSocket, frame: Frame): void {
-    if (socket.readyState === socket.OPEN) socket.send(encodeFrame(frame));
+  private send(socket: PeerSocket, frame: Frame): void {
+    socket.send(encodeFrame(frame));
   }
 
   private reject(pending: Pending, reason: RejectionReason): void {
@@ -752,7 +800,7 @@ export class PhoneEndpoint {
     pending.attempt?.settle(null);
   }
 
-  private closed(socket: WebSocket): void {
+  private closed(socket: PeerSocket): void {
     const pending = this.pendings.get(socket);
     if (pending !== undefined) this.forget(pending);
     if (this.active?.socket === socket) {
@@ -779,16 +827,15 @@ export class PhoneEndpoint {
 
   private tick(): void {
     this.expirePending();
+    this.liveInvitation();
     this.refreshHosts().catch(this.options.onError);
     const active = this.active;
     if (active === null) return;
-    if (!active.alive) {
+    if (!active.socket.heartbeat()) {
       this.options.log("The phone stopped answering; connection closed.");
       active.socket.terminate();
       return;
     }
-    active.alive = false;
-    active.socket.ping();
     if (active.open) this.notify(active, { jsonrpc: "2.0", method: "ping" });
   }
 }
@@ -819,10 +866,4 @@ function describeFailure(result: Exclude<PairResult, { kind: "paired" }>): strin
 function remoteAddress(request: IncomingMessage): string {
   const address = request.socket.remoteAddress ?? "unknown";
   return address.startsWith("::ffff:") ? address.slice("::ffff:".length) : address;
-}
-
-function rawText(data: RawData): string {
-  if (Array.isArray(data)) return Buffer.concat(data).toString("utf8");
-  if (data instanceof ArrayBuffer) return Buffer.from(data).toString("utf8");
-  return data.toString("utf8");
 }

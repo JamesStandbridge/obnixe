@@ -55,14 +55,17 @@ describe("pairing invite", () => {
   });
 
   it("carries the relay rendezvous through when present", () => {
-    const room = toBase64Url(bytes(16));
+    const room = toBase64Url(bytes(32));
     const relayed: PairingInvite = { ...invite, relay: { url: "wss://relay.obnixe.app/v1", room } };
     const url = formatInvite(relayed);
     expect(url).toContain(`&r=wss%3A%2F%2Frelay.obnixe.app%2Fv1&room=${room}`);
     expect(parseInvite(url, now)).toEqual(relayed);
     expect(reasonOf(withParameter(url, "room", null))).toBe("format");
     expect(reasonOf(withParameter(formatInvite(invite), "r", "wss%3A%2F%2Frelay.obnixe.app"))).toBe("format");
-    expect(reasonOf(withParameter(url, "r", "ws%3A%2F%2Frelay.obnixe.app"))).toBe("format");
+    expect(reasonOf(withParameter(url, "room", toBase64Url(bytes(16))))).toBe("format");
+    const relayOnly: PairingInvite = { ...relayed, hosts: [] };
+    expect(formatInvite(relayOnly)).not.toContain("&h=");
+    expect(parseInvite(formatInvite(relayOnly), now)).toEqual(relayOnly);
     expect(reasonOf(withParameter(url, "r", "https%3A%2F%2Frelay.obnixe.app"))).toBe("format");
   });
 

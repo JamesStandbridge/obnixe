@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "c91e6202-f6e7-4dd4-91f8-b31b51489fc0",
+  "id": "ae49841b-1350-43f7-ac2c-6c7766830b1c",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "check_in": {
@@ -506,6 +506,13 @@
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
+          "autoincrement": false
+        },
+        "cues": {
+          "name": "cues",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false
         },
         "merged_into_id": {
@@ -2606,6 +2613,20 @@
         "bridge_host": {
           "name": "bridge_host",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "rest_alerts_declined_at": {
+          "name": "rest_alerts_declined_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "rest_alerts_asked_at": {
+          "name": "rest_alerts_asked_at",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false

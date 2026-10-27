@@ -3,6 +3,7 @@ import { useLiveQuery } from "drizzle-orm/expo-sqlite";
 import { isFirstLaunch, launchCounts } from "@obnixe/core";
 import { session, sportPreference } from "@obnixe/schema";
 import { db } from "@/data/database";
+import { sweepExports } from "@/features/data/asideCopies";
 import { runHousekeeping } from "@/features/data/backup";
 
 export interface AppLaunch {
@@ -19,11 +20,12 @@ export function useFirstLaunch(): boolean {
   });
 }
 
-/** Tracks the first-launch rule live and purges expired trash once per launch. */
+/** Tracks the first-launch rule live and purges expired trash and shared exports once per launch. */
 export function useAppLaunch(): AppLaunch {
   const firstLaunch = useFirstLaunch();
   useEffect(() => {
     runHousekeeping();
+    sweepExports();
   }, []);
   return { firstLaunch };
 }

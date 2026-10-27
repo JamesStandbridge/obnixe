@@ -24,6 +24,7 @@ import { useLiveLoad } from "@/features/training/useLiveLoad";
 import { deviceTimeZone } from "@/format/dates";
 import { LiveWorkoutScreen } from "@/features/training/workout/LiveWorkoutScreen";
 import { loadLiveWorkout } from "@/features/training/workout/liveWorkout";
+import { cancelRestAlert } from "@/features/training/workout/restAlert";
 
 interface WorkoutScreenProps {
   readonly id: string;
@@ -73,7 +74,10 @@ function startOrResume(params: StartParams): StartOutcome {
       return { kind: "opened" };
     }
     const stale = loadWorkout(db(), open.id);
-    if (stale !== null) write("Séance close", finishMutations(stale, now));
+    if (stale !== null) {
+      cancelRestAlert();
+      write("Séance close", finishMutations(stale, now));
+    }
   }
   if (params.free) {
     const started = startFreeWorkoutMutations(environment.newId, { now, timeZone: deviceTimeZone() });
@@ -176,6 +180,7 @@ function WorkoutGate({ sessionId }: WorkoutGateProps) {
             label: "Faire le bilan",
             run: () => {
               if (live === null) return;
+              cancelRestAlert();
               write("Séance terminée", finishMutations(live.data, environment.now()));
               router.replace({ pathname: "/session/[id]/review", params: { id: sessionId } });
             },

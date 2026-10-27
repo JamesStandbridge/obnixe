@@ -36,6 +36,7 @@ import { deviceTimeZone } from "@/format/dates";
 import { useMassUnit } from "@/data/settings";
 import { setText, targetText } from "@/features/training/workout/liveWorkout";
 import type { Draft } from "@/features/training/workout/liveWorkout";
+import { cancelRestAlert } from "@/features/training/workout/restAlert";
 import { ControlButton, LinkButton } from "@/ui/Button";
 import { PainMark, Tag } from "@/ui/Controls";
 import { Icon } from "@/ui/icons/Icon";
@@ -279,6 +280,7 @@ function Detail({ data }: DetailProps) {
 
   const remove = (): void => {
     setMore(false);
+    if (session.status !== "completed") cancelRestAlert();
     undoableWrite({
       summary: `Suppression : ${title}`,
       mutations: [{ kind: "update", table: "session", key: session.id, patch: { deletedAt: environment.now() } }],

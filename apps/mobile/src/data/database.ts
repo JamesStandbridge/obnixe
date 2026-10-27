@@ -18,6 +18,8 @@ export class DatabaseNotOpenError extends Error {
 
 const databaseName = "obnixe.db";
 
+export const asidePrefix = "obnixe-unreadable-";
+
 let connection: SQLiteDatabase | null = null;
 let current: AppDatabase | null = null;
 
@@ -63,7 +65,7 @@ function copyFilesTo(name: string): void {
  * Whatever makes the SQLite backup fail, the files are then copied byte for byte instead.
  */
 export async function setDatabaseAside(): Promise<void> {
-  const name = `obnixe-unreadable-${environment.now()}`;
+  const name = `${asidePrefix}${environment.now()}`;
   await closeConnection();
   try {
     await backUpTo(`${name}.db`);

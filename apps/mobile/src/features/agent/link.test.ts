@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { heartbeatTimeoutMs, pairingCodeTtlMs, parsePhonePairing, parsePhoneRevocation } from "@obnixe/core";
-import { toBase64 } from "@obnixe/core";
+import { generateRelayRoom, pairingRelayRoom, toBase64 } from "@obnixe/core";
 import type { Frame, PairingInvite, PhonePairing } from "@obnixe/core";
 import { agentConnection } from "@obnixe/schema";
 import type { AgentConnection } from "@obnixe/schema";
@@ -381,10 +381,19 @@ function urls(): string[] {
   return FakeWebSocket.created.map((socket) => socket.url);
 }
 
-function inviteFor(hosts: readonly string[], lifetimeMs = 300_000): PairingInvite {
+const relayUrl = "wss://relay.obnixe.app";
+const relaySocket = "wss://relay.obnixe.app/v1";
+
+function inviteFor(hosts: readonly string[], lifetimeMs = 300_000, relay: PairingInvite["relay"] = null): PairingInvite {
   const token = randomBytes(32);
   bridge.token = token;
-  return { bridgeId: toBase64(bridge.id), token, name: "MacBook Pro", hosts, expiresAt: Date.now() + lifetimeMs, relay: { url: "wss://relay.obnixe.app/v1", room: "cm9vbQ" } };
+  return { bridgeId: toBase64(bridge.id), token, name: "MacBook Pro", hosts, expiresAt: Date.now() + lifetimeMs, relay };
+}
+
+function offline(address: string): void {
+  bridgeAt(address, (other) => {
+    other.online = false;
+  });
 }
 
 describe("remembered addresses", () => {
@@ -457,7 +466,7 @@ describe("joining with a QR code", () => {
       other.online = false;
     });
     bridge.hosts = ["192.168.1.30:7429"];
-    const invite = inviteFor(["10.0.0.9:7429", "192.168.1.30:7429"]);
+    const invite = inviteFor(["10.0.0.9:7429", "192.168.1.30:7429"], 300_000, { url: relayUrl, room: generateRelayRoom(randomBytes) });
     const recorded = openLink(null);
     recorded.link.start();
     await settle();
@@ -515,5 +524,69 @@ describe("single link", () => {
     expect(socketAt(1).closed).toBe(false);
     await advance(10_000);
     expect(urls()).toHaveLength(2);
+  });
+});
+
+describe("relay fallback", () => {
+  it("joins through the invite relay room only after every invite host failed", async () => {
+    offline("10.0.0.9:7429");
+    const room = generateRelayRoom(randomBytes);
+    FakeWebSocket.relays.set(relaySocket, new Map([[room, bridge]]));
+    const invite = inviteFor(["10.0.0.9:7429"], 300_000, { url: relayUrl, room });
+    const recorded = openLink(null);
+    recorded.link.start();
+    await settle();
+    recorded.link.join(invite);
+    await settle();
+    expect(urls()).toEqual(["ws://10.0.0.9:7429", relaySocket]);
+    expect(recorded.link.view.kind).toBe("connected");
+    expect(storedPairing()).toMatchObject({ lastHost: null, relay: { url: relayUrl, room } });
+  });
+
+  it("resumes through the room of the pairing after the typed, last good and announced hosts", async () => {
+    close(await pairedLink());
+    remember(["192.168.1.30:7429"], "100.101.12.7:7429");
+    const stored = storedPairing();
+    if (stored === null) throw new Error("No stored pairing");
+    secureItems.set(pairingKey, JSON.stringify({ ...stored, relay: { url: relayUrl, room: generateRelayRoom(randomBytes) } }));
+    for (const address of ["10.0.0.4:7429", "100.101.12.7:7429", "192.168.1.30:7429"]) offline(address);
+    FakeWebSocket.relays.set(relaySocket, new Map([[pairingRelayRoom(stored), bridge]]));
+    const recorded = openLink("10.0.0.4:7429");
+    recorded.link.start();
+    await settle();
+    expect(urls().slice(1)).toEqual(["ws://10.0.0.4:7429", "ws://100.101.12.7:7429", "ws://192.168.1.30:7429", relaySocket]);
+    expect(recorded.link.view.kind).toBe("connected");
+    expect(frameTypes(lastSocket())).toEqual(["resume", "sealed"]);
+  });
+
+  it("skips a foreign bridge in the relay room like on a direct address", async () => {
+    close(await pairedLink());
+    remember([], null);
+    const stored = storedPairing();
+    if (stored === null) throw new Error("No stored pairing");
+    secureItems.set(pairingKey, JSON.stringify({ ...stored, relay: { url: relayUrl, room: "unused" } }));
+    offline("macbook.local:7429");
+    const stranger = new FakeBridge();
+    FakeWebSocket.relays.set(relaySocket, new Map([[pairingRelayRoom(stored), stranger]]));
+    const recorded = openLink("macbook.local");
+    recorded.link.start();
+    await settle();
+    expect(stranger.connections).toHaveLength(1);
+    expect(lastSocket().sent).toEqual([]);
+    expect(recorded.link.view.kind).toBe("resuming");
+  });
+
+  it("cancels a pending relay dial when the link hangs up", async () => {
+    offline("10.0.0.9:7429");
+    FakeWebSocket.relays.set(relaySocket, new Map());
+    const recorded = openLink(null);
+    recorded.link.start();
+    await settle();
+    recorded.link.join(inviteFor(["10.0.0.9:7429"], 300_000, { url: relayUrl, room: generateRelayRoom(randomBytes) }));
+    await settle();
+    expect(lastSocket().url).toBe(relaySocket);
+    recorded.link.cancelJoin();
+    await settle();
+    expect(lastSocket().closed).toBe(true);
   });
 });

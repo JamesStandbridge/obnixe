@@ -145,6 +145,22 @@ export function planUpdateExercise(update: ExerciseUpdate, existing: readonly Ex
   return { ok: true, exerciseId: exercise.id, mutations };
 }
 
+export function normalizeCues(text: string): string | null {
+  const cues = text
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  return cues === "" ? null : cues;
+}
+
+export function planExerciseCues(exercise: Exercise, text: string): Mutation | null {
+  const cues = normalizeCues(text);
+  if (cues === exercise.cues) return null;
+  return { kind: "update", table: "exercise", key: exercise.id, patch: { cues } };
+}
+
 export function planArchiveExercise(exercise: Exercise, now: EpochMs): Mutation | null {
   if (exercise.archivedAt !== null) return null;
   return { kind: "update", table: "exercise", key: exercise.id, patch: { archivedAt: now } };

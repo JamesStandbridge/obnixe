@@ -2,6 +2,8 @@ import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import { program, programSlot, programVariant, programVersion, rotationSkip, session } from "@obnixe/schema";
 import type { EpochMs, Id, Program, ProgramSlot, ProgramVariant, ProgramVersion } from "@obnixe/schema";
 import type { ObnixeDatabase } from "./database.ts";
+import { localDateOf } from "./dates.ts";
+import type { Mutation } from "./writer.ts";
 
 export interface CurrentProgram {
   readonly program: Program;
@@ -87,4 +89,31 @@ export function nextSlot(db: ObnixeDatabase): NextSlot | null {
   const variants = db.select().from(programVariant).where(eq(programVariant.slotId, slot.id)).orderBy(asc(programVariant.position)).all();
   const after = current.slots.length > 1 ? (current.slots[(index + 1) % current.slots.length] ?? null) : null;
   return { current, slot, variants, after };
+}
+
+export interface SkipRequest {
+  readonly now: EpochMs;
+  readonly timeZone: string;
+  readonly newId: () => Id;
+}
+
+export interface SkipPlan {
+  readonly skipped: ProgramSlot;
+  readonly next: ProgramSlot;
+  readonly mutation: Mutation;
+}
+
+/** A rotation with a single slot has nothing to skip to, so it yields no plan. */
+export function planSkipNextSlot(db: ObnixeDatabase, request: SkipRequest): SkipPlan | null {
+  const next = nextSlot(db);
+  if (next === null || next.after === null) return null;
+  return {
+    skipped: next.slot,
+    next: next.after,
+    mutation: {
+      kind: "insert",
+      table: "rotation_skip",
+      row: { id: request.newId(), programId: next.current.program.id, slotLineageId: next.slot.lineageId, skippedAt: request.now, localDate: localDateOf(request.now, request.timeZone) },
+    },
+  };
 }

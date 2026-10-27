@@ -34,6 +34,8 @@ export class FakeWebSocket {
   static bridge: FakeBridge | null = null;
   /** Bridges answering on a given `host:port`; any other address reaches `bridge`. */
   static readonly bridges = new Map<string, FakeBridge>();
+  /** Relays by WebSocket URL, each mapping a room to the bridge that joined it. */
+  static readonly relays = new Map<string, Map<string, FakeBridge>>();
 
   readonly url: string;
   readonly openedAt: number;
@@ -44,11 +46,20 @@ export class FakeWebSocket {
   onerror: (() => void) | null = null;
   closed = false;
   private connection: BridgeConnection | null = null;
+  private relay: Map<string, FakeBridge> | null = null;
 
   constructor(url: string) {
     this.url = url;
     this.openedAt = Date.now();
     FakeWebSocket.created.push(this);
+    const relay = FakeWebSocket.relays.get(url);
+    if (relay !== undefined) {
+      this.relay = relay;
+      queueMicrotask(() => {
+        if (!this.closed) this.onopen?.();
+      });
+      return;
+    }
     const bridge = FakeWebSocket.bridges.get(url.replace(/^ws:\/\//, "")) ?? FakeWebSocket.bridge;
     queueMicrotask(() => {
       if (this.closed) return;
@@ -65,10 +76,16 @@ export class FakeWebSocket {
     FakeWebSocket.created.length = 0;
     FakeWebSocket.bridge = null;
     FakeWebSocket.bridges.clear();
+    FakeWebSocket.relays.clear();
   }
 
   send(text: string): void {
     if (this.closed) return;
+    const relay = this.relay;
+    if (relay !== null && this.connection === null) {
+      this.joinRelay(relay, (JSON.parse(text) as { room: string }).room);
+      return;
+    }
     const frame = decodeFrame(text);
     this.sent.push(frame);
     const connection = this.connection;
@@ -81,6 +98,17 @@ export class FakeWebSocket {
     if (this.closed) return;
     this.closed = true;
     queueMicrotask(() => this.onclose?.());
+  }
+
+  /** Pairs the phone with the bridge of `room`, as the relay does, or leaves it waiting when no bridge joined that room. */
+  private joinRelay(relay: Map<string, FakeBridge>, room: string): void {
+    const bridge = relay.get(room);
+    if (bridge === undefined || !bridge.online) return;
+    queueMicrotask(() => {
+      if (this.closed) return;
+      this.onmessage?.({ data: JSON.stringify({ type: "peer" }) });
+      this.connection = bridge.accept(this);
+    });
   }
 
   deliver(frame: Frame): void {

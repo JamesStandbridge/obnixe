@@ -179,7 +179,6 @@ async function startBridge(): Promise<void> {
     port: 0,
     hosts: () => phoneHosts,
     hostLabel,
-    relayUrl,
     onError: (error) => errors.push(error),
     pairings,
     randomBytes: bytes,
@@ -189,6 +188,7 @@ async function startBridge(): Promise<void> {
     handshakeTimeoutMs: 1000,
   });
   phonePort = await endpoint.listen();
+  if (relayUrl !== null) endpoint.connectRelay(relayUrl);
   control = await startControl(endpoint, 0);
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await createMcpServer(endpoint).connect(serverTransport);
@@ -469,11 +469,11 @@ describe("QR pairing", () => {
 
   it("gives every invitation its own random relay room when the bridge has a relay", async () => {
     await stopBridge();
-    relayUrl = "wss://relay.obnixe.app/v1";
+    relayUrl = "ws://127.0.0.1:1";
     await startBridge();
     const first = scan((await freshInvite()).url);
     const second = scan((await freshInvite()).url);
-    expect(first.relay).toEqual({ url: "wss://relay.obnixe.app/v1", room: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/) });
+    expect(first.relay).toEqual({ url: "ws://127.0.0.1:1", room: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/) });
     expect(second.relay?.room).not.toBe(first.relay?.room);
   });
 

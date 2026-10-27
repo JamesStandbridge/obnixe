@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { Base64Error, fromBase64, fromBase64Url, toBase64, toBase64Url } from "./encoding.ts";
 import { phoneHostsSchema } from "./hosts.ts";
+import { isRelayUrl, relayRoomBytes } from "./relay.ts";
 
 export const inviteVersion = 1;
 export const inviteScheme = "obnixe://pair";
@@ -9,8 +10,6 @@ export const inviteTtlMs = 5 * 60_000;
 export const maxInviteNameLength = 64;
 
 const inviteBridgeIdBytes = 16;
-const maxRoomBytes = 64;
-const relayUrlPattern = /^wss:\/\/[A-Za-z0-9](?:[A-Za-z0-9.-]{0,252}[A-Za-z0-9])?(?::\d{1,5})?(?:\/[A-Za-z0-9._~%/-]*)?$/;
 
 export type InviteErrorReason = "format" | "version" | "expired";
 
@@ -48,10 +47,6 @@ export function truncateName(name: string): string {
   return Array.from(name).slice(0, maxInviteNameLength).join("");
 }
 
-export function isRelayUrl(text: string): boolean {
-  return text.length <= 512 && relayUrlPattern.test(text);
-}
-
 function base64UrlBytes(minimum: number, maximum: number) {
   return z.string().transform((text, context) => {
     let bytes: Uint8Array;
@@ -82,17 +77,23 @@ const querySchema = z
       .refine((name) => Array.from(name).length <= maxInviteNameLength, "Name too long"),
     h: z
       .string()
+      .min(1)
       .transform((text) => text.split(","))
       .pipe(phoneHostsSchema)
-      .refine((hosts) => hosts.length > 0, "No host"),
+      .optional(),
     e: z
       .string()
       .regex(/^[1-9]\d{0,11}$/)
       .transform((seconds) => Number(seconds) * 1000),
-    r: z.string().refine(isRelayUrl, "Expected a wss:// URL").optional(),
-    room: base64UrlBytes(1, maxRoomBytes).optional(),
+    r: z
+      .string()
+      .max(512)
+      .refine(isRelayUrl, "Expected a relay URL")
+      .optional(),
+    room: base64UrlBytes(relayRoomBytes, relayRoomBytes).optional(),
   })
-  .refine((query) => (query.r === undefined) === (query.room === undefined), "r and room go together");
+  .refine((query) => (query.r === undefined) === (query.room === undefined), "r and room go together")
+  .refine((query) => query.h !== undefined || query.r !== undefined, "No host and no relay");
 
 function decodeComponent(text: string): string {
   try {
@@ -128,7 +129,7 @@ export function parseInvite(text: string, now: number): PairingInvite {
   if (!parsed.success) throw new InviteError("format", `Malformed invite: ${parsed.error.message}`);
   const { b, t, n, h, e, r, room } = parsed.data;
   if (e <= now) throw new InviteError("expired", "The invite expired");
-  return { bridgeId: toBase64(b), token: t, name: n, hosts: h, expiresAt: e, relay: r === undefined || room === undefined ? null : { url: r, room: toBase64Url(room) } };
+  return { bridgeId: toBase64(b), token: t, name: n, hosts: h ?? [], expiresAt: e, relay: r === undefined || room === undefined ? null : { url: r, room: toBase64Url(room) } };
 }
 
 interface Parameter {
@@ -142,7 +143,7 @@ export function formatInvite(invite: PairingInvite): string {
     { key: "b", value: toBase64Url(fromBase64(invite.bridgeId)) },
     { key: "t", value: toBase64Url(invite.token) },
     { key: "n", value: encodeURIComponent(invite.name) },
-    { key: "h", value: invite.hosts.join(",") },
+    ...(invite.hosts.length === 0 ? [] : [{ key: "h", value: invite.hosts.join(",") }]),
     { key: "e", value: String(Math.floor(invite.expiresAt / 1000)) },
   ];
   if (invite.relay !== null) parameters.push({ key: "r", value: encodeURIComponent(invite.relay.url) }, { key: "room", value: invite.relay.room });

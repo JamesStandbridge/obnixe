@@ -4,9 +4,11 @@ import {
   PhoneSession,
   ProtocolError,
   closeConnection,
+  defaultRelayUrl,
   generatePairingCode,
   openConnection,
   pairingCodeTtlMs,
+  pairingRelayRoom,
   phoneRevocation,
   renameConnectionClient,
   runAgentTool,
@@ -15,6 +17,10 @@ import type { LearnedPairing, PairingInvite, PhoneLinkStatus, PhonePairing, Phon
 import type { ConnectionEndReason, EpochMs, Id } from "@obnixe/schema";
 import { db, environment } from "@/data/database";
 import { bridgeUrl } from "@/features/agent/host";
+import { dialRelay } from "@/features/agent/relay";
+import type { RelayDial } from "@/features/agent/relay";
+import { openDirectSocket } from "@/features/agent/socket";
+import type { LinkSocket } from "@/features/agent/socket";
 import {
   deleteForgottenNotice,
   deletePairing,
@@ -53,9 +59,12 @@ interface PairingCode {
   readonly expiresAt: number;
 }
 
-/** Addresses tried in order for one dial; `reached` turns true once the WebSocket to the current one opens. */
+/** One way to reach the bridge: an address dialed directly, or a relay room the bridge joined. */
+type DialTarget = { readonly kind: "direct"; readonly host: string } | { readonly kind: "relay"; readonly relayUrl: string; readonly room: string };
+
+/** Targets tried in order for one dial; `reached` turns true once the transport to the current one is up. */
 interface Route {
-  readonly hosts: readonly string[];
+  readonly targets: readonly DialTarget[];
   index: number;
   reached: boolean;
 }
@@ -123,7 +132,8 @@ export class AgentLink {
   private forgottenNotice: string | null;
   private invite: PairingInvite | null = null;
   private current: LinkView;
-  private socket: WebSocket | null = null;
+  private socket: LinkSocket | null = null;
+  private relayDial: RelayDial | null = null;
   private session: PhoneSession | null = null;
   private route: Route | null = null;
   private hostTimer: ReturnType<typeof setTimeout> | null = null;
@@ -280,7 +290,23 @@ export class AgentLink {
   private candidates(): readonly string[] {
     if (this.invite !== null) return distinct([this.preferred, ...this.invite.hosts]);
     if (this.pairing === null) return distinct([this.preferred, this.host]);
-    return distinct([this.preferred, this.pairing.lastHost, ...this.pairing.hosts, this.host]);
+    return distinct([this.preferred, this.host, this.pairing.lastHost, ...this.pairing.hosts]);
+  }
+
+  /** The relay as a last resort: the invite room while joining, the room of the pairing when resuming; never for a typed code. */
+  private relayTarget(): DialTarget | null {
+    const invite = this.invite;
+    if (invite !== null) return invite.relay === null ? null : { kind: "relay", relayUrl: invite.relay.url, room: invite.relay.room };
+    const pairing = this.pairing;
+    if (pairing === null) return null;
+    const relayUrl = pairing.relay?.url ?? defaultRelayUrl;
+    return relayUrl === "" ? null : { kind: "relay", relayUrl, room: pairingRelayRoom(pairing) };
+  }
+
+  private targets(): readonly DialTarget[] {
+    const direct: DialTarget[] = this.candidates().map((host) => ({ kind: "direct", host }));
+    const relay = this.relayTarget();
+    return relay === null ? direct : [...direct, relay];
   }
 
   private dialSecret(): PhoneSecret {
@@ -290,9 +316,15 @@ export class AgentLink {
     return { kind: "code", code: view.kind === "pairing" ? view.code : newCode().code };
   }
 
-  private dialedHost(): string | null {
+  private dialedTarget(): DialTarget | null {
     const route = this.route;
-    return route === null ? null : (route.hosts[route.index] ?? null);
+    return route === null ? null : (route.targets[route.index] ?? null);
+  }
+
+  /** The address the current dial reached directly; a relay route has none to remember. */
+  private dialedHost(): string | null {
+    const target = this.dialedTarget();
+    return target?.kind === "direct" ? target.host : null;
   }
 
   private storePairing(pairing: PhonePairing): void {
@@ -318,15 +350,15 @@ export class AgentLink {
     if (this.hostTimer !== null) clearTimeout(this.hostTimer);
     this.hostTimer = null;
     this.clearAnswerTimer();
+    this.relayDial?.cancel();
+    this.relayDial = null;
     const socket = this.socket;
     this.socket = null;
     this.session?.markClosed();
     this.session = null;
     if (socket !== null) {
-      socket.onopen = null;
       socket.onmessage = null;
       socket.onclose = null;
-      socket.onerror = null;
       socket.close();
     }
   }
@@ -340,17 +372,60 @@ export class AgentLink {
 
   private dial(): void {
     if (!isDialing(this.current)) return;
-    const hosts = this.candidates();
-    if (hosts.length === 0) return;
-    this.route = { hosts, index: 0, reached: false };
-    this.dialHost();
+    const targets = this.targets();
+    if (targets.length === 0) return;
+    this.route = { targets, index: 0, reached: false };
+    this.dialTarget();
   }
 
-  private dialHost(): void {
+  private dialTarget(): void {
     const route = this.route;
-    const host = this.dialedHost();
-    if (route === null || host === null) return;
-    const socket = new WebSocket(bridgeUrl(host));
+    const target = this.dialedTarget();
+    if (route === null || target === null) return;
+    switch (target.kind) {
+      case "direct": {
+        const socket = openDirectSocket(bridgeUrl(target.host), () => {
+          if (socket === this.socket) route.reached = true;
+        });
+        this.attach(socket, target.host);
+        this.hostTimer = setTimeout(() => {
+          this.hostTimer = null;
+          if (!route.reached) this.nextHost(socket);
+        }, hostTimeoutMs);
+        return;
+      }
+      case "relay":
+        this.dialThroughRelay(route, target);
+        return;
+      default: {
+        const unreachable: never = target;
+        throw new Error(`Unhandled dial target ${JSON.stringify(unreachable)}`);
+      }
+    }
+  }
+
+  /** Waits for the relay to pair the phone with the bridge of the room, then runs the session over it like a direct socket. */
+  private dialThroughRelay(route: Route, target: Extract<DialTarget, { kind: "relay" }>): void {
+    const relayDial = dialRelay({ relayUrl: target.relayUrl, room: target.room });
+    this.relayDial = relayDial;
+    this.setNetwork("dialing", target.relayUrl.replace(/^wss?:\/\//, ""));
+    void relayDial.result.then((result) => {
+      if (this.relayDial !== relayDial) {
+        if (result.kind === "peer") result.socket.close();
+        return;
+      }
+      this.relayDial = null;
+      if (result.kind !== "peer") {
+        if (this.route === route) this.advance(route);
+        return;
+      }
+      route.reached = true;
+      this.attach(result.socket, target.relayUrl.replace(/^wss?:\/\//, ""));
+    });
+  }
+
+  /** Runs a new phone session over `socket` and gives the bridge `hostAnswerMs` to answer before the next target. */
+  private attach(socket: LinkSocket, label: string): void {
     const session = new PhoneSession({
       secret: this.dialSecret(),
       device: deviceName(),
@@ -374,33 +449,31 @@ export class AgentLink {
     });
     this.socket = socket;
     this.session = session;
-    this.setNetwork("dialing", host);
-    this.hostTimer = setTimeout(() => {
-      this.hostTimer = null;
-      if (!route.reached) this.nextHost(socket);
-    }, hostTimeoutMs);
+    this.setNetwork("dialing", label);
     this.answerTimer = setTimeout(() => {
       this.answerTimer = null;
       this.nextHost(socket);
     }, hostAnswerMs);
-    socket.onopen = () => {
-      if (socket === this.socket) route.reached = true;
-    };
-    socket.onmessage = (event: MessageEvent) => {
-      session.receive(String(event.data)).catch((error: unknown) => this.onSessionFailed(socket, session, error));
+    socket.onmessage = (text) => {
+      session.receive(text).catch((error: unknown) => this.onSessionFailed(socket, session, error));
     };
     socket.onclose = () => this.onSocketClosed(socket, session);
   }
 
-  /** Moves on to the next address after a timeout or a socket that closed before a session; gives up after the last one. */
-  private nextHost(socket: WebSocket): void {
+  /** Moves on to the next target after a timeout or a socket that closed before a session. */
+  private nextHost(socket: LinkSocket): void {
     if (socket !== this.socket) return;
     const route = this.route;
     this.dropSocket();
-    if (route !== null && route.index + 1 < route.hosts.length) {
+    if (route !== null) this.advance(route);
+  }
+
+  /** Dials the next target of `route`, or gives up after the last one. */
+  private advance(route: Route): void {
+    if (route.index + 1 < route.targets.length) {
       route.index += 1;
       route.reached = false;
-      this.dialHost();
+      this.dialTarget();
       return;
     }
     this.route = null;
@@ -493,7 +566,7 @@ export class AgentLink {
   }
 
   /** Ends the connection with a recorded reason; errors other than protocol violations go to the global handler as non-fatal. */
-  private onSessionFailed(socket: WebSocket, session: PhoneSession, error: unknown): void {
+  private onSessionFailed(socket: LinkSocket, session: PhoneSession, error: unknown): void {
     const reason: ConnectionEndReason = error instanceof ProtocolError ? "protocol" : "error";
     const connectionId = session.connectionId;
     if (socket === this.socket && connectionId !== null) {
@@ -563,7 +636,7 @@ export class AgentLink {
     this.start();
   }
 
-  private onSocketClosed(socket: WebSocket, session: PhoneSession): void {
+  private onSocketClosed(socket: LinkSocket, session: PhoneSession): void {
     if (socket !== this.socket) return;
     const connectionId = session.connectionId;
     if (connectionId === null) {

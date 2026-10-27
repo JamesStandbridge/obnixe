@@ -8,6 +8,7 @@ import type { TestContext } from "../testing.ts";
 import { sessionHistory } from "../training/report.ts";
 import { ChangesetNotFoundError, RevertConflictError, revert } from "../undo.ts";
 import type { RevertRequest } from "../undo.ts";
+import { readSettings, updateSettings } from "../settings.ts";
 import { commit } from "../writer.ts";
 import { isFirstLaunch, launchCounts } from "./firstLaunch.ts";
 import { foreignKeys } from "./foreignKeys.ts";
@@ -28,6 +29,21 @@ beforeEach(() => {
 const day = 86_400_000;
 
 const revertRequest = (changesetId: Id): RevertRequest => ({ actor: { author: "user", connectionId: null }, changesetId, summary: "Annulation", restoredVersionSummary: (number) => `v${number}` });
+
+describe("settings", () => {
+  it("moves updatedAt only when a field that travels with backups changes", () => {
+    const createdAt = readSettings(context.db).updatedAt;
+    context.advance(1000);
+    updateSettings(context.db, { restAlertsDeclinedAt: context.env.now(), bridgeHost: "10.0.0.2:8787" }, context.env.now());
+    expect(readSettings(context.db)).toMatchObject({ restAlertsDeclinedAt: context.env.now(), bridgeHost: "10.0.0.2:8787", updatedAt: createdAt });
+    context.advance(1000);
+    updateSettings(context.db, { theme: "dark", restAlertsDeclinedAt: null }, context.env.now());
+    expect(readSettings(context.db)).toMatchObject({ theme: "dark", restAlertsDeclinedAt: null, updatedAt: createdAt });
+    context.advance(1000);
+    updateSettings(context.db, { theme: "sunlight", bridgeHost: null }, context.env.now());
+    expect(readSettings(context.db)).toMatchObject({ theme: "sunlight", bridgeHost: null, updatedAt: context.env.now() });
+  });
+});
 
 describe("foreign keys", () => {
   it("follow the journaled table order", () => {

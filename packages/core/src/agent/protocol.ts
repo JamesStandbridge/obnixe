@@ -9,6 +9,7 @@ import { z } from "zod";
 import { connectionEndReasons } from "@obnixe/schema";
 import { Base64Error, Utf8Error, fromBase64, fromUtf8, toBase64 } from "./encoding.ts";
 import { phoneHostsSchema } from "./hosts.ts";
+import { maxFrameBytes } from "./limits.ts";
 
 export const protocolVersion = 3;
 export const defaultControlPort = 7430;
@@ -86,6 +87,7 @@ export function encodeFrame(frame: Frame): string {
 }
 
 export function decodeFrame(text: string): Frame {
+  if (text.length > maxFrameBytes) throw new ProtocolError(`Frame exceeds ${maxFrameBytes} bytes`);
   const parsed = frameSchema.safeParse(parseJson(text));
   if (!parsed.success) throw new ProtocolError(`Malformed frame: ${parsed.error.message}`);
   return parsed.data;
@@ -325,6 +327,14 @@ export function revocationProof(pairingSecret: Uint8Array, pairingId: Uint8Array
 
 export function commitBridgeProof(opening: Uint8Array, proof: Uint8Array): Uint8Array {
   return sha256(concatBytes(utf8ToBytes("obnixe-commit"), opening, proof));
+}
+
+const sealedFrameOverhead = encodeFrame({ type: "sealed", seq: Number.MAX_SAFE_INTEGER, box: "" }).length;
+
+/** True when `message` sealed into a frame stays within {@link maxFrameBytes}, whatever its sequence number. */
+export function fitsSealedFrame(message: unknown): boolean {
+  const plainBytes = utf8ToBytes(JSON.stringify(message)).length;
+  return sealedFrameOverhead + 4 * Math.ceil((plainBytes + 16) / 3) <= maxFrameBytes;
 }
 
 function sequenceNonce(sequence: number): Uint8Array {

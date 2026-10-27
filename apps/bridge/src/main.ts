@@ -3,7 +3,7 @@ import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { networkInterfaces } from "node:os";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { defaultControlPort, defaultPhonePort, isRelayUrl } from "@obnixe/core/agent/wire";
+import { defaultControlPort, defaultPhonePort, defaultRelayUrl, isRelayUrl } from "@obnixe/core/agent/wire";
 import { startControl } from "./control.ts";
 import type { ControlServer } from "./control.ts";
 import { runForget } from "./forget.ts";
@@ -23,14 +23,15 @@ function port(name: string, fallback: number): number {
 }
 
 function relayUrl(): string | null {
-  const value = process.env.OBNIXE_RELAY_URL;
-  if (value === undefined || value === "") return null;
-  if (!isRelayUrl(value)) throw new Error(`OBNIXE_RELAY_URL must be a wss:// URL, got ${value}`);
+  const value = process.env.OBNIXE_RELAY_URL ?? defaultRelayUrl;
+  if (value === "") return null;
+  if (!isRelayUrl(value)) throw new Error(`OBNIXE_RELAY_URL must be a ws:// or wss:// URL, got ${value}`);
   return value;
 }
 
-const phonePort = port("OBNIXE_PHONE_PORT", defaultPhonePort);
+const phonePort = process.env.OBNIXE_PHONE_PORT === "off" ? null : port("OBNIXE_PHONE_PORT", defaultPhonePort);
 const controlPort = port("OBNIXE_CONTROL_PORT", defaultControlPort);
+const relay = relayUrl();
 const pairings = new PairingFile(pairingFilePath(process.env), (length) => new Uint8Array(randomBytes(length)));
 
 function log(line: string): void {
@@ -70,10 +71,9 @@ async function serve(): Promise<void> {
   const override = process.env.OBNIXE_PHONE_HOST;
   const phoneHosts = (): PhoneHosts => selectPhoneHosts(networkInterfaces(), override);
   const endpoint = new PhoneEndpoint({
-    port: phonePort,
+    port: phonePort ?? 0,
     hosts: phoneHosts,
     hostLabel: hostLabel(),
-    relayUrl: relayUrl(),
     pairings,
     randomBytes: (length) => new Uint8Array(randomBytes(length)),
     log,
@@ -81,12 +81,14 @@ async function serve(): Promise<void> {
   });
   let control: ControlServer | null = null;
   try {
-    const listening = await endpoint.listen();
+    const listening = phonePort === null ? null : await endpoint.listen();
     control = await startControl(endpoint, controlPort);
-    log(describeListening(phoneHosts(), listening));
+    log(listening === null ? "The direct phone listener is off (OBNIXE_PHONE_PORT=off)." : describeListening(phoneHosts(), listening));
+    if (relay !== null) endpoint.connectRelay(relay);
   } catch (error) {
     if (!isAddressInUse(error)) throw error;
-    const message = `Another Obnixe bridge already uses port ${phonePort} or ${controlPort}. Only one MCP client can reach the phone at a time; close the other one or set OBNIXE_PHONE_PORT and OBNIXE_CONTROL_PORT.`;
+    const ports = phonePort === null ? `port ${controlPort}` : `port ${phonePort} or ${controlPort}`;
+    const message = `Another Obnixe bridge already uses ${ports}. Only one MCP client can reach the phone at a time; close the other one or set OBNIXE_PHONE_PORT and OBNIXE_CONTROL_PORT.`;
     endpoint.markUnavailable(message);
     log(message);
   }
@@ -115,12 +117,15 @@ Cursor: open ${cursorInstallLink}
   or add to ~/.cursor/mcp.json: { "mcpServers": { "obnixe": ${JSON.stringify(serverConfig)} } }
 Codex: codex mcp add obnixe -- npx -y obnixe-bridge
 
-The phone dials ws://<address of this Mac>:${phonePort}. The listener binds 127.0.0.1, every private LAN IPv4 address
+The phone dials ws://<address of this Mac>:${phonePort ?? defaultPhonePort}. The listener binds 127.0.0.1, every private LAN IPv4 address
 (10/8, 172.16/12, 192.168/16) and every Tailscale address (100.64.0.0/10), never a public one, and follows address
 changes; the QR code and every session tell the phone these addresses, LAN first. OBNIXE_PHONE_HOST binds a single
-address instead and OBNIXE_PHONE_PORT changes the port. Traffic is authenticated and encrypted end to end.
+address instead and OBNIXE_PHONE_PORT changes the port (off disables the listener). Traffic is authenticated and
+encrypted end to end.
 The QR page and pairing use http://127.0.0.1:${controlPort} (OBNIXE_CONTROL_PORT); http://127.0.0.1:${controlPort}/pair shows the QR code.
-OBNIXE_RELAY_URL (wss://) adds a relay rendezvous to the QR code.
+Away from that network the phone reaches the bridge through the relay set by OBNIXE_RELAY_URL (wss://...), which only
+forwards end-to-end sealed frames${relay === null ? "; no relay is configured" : `; currently ${relay}`}. The QR code then
+also carries a one-time relay room, so a phone can pair through the relay with the QR code, never with a typed code.
 A paired phone reconnects without a code using the secret kept in ${pairings.path} (OBNIXE_BRIDGE_CONFIG).
 `;
 

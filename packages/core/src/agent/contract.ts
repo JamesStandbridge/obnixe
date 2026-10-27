@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { efforts, equipments, exerciseMeasures, loadModes, painLevels, painPhases, sensations, sleepBuckets, sportKeys, zoneKeys } from "@obnixe/schema";
+import { efforts, equipments, exerciseCuesMaxLength, exerciseMeasures, loadModes, painLevels, painPhases, sensations, sleepBuckets, sportKeys, zoneKeys } from "@obnixe/schema";
 import type { AgentCallKind, LocalDate, SportKey } from "@obnixe/schema";
 import { daysBetween } from "../dates.ts";
 
@@ -192,7 +192,7 @@ export const toolContracts = {
     name: "list_exercises",
     title: "Exercises",
     description:
-      "List strength exercises with id, name, measure, equipment, loadMode and baseGrams (what a set's loadGrams measures, see create_exercise), load step in grams of the entered value and the body zones they load. Edit one with update_exercise, fold duplicates with merge_exercises.",
+      "List strength exercises with id, name, measure, equipment, loadMode and baseGrams (what a set's loadGrams measures, see create_exercise), load step in grams of the entered value, the body zones they load and the technique cues the user reads during workouts. Edit one with update_exercise, fold duplicates with merge_exercises.",
     kind: "read",
     permissions: [],
     input: z.object({
@@ -401,7 +401,7 @@ export const toolContracts = {
     name: "update_exercise",
     title: "Edit an exercise",
     description:
-      "Edit a strength exercise: rename it (names are unique, case and accent insensitive), change equipment, loadMode, baseGrams, load step or body zones, archive or unarchive it. Changing loadMode or baseGrams reinterprets every past set of the exercise, which is how a mislabeled history is fixed (e.g. sets logged per dumbbell under total). The measure can only change while no logged session or program uses the exercise. Only the fields you send change. The user can undo it from the phone.",
+      "Edit a strength exercise: rename it (names are unique, case and accent insensitive), change equipment, loadMode, baseGrams, load step, body zones or technique cues, archive or unarchive it. Changing loadMode or baseGrams reinterprets every past set of the exercise, which is how a mislabeled history is fixed (e.g. sets logged per dumbbell under total). The measure can only change while no logged session or program uses the exercise. Only the fields you send change. The user can undo it from the phone.",
     kind: "write",
     permissions: ["write"],
     input: z.object({
@@ -414,6 +414,12 @@ export const toolContracts = {
       loadStepGrams: z.int().min(1).max(50_000).nullable().optional().describe("Smallest load increment in grams; null removes it. Not allowed for duration exercises."),
       zones: z.array(z.enum(zoneKeys)).max(6).optional().describe("Complete list of body zones this exercise loads, replacing the current ones; [] removes them all."),
       archived: z.boolean().optional().describe("true hides the exercise from pickers while keeping its history, false brings it back."),
+      cues: z
+        .string()
+        .max(exerciseCuesMaxLength)
+        .nullable()
+        .optional()
+        .describe("Technique cues in French shown to the user during workouts (placement, range of motion, breathing), one short line each, replacing the current ones; null or an empty string removes them."),
     }),
   },
   merge_exercises: {
