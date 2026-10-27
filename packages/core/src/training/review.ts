@@ -3,7 +3,7 @@ import { programSlot } from "@obnixe/schema";
 import type { Effort, EpochMs, Id, PainLevel, PainReport, ProgramSlot, Sensation, Session, ZoneKey } from "@obnixe/schema";
 import { painReportMutations } from "../activity/pain.ts";
 import type { ObnixeDatabase } from "../database.ts";
-import { currentProgram } from "../rotation.ts";
+import { nextSlot } from "../rotation.ts";
 import type { Mutation } from "../writer.ts";
 
 export interface RotationChoice {
@@ -11,15 +11,13 @@ export interface RotationChoice {
   readonly next: ProgramSlot | null;
 }
 
-/** Only sessions started from a program slot take part in the rotation; out-of-program sessions are never attached afterwards. */
+/** Only sessions attached to a program slot take part in the rotation; 'next' is the slot proposed once this session counts. */
 export function rotationChoice(db: ObnixeDatabase, current: Session): RotationChoice | null {
   if (current.slotId === null) return null;
   const own = db.select().from(programSlot).where(eq(programSlot.id, current.slotId)).get();
   if (own === undefined) return null;
-  const slots = currentProgram(db)?.slots ?? [];
-  const index = slots.findIndex((slot) => slot.lineageId === own.lineageId);
-  const next = index === -1 || slots.length < 2 ? null : (slots[(index + 1) % slots.length] ?? null);
-  return { slot: own, next };
+  const next = nextSlot(db, { countingSessionId: current.id });
+  return { slot: own, next: next === null || next.cycle.length < 2 ? null : next.slot };
 }
 
 export interface ReviewPain {
