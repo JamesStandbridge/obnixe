@@ -17,7 +17,12 @@ export function sessionDetailParts(summary: SessionSummary, withDate: boolean): 
   const parts: DetailPart[] = [];
   if (withDate) parts.push({ kind: "text", text: rowDay(summary.localDate) });
   for (const detail of details) parts.push({ kind: "text", text: detail });
-  for (const pain of summary.pains.slice(0, 2)) parts.push({ kind: "pain", level: pain.level, text: zoneLabel(pain.zone).toLowerCase() });
+  parts.push(...sessionFlagParts(summary));
+  return parts;
+}
+
+export function sessionFlagParts(summary: Pick<SessionSummary, "pains" | "addedBy">): DetailPart[] {
+  const parts: DetailPart[] = summary.pains.slice(0, 2).map((pain) => ({ kind: "pain", level: pain.level, text: zoneLabel(pain.zone).toLowerCase() }));
   if (summary.addedBy !== null) parts.push({ kind: "tag", label: `Ajoutée par ${summary.addedBy}` });
   return parts;
 }

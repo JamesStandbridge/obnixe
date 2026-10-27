@@ -35,7 +35,7 @@ describe("completed sessions", () => {
     expect(sessions.map((item) => item.localDate)).toEqual(["2026-10-19", "2026-10-20", "2026-10-22", "2026-10-24"]);
     const last = sessions[3];
     expect(last?.durationSeconds).toBe(58 * 60);
-    expect(last?.strengthSets).toBe(3);
+    expect(last?.strength?.sets).toBe(3);
     expect(last?.pains).toEqual([{ zone: "shoulder_right", level: "stop" }]);
     expect(sessions[0]?.items).toHaveLength(1);
   });
@@ -69,8 +69,8 @@ describe("week summary", () => {
     seedOctober();
     const result = regularity(d("2026-10-25"), completedSessions(seed.context.db), 2, 5);
     expect(result.weeks).toEqual([
-      { monday: "2026-10-12", done: 1, planned: 0, isCurrent: false },
-      { monday: "2026-10-19", done: 4, planned: 1, isCurrent: true },
+      { monday: "2026-10-12", done: 1, sports: ["run"], planned: 0, isCurrent: false },
+      { monday: "2026-10-19", done: 4, sports: ["climb", "strength", "run", "strength"], planned: 1, isCurrent: true },
     ]);
     expect(result.averagePerWeek).toBe(2.5);
   });

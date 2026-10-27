@@ -1,4 +1,4 @@
-import type { Equipment, Exercise, ExerciseMeasure, LoadMode } from "@obnixe/schema";
+import type { Equipment, Exercise, ExerciseMeasure, LoadMode, StrengthSet } from "@obnixe/schema";
 
 export type ExerciseLoad = Pick<Exercise, "loadMode" | "baseGrams">;
 
@@ -18,6 +18,12 @@ export function totalLoadGrams(loadGrams: number | null, load: ExerciseLoad): nu
       throw new Error(`Unhandled load mode ${String(unreachable)}`);
     }
   }
+}
+
+/** Volume moved by a set: total load times reps, zero when the set has no load or no reps. */
+export function setVolumeGrams(set: Pick<StrengthSet, "loadGrams" | "reps">, load: ExerciseLoad): number {
+  const total = totalLoadGrams(set.loadGrams, load);
+  return total === null || set.reps === null ? 0 : total * set.reps;
 }
 
 export function defaultLoadMode(equipment: Equipment, measure: ExerciseMeasure): LoadMode {

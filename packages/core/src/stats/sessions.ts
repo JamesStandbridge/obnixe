@@ -1,7 +1,9 @@
-import { and, asc, eq, gte, inArray, isNotNull, isNull, lte, ne, sql } from "drizzle-orm";
-import { agentConnection, change, changeset, painReport, programSlot, programVariant, session, sessionItem, strengthEntry, strengthSet } from "@obnixe/schema";
-import type { Effort, EpochMs, FieldValues, Id, LocalDate, PainLevel, ReviewStatus, Session, SportKey, ZoneKey } from "@obnixe/schema";
+import { and, asc, eq, gte, inArray, isNotNull, isNull, lte, ne } from "drizzle-orm";
+import { agentConnection, change, changeset, exercise, painReport, programSlot, programVariant, session, sessionItem, strengthEntry, strengthSet } from "@obnixe/schema";
+import type { Effort, EpochMs, FieldValues, Id, LocalDate, PainLevel, ReviewStatus, Session, SportKey, StrengthSet, ZoneKey } from "@obnixe/schema";
 import type { ObnixeDatabase } from "../database.ts";
+import { setVolumeGrams, totalLoadGrams } from "../training/load.ts";
+import type { ExerciseLoad } from "../training/load.ts";
 
 export type ReportedPainLevel = Exclude<PainLevel, "none">;
 
@@ -18,15 +20,33 @@ export interface SessionSummary {
   readonly variantName: string | null;
   readonly localDate: LocalDate;
   readonly startedAt: EpochMs;
+  readonly timeZone: string;
   readonly durationSeconds: number | null;
   readonly values: FieldValues;
   readonly items: readonly FieldValues[];
   readonly effort: Effort | null;
   readonly review: ReviewStatus;
   readonly note: string | null;
-  readonly strengthSets: number;
+  readonly strength: StrengthDigest | null;
   readonly pains: readonly ReportedZonePain[];
   readonly addedBy: string | null;
+}
+
+export interface StrengthDigestExercise {
+  readonly name: string;
+  readonly sets: number;
+  readonly volumeGrams: number;
+  /** Heaviest set by total load (see totalLoadGrams), ties broken by reps. */
+  readonly topLoadGrams: number | null;
+  readonly topReps: number | null;
+  readonly topDurationSeconds: number | null;
+}
+
+/** Completed (not interrupted) sets of a session, exercises in the order they were done. */
+export interface StrengthDigest {
+  readonly sets: number;
+  readonly volumeGrams: number;
+  readonly exercises: readonly StrengthDigestExercise[];
 }
 
 export interface SessionRange {
@@ -82,16 +102,27 @@ export function completedSessions(db: ObnixeDatabase, range: SessionRange = {}):
     chunked(ids, (chunk) => db.select({ sessionId: sessionItem.sessionId, values: sessionItem.values }).from(sessionItem).where(inArray(sessionItem.sessionId, chunk)).orderBy(asc(sessionItem.position)).all()),
     (row) => row.sessionId,
   );
-  const sets = new Map(
+  const strengthSets = groupBy(
     chunked(ids, (chunk) =>
       db
-        .select({ sessionId: strengthEntry.sessionId, count: sql<number>`count(${strengthSet.id})` })
+        .select({
+          sessionId: strengthEntry.sessionId,
+          entryId: strengthEntry.id,
+          name: exercise.name,
+          loadMode: exercise.loadMode,
+          baseGrams: exercise.baseGrams,
+          loadGrams: strengthSet.loadGrams,
+          reps: strengthSet.reps,
+          durationSeconds: strengthSet.durationSeconds,
+        })
         .from(strengthEntry)
         .innerJoin(strengthSet, eq(strengthSet.entryId, strengthEntry.id))
-        .where(inArray(strengthEntry.sessionId, chunk))
-        .groupBy(strengthEntry.sessionId)
+        .innerJoin(exercise, eq(exercise.id, strengthEntry.exerciseId))
+        .where(and(inArray(strengthEntry.sessionId, chunk), eq(strengthSet.interrupted, false)))
+        .orderBy(asc(strengthEntry.position), asc(strengthSet.position))
         .all(),
-    ).map((row) => [row.sessionId, Number(row.count)]),
+    ),
+    (row) => row.sessionId,
   );
   const pains = groupBy(
     chunked(ids, (chunk) =>
@@ -122,16 +153,45 @@ export function completedSessions(db: ObnixeDatabase, range: SessionRange = {}):
     variantName,
     localDate: row.localDate,
     startedAt: row.startedAt,
+    timeZone: row.timeZone,
     durationSeconds: sessionDurationSeconds(row),
     values: row.values,
     items: (items.get(row.id) ?? []).map((item) => item.values),
     effort: row.effort,
     review: row.review,
     note: row.note,
-    strengthSets: sets.get(row.id) ?? 0,
+    strength: strengthDigest(strengthSets.get(row.id) ?? []),
     pains: mergeZonePains((pains.get(row.id) ?? []).map((pain) => ({ zone: pain.zone, level: pain.level as ReportedPainLevel }))),
     addedBy: authors.get(row.id) ?? null,
   }));
+}
+
+interface DigestSet extends ExerciseLoad, Pick<StrengthSet, "loadGrams" | "reps" | "durationSeconds"> {
+  readonly entryId: Id;
+  readonly name: string;
+}
+
+function isHeavier(set: DigestSet, top: DigestSet): boolean {
+  const load = totalLoadGrams(set.loadGrams, set) ?? -1;
+  const topLoad = totalLoadGrams(top.loadGrams, top) ?? -1;
+  if (load !== topLoad) return load > topLoad;
+  return (set.reps ?? set.durationSeconds ?? 0) > (top.reps ?? top.durationSeconds ?? 0);
+}
+
+function strengthDigest(sets: readonly DigestSet[]): StrengthDigest | null {
+  if (sets.length === 0) return null;
+  const exercises = [...groupBy(sets, (set) => set.entryId).values()].map((entrySets): StrengthDigestExercise => {
+    const top = entrySets.reduce((best, set) => (isHeavier(set, best) ? set : best));
+    return {
+      name: top.name,
+      sets: entrySets.length,
+      volumeGrams: entrySets.reduce((total, set) => total + setVolumeGrams(set, set), 0),
+      topLoadGrams: totalLoadGrams(top.loadGrams, top),
+      topReps: top.reps,
+      topDurationSeconds: top.durationSeconds,
+    };
+  });
+  return { sets: sets.length, volumeGrams: exercises.reduce((total, item) => total + item.volumeGrams, 0), exercises };
 }
 
 const chunkSize = 500;

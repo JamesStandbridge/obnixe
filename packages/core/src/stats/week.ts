@@ -1,4 +1,4 @@
-import type { LocalDate } from "@obnixe/schema";
+import type { LocalDate, SportKey } from "@obnixe/schema";
 import { addDays, mondayOf, weekDates } from "../dates.ts";
 import type { SessionSummary } from "./sessions.ts";
 
@@ -61,6 +61,8 @@ export function weekSummary(today: LocalDate, sessions: readonly DatedSession[],
 export interface RegularityWeek {
   readonly monday: LocalDate;
   readonly done: number;
+  /** Sport of each done session, in the order the sessions were given. */
+  readonly sports: readonly SportKey[];
   readonly planned: number;
   readonly isCurrent: boolean;
 }
@@ -70,16 +72,16 @@ export interface Regularity {
   readonly averagePerWeek: number;
 }
 
-export function regularity(today: LocalDate, sessions: readonly Pick<SessionSummary, "localDate">[], weeks: number, sessionsPerWeek: number | null): Regularity {
+export function regularity(today: LocalDate, sessions: readonly Pick<SessionSummary, "localDate" | "sport">[], weeks: number, sessionsPerWeek: number | null): Regularity {
   const current = mondayOf(today);
   const result: RegularityWeek[] = [];
   for (let offset = weeks - 1; offset >= 0; offset -= 1) {
     const monday = addDays(current, -7 * offset);
     const days = weekDates(monday);
-    const dates = sessions.filter((item) => days.includes(item.localDate)).map((item) => item.localDate);
+    const inWeek = sessions.filter((item) => days.includes(item.localDate));
     const isCurrent = offset === 0;
-    const planned = isCurrent ? plannedDays(monday, today, dates, sessionsPerWeek).size : 0;
-    result.push({ monday, done: dates.length, planned, isCurrent });
+    const planned = isCurrent ? plannedDays(monday, today, inWeek.map((item) => item.localDate), sessionsPerWeek).size : 0;
+    result.push({ monday, done: inWeek.length, sports: inWeek.map((item) => item.sport), planned, isCurrent });
   }
   const total = result.reduce((sum, week) => sum + week.done, 0);
   return { weeks: result, averagePerWeek: weeks === 0 ? 0 : total / weeks };
