@@ -5,7 +5,7 @@ import type { ObnixeDatabase } from "../database.ts";
 import type { Mutation } from "../writer.ts";
 import { SessionStateError } from "./lifecycle.ts";
 import { findExercise } from "./workout.ts";
-import type { WorkoutData } from "./workout.ts";
+import type { WorkoutData, WorkoutExercise } from "./workout.ts";
 
 const temporaryOffset = 1_000_000;
 
@@ -63,6 +63,19 @@ export function bringForwardMutations(data: WorkoutData, entryId: Id): Mutation[
   const firstPending = rest.findIndex((id) => isPending(data, id));
   rest.splice(firstPending === -1 ? rest.length : firstPending, 0, entryId);
   return reorderMutations(data, rest);
+}
+
+/** The exercise a "previous" step goes back to: the one just before the current exercise, or the last one once every exercise is settled. */
+export function previousEntry(data: WorkoutData): WorkoutExercise | null {
+  const current = data.exercises.findIndex((candidate) => candidate.entry.status === "pending");
+  return data.exercises[current === -1 ? data.exercises.length - 1 : current - 1] ?? null;
+}
+
+export function reopenEntryMutations(data: WorkoutData, entryId: Id): Mutation[] {
+  if (data.session.status === "completed") throw new SessionStateError(data.session.id, "open");
+  const target = findExercise(data, entryId);
+  if (target.entry.status === "pending") return [];
+  return [{ kind: "update", table: "strength_entry", key: entryId, patch: { status: "pending" } }, ...bringForwardMutations(data, entryId)];
 }
 
 export function addExerciseMutations(db: ObnixeDatabase, data: WorkoutData, exerciseId: Id, newEntryId: Id): Mutation[] {

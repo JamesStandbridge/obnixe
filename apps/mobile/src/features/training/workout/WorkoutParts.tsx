@@ -6,6 +6,7 @@ import { formatMass } from "@/features/training/format";
 import { zoneLabel } from "@/format/labels";
 import { rangeText, setText, targetText } from "@/features/training/workout/liveWorkout";
 import { PainMark } from "@/ui/Controls";
+import { Icon } from "@/ui/icons/Icon";
 import { Text } from "@/ui/Text";
 import { useTheme } from "@/ui/theme";
 import { fonts, radii } from "@/ui/tokens";
@@ -41,6 +42,45 @@ export function Steps({ exercises, currentIndex, displayIndex }: StepsProps) {
       <Text style={styles.stepsLabel} tone="secondary" accessibilityLabel={`Exercice ${displayIndex + 1} sur ${exercises.length}`}>
         {displayIndex + 1}/{exercises.length}
       </Text>
+    </View>
+  );
+}
+
+interface ExerciseNavProps {
+  readonly previous: WorkoutExercise | null;
+  readonly nextLabel: string | null;
+  readonly onPrevious: () => void;
+  readonly onNext: () => void;
+}
+
+export function ExerciseNav({ previous, nextLabel, onPrevious, onNext }: ExerciseNavProps) {
+  const { colors } = useTheme();
+  if (previous === null && nextLabel === null) return null;
+  return (
+    <View style={styles.nav}>
+      {previous === null ? (
+        <View />
+      ) : (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Revenir à ${previous.exercise.name}`}
+          onPress={onPrevious}
+          style={({ pressed }) => [styles.navButton, styles.navStart, pressed && { backgroundColor: colors.surface }]}
+        >
+          <Icon name="back" size={18} color={colors.text2} />
+          <Text style={[styles.navLabel, { color: colors.text2 }]} numberOfLines={1}>
+            Précédent
+          </Text>
+        </Pressable>
+      )}
+      {nextLabel === null ? null : (
+        <Pressable accessibilityRole="button" onPress={onNext} style={({ pressed }) => [styles.navButton, styles.navEnd, pressed && { backgroundColor: colors.surface }]}>
+          <Text style={styles.navLabel} numberOfLines={1}>
+            {nextLabel}
+          </Text>
+          <Icon name="forward" size={18} color={colors.text} />
+        </Pressable>
+      )}
     </View>
   );
 }
@@ -222,6 +262,11 @@ const styles = StyleSheet.create({
   step: { flex: 1, height: 4, borderRadius: 2 },
   stepNow: { height: 6, borderRadius: 3 },
   stepsLabel: { fontFamily: fonts.figure700, fontSize: 15, lineHeight: 17 },
+  nav: { marginTop: 6, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  navButton: { minHeight: 44, paddingHorizontal: 8, flexDirection: "row", alignItems: "center", gap: 2, borderRadius: radii.control },
+  navStart: { marginLeft: -10 },
+  navEnd: { marginRight: -10 },
+  navLabel: { fontFamily: fonts.text700, fontSize: 15 },
   track: { marginTop: 16, flexDirection: "row", gap: 2, borderRadius: radii.panel, overflow: "hidden" },
   trackScroll: { marginTop: 16, borderRadius: radii.panel, flexGrow: 0 },
   trackScrollContent: { gap: 2 },

@@ -23,7 +23,9 @@ import {
   normalizeCues,
   planExerciseCues,
   postponeEntryMutations,
+  previousEntry,
   previousSetAt,
+  reopenEntryMutations,
   replaceExerciseMutations,
   painReportMutations,
   skipEntryMutations,
@@ -67,7 +69,7 @@ import { RestBand } from "@/features/training/workout/RestBand";
 import type { Band } from "@/features/training/workout/RestBand";
 import { cancelRestAlert } from "@/features/training/workout/restAlert";
 import { useRestAlert } from "@/features/training/workout/useRestAlert";
-import { Steps, Track, UpNext } from "@/features/training/workout/WorkoutParts";
+import { ExerciseNav, Steps, Track, UpNext } from "@/features/training/workout/WorkoutParts";
 import { ControlButton, LinkButton, PrimaryButton } from "@/ui/Button";
 import { PainMark } from "@/ui/Controls";
 import { Icon } from "@/ui/icons/Icon";
@@ -458,8 +460,17 @@ export function LiveWorkoutScreen({ live }: LiveWorkoutScreenProps) {
   const skip = (): void => {
     closeSheet();
     if (display === undefined) return;
-    commitUndoable(`${display.exercise.name} passé`, skipEntryMutations(data, display.entry.id), `${display.exercise.name} passé`);
+    const summary = display.sets.length === 0 ? `${display.exercise.name} passé` : `${display.exercise.name} terminé`;
+    commitUndoable(summary, skipEntryMutations(data, display.entry.id), summary);
     setEditing(null);
+    setActiveSet(null);
+  };
+
+  const previous = editing === null ? previousEntry(data) : null;
+  const goBack = (): void => {
+    if (previous === null) return;
+    commitUndoable(`Retour à ${previous.exercise.name}`, reopenEntryMutations(data, previous.entry.id), `Retour à ${lowerFirst(previous.exercise.name)}`);
+    setActiveSet(null);
   };
 
   const saveCues = (text: string): void => {
@@ -574,6 +585,12 @@ export function LiveWorkoutScreen({ live }: LiveWorkoutScreenProps) {
         {display === undefined ? null : (
           <>
             <Steps exercises={data.exercises} currentIndex={progress.currentIndex} displayIndex={displayIndex} />
+            <ExerciseNav
+              previous={previous}
+              nextLabel={finished || editing !== null || display.entry.status !== "pending" ? null : display.sets.length === 0 ? "Passer" : "Suivant"}
+              onPrevious={goBack}
+              onNext={skip}
+            />
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={`${display.exercise.name}, actions de l'exercice`}

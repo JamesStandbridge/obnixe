@@ -5,7 +5,7 @@ import { painReportMutations } from "../activity/pain.ts";
 import { createTestContext } from "../testing.ts";
 import type { TestContext } from "../testing.ts";
 import { revert } from "../undo.ts";
-import { addExerciseMutations, bringForwardMutations, ExerciseNotFoundError, postponeEntryMutations, replaceExerciseMutations } from "./entries.ts";
+import { addExerciseMutations, bringForwardMutations, ExerciseNotFoundError, postponeEntryMutations, previousEntry, reopenEntryMutations, replaceExerciseMutations } from "./entries.ts";
 import { addExercise, apply, reload, seedProgram, startWorkout, timeZone } from "./fixtures.ts";
 import type { SeededProgram } from "./fixtures.ts";
 import { finishMutations, interruptMutations, openSessionRow, resumeMutations, SessionStateError, startFreeWorkoutMutations, startWorkoutMutations, VariantNotInSlotError } from "./lifecycle.ts";
@@ -196,6 +196,36 @@ describe("stopping, skipping and reordering exercises", () => {
       ["Rowing haltère", "pending", 3],
     ]);
     expect(data.exercises[2]?.target.sets).toBe(2);
+  });
+
+  it("goes back to a skipped exercise, then to a finished one once every exercise is settled", () => {
+    let data = logSet(startWorkout(context, program), 0, kgReps(80, 8));
+    apply(context, skipEntryMutations(data, entryId(data, 0)));
+    data = reload(context, data.session.id);
+    apply(context, skipEntryMutations(data, entryId(data, 1)));
+    data = reload(context, data.session.id);
+    expect(previousEntry(data)?.exercise.name).toBe("Développé couché");
+    apply(context, reopenEntryMutations(data, entryId(data, 1)));
+    data = reload(context, data.session.id);
+    expect(data.exercises.map((candidate) => [candidate.exercise.name, candidate.entry.status])).toEqual([
+      ["Squat barre", "done"],
+      ["Développé couché", "pending"],
+      ["Curl haltères", "pending"],
+    ]);
+    expect(workoutProgress(data)).toMatchObject({ currentIndex: 1, setIndex: 0 });
+    expect(previousEntry(data)?.exercise.name).toBe("Squat barre");
+    apply(context, reopenEntryMutations(data, entryId(data, 0)));
+    data = reload(context, data.session.id);
+    expect(workoutProgress(data)).toMatchObject({ currentIndex: 0, setIndex: 1 });
+    for (const index of [0, 1, 2]) {
+      apply(context, skipEntryMutations(data, entryId(data, index)));
+      data = reload(context, data.session.id);
+    }
+    expect(workoutProgress(data).currentIndex).toBeNull();
+    expect(previousEntry(data)?.exercise.name).toBe("Curl haltères");
+    apply(context, reopenEntryMutations(data, entryId(data, 2)));
+    data = reload(context, data.session.id);
+    expect(workoutProgress(data).currentIndex).toBe(2);
   });
 });
 
