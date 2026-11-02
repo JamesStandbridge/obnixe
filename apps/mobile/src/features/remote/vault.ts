@@ -1,12 +1,12 @@
 import * as SecureStore from "expo-secure-store";
-import { fromBase64, parseRemoteGrants, toBase64 } from "@obnixe/core";
-import type { RandomBytes, RemoteGrant, RemoteVault } from "@obnixe/core";
+import { fromBase64, parseRemoteGrants, remoteIdentity, remoteSeedBytes, toBase64 } from "@obnixe/core";
+import type { RandomBytes, RemoteGrant, RemoteIdentity, RemoteVault } from "@obnixe/core";
 import type { Id } from "@obnixe/schema";
 
 const options: SecureStore.SecureStoreOptions = { keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY };
 const keyKey = "obnixe.remote.key";
 const grantsKey = "obnixe.remote.grants";
-const authtokenKey = "obnixe.remote.authtoken";
+const identityKey = "obnixe.remote.identity";
 const enabledKey = "obnixe.remote.enabled";
 const signingKeyBytes = 32;
 
@@ -40,16 +40,16 @@ export function remoteConnectionIds(): ReadonlySet<Id> {
   return new Set(readGrants().map((grant) => grant.connectionId));
 }
 
-export function readAuthtoken(): string | null {
-  return SecureStore.getItem(authtokenKey, options);
+/** The key the phone proves to the relay, which its public address derives from; null until remote access is first enabled. */
+export function readIdentity(): RemoteIdentity | null {
+  const stored = SecureStore.getItem(identityKey, options);
+  return stored === null ? null : remoteIdentity(fromBase64(stored));
 }
 
-export function saveAuthtoken(authtoken: string): void {
-  SecureStore.setItem(authtokenKey, authtoken, options);
-}
-
-export function deleteAuthtoken(): void {
-  remove(authtokenKey);
+export function createIdentity(randomBytes: RandomBytes): RemoteIdentity {
+  const seed = randomBytes(remoteSeedBytes);
+  SecureStore.setItem(identityKey, toBase64(seed), options);
+  return remoteIdentity(seed);
 }
 
 export function readEnabled(): boolean {

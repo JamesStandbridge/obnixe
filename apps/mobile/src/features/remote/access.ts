@@ -1,26 +1,27 @@
 import { useSyncExternalStore } from "react";
 import { getRandomValues } from "expo-crypto";
-import { RemoteServer } from "@obnixe/core";
-import type { PendingAuthorization, RemoteGrant, RemoteRequest, RemoteResponse } from "@obnixe/core";
-import { z } from "zod";
+import { parseRelayFrame, remoteConnectUrl, remotePhoneOrigin, RemoteServer, signRemoteChallenge } from "@obnixe/core";
+import type { PendingAuthorization, PhoneFrame, RemoteGrant, RemoteIdentity, RemoteResponse } from "@obnixe/core";
 import { db, environment } from "@/data/database";
 import { deviceTimeZone } from "@/format/dates";
 import { askApprovalNotifications } from "@/features/remote/notifications";
-import { deleteAuthtoken, openVault, readAuthtoken, readEnabled, readGrants, saveAuthtoken, saveEnabled } from "@/features/remote/vault";
-import { remoteTunnel } from "../../../modules/obnixe-remote";
-import type { TunnelRequest, TunnelStatus } from "../../../modules/obnixe-remote";
+import { createIdentity, openVault, readEnabled, readGrants, readIdentity, saveEnabled } from "@/features/remote/vault";
+import { relayLink } from "../../../modules/obnixe-remote";
+import type { LinkFrame, LinkStatus } from "../../../modules/obnixe-remote";
+
+/** `online` once the relay accepted the phone's proof; `waiting` while the link is down and retrying. */
+export type RemoteLinkState = "connecting" | "online" | "waiting" | "stopped";
 
 export interface RemoteAccessState {
   readonly available: boolean;
   readonly enabled: boolean;
-  readonly hasAuthtoken: boolean;
-  readonly tunnel: TunnelStatus;
+  readonly link: RemoteLinkState;
+  /** The phone's public origin, known from its identity before it ever connects. */
+  readonly origin: string | null;
   readonly pending: readonly PendingAuthorization[];
   readonly grants: readonly RemoteGrant[];
 }
 
-const headersSchema = z.record(z.string(), z.string());
-const stopped: TunnelStatus = { state: "stopped", url: "", message: "" };
 const internalError: RemoteResponse = { status: 500, headers: { "content-type": "text/plain; charset=utf-8" }, body: "The phone failed to answer" };
 
 function randomBytes(length: number): Uint8Array {
@@ -29,22 +30,34 @@ function randomBytes(length: number): Uint8Array {
   return bytes;
 }
 
-function parseHeaders(text: string): Readonly<Record<string, string>> {
-  const parsed = headersSchema.safeParse(JSON.parse(text));
-  return parsed.success ? parsed.data : {};
+function linkState(status: LinkStatus): RemoteLinkState {
+  switch (status.state) {
+    case "connecting":
+    case "open":
+      return "connecting";
+    case "waiting":
+      return "waiting";
+    case "stopped":
+      return "stopped";
+    default: {
+      const unreachable: never = status.state;
+      return unreachable;
+    }
+  }
 }
 
 /**
- * Serves the phone to remote agents: owns the OAuth and MCP server, answers the requests the native tunnel forwards,
- * and starts the tunnel at launch while remote access is on. Lives as long as the app process.
+ * Serves the phone to remote agents: owns the OAuth and MCP server, proves the phone's identity to the relay, answers
+ * the requests the relay forwards, and reconnects at launch while remote access is on. Lives as long as the app process.
  */
 class RemoteAccess {
   private server: RemoteServer | null = null;
+  private identity: RemoteIdentity | null = readIdentity();
   private state: RemoteAccessState = {
-    available: remoteTunnel !== null,
-    enabled: remoteTunnel !== null && readEnabled(),
-    hasAuthtoken: readAuthtoken() !== null,
-    tunnel: remoteTunnel?.status() ?? stopped,
+    available: relayLink !== null,
+    enabled: relayLink !== null && readEnabled(),
+    link: relayLink === null ? "stopped" : linkState(relayLink.status()),
+    origin: this.identity === null ? null : remotePhoneOrigin(this.identity.id),
     pending: [],
     grants: readGrants(),
   };
@@ -57,10 +70,10 @@ class RemoteAccess {
 
   readonly snapshot = (): RemoteAccessState => this.state;
 
-  /** Wires the native tunnel once the database is open; later calls do nothing. */
+  /** Wires the relay link once the database is open; later calls do nothing. */
   attach(): void {
-    const tunnel = remoteTunnel;
-    if (tunnel === null || this.server !== null) return;
+    const link = relayLink;
+    if (link === null || this.server !== null) return;
     const server = new RemoteServer({
       db: db(),
       env: environment,
@@ -72,41 +85,31 @@ class RemoteAccess {
         onGrants: (grants) => this.update({ grants }),
       },
     });
+    server.setBaseUrl(this.state.origin);
     this.server = server;
-    tunnel.addListener("onStatus", (status) => this.onStatus(status));
-    tunnel.addListener("onRequest", (request) => this.onRequest(server, request));
-    this.onStatus(tunnel.status());
-    const authtoken = readAuthtoken();
-    if (this.state.enabled && authtoken !== null && this.state.tunnel.state === "stopped") tunnel.start(authtoken);
+    link.addListener("onStatus", (status) => this.update({ link: linkState(status) }));
+    link.addListener("onFrame", (frame) => this.onFrame(server, frame));
+    const identity = this.identity;
+    if (this.state.enabled && identity !== null && link.status().state === "stopped") link.start(remoteConnectUrl(identity.publicKey));
   }
 
-  enable(authtoken: string): void {
-    const tunnel = remoteTunnel;
-    if (tunnel === null) return;
-    saveAuthtoken(authtoken);
+  enable(): void {
+    const link = relayLink;
+    if (link === null) return;
+    const identity = this.identity ?? createIdentity(randomBytes);
+    this.identity = identity;
+    const origin = remotePhoneOrigin(identity.id);
+    this.server?.setBaseUrl(origin);
     saveEnabled(true);
-    this.update({ enabled: true, hasAuthtoken: true });
+    this.update({ enabled: true, origin });
     askApprovalNotifications();
-    tunnel.start(authtoken);
-  }
-
-  /** Turns remote access back on with the stored ngrok token. */
-  resume(): void {
-    const authtoken = readAuthtoken();
-    if (authtoken !== null) this.enable(authtoken);
+    link.start(remoteConnectUrl(identity.publicKey));
   }
 
   disable(): void {
     saveEnabled(false);
     this.update({ enabled: false });
-    remoteTunnel?.stop();
-  }
-
-  /** Turns remote access off and drops the ngrok token, so another account can be used. */
-  forgetAuthtoken(): void {
-    this.disable();
-    deleteAuthtoken();
-    this.update({ hasAuthtoken: false });
+    relayLink?.stop();
   }
 
   decide(id: string, approved: boolean): void {
@@ -122,20 +125,35 @@ class RemoteAccess {
     for (const listener of this.listeners) listener();
   }
 
-  private onStatus(status: TunnelStatus): void {
-    if (status.url !== "") this.server?.setBaseUrl(status.url);
-    this.update({ tunnel: status });
+  private send(frame: PhoneFrame): void {
+    relayLink?.send(JSON.stringify(frame));
   }
 
-  /** Always answers the tunnel, even when the server throws; the error then reaches the global handler as non-fatal. */
-  private onRequest(server: RemoteServer, request: TunnelRequest): void {
-    const respond = (answer: RemoteResponse): void => remoteTunnel?.respond(request.id, answer.status, JSON.stringify(answer.headers), answer.body);
-    void Promise.resolve()
-      .then(() => server.handle({ method: request.method, target: request.target, headers: parseHeaders(request.headers), body: request.body } satisfies RemoteRequest))
-      .then(respond, (error: unknown) => {
-        respond(internalError);
-        ErrorUtils.getGlobalHandler()(error, false);
-      });
+  private onFrame(server: RemoteServer, { text }: LinkFrame): void {
+    const frame = parseRelayFrame(text);
+    if (frame === null) return;
+    switch (frame.type) {
+      case "challenge":
+        if (this.identity !== null) this.send({ type: "proof", signature: signRemoteChallenge(this.identity, frame.nonce) });
+        return;
+      case "online":
+        this.update({ link: "online" });
+        return;
+      case "request": {
+        const respond = (answer: RemoteResponse): void => this.send({ type: "response", id: frame.id, ...answer });
+        void Promise.resolve()
+          .then(() => server.handle({ method: frame.method, target: frame.target, headers: frame.headers, body: frame.body }))
+          .then(respond, (error: unknown) => {
+            respond(internalError);
+            ErrorUtils.getGlobalHandler()(error, false);
+          });
+        return;
+      }
+      default: {
+        const unreachable: never = frame;
+        throw new Error(`Unhandled relay frame ${JSON.stringify(unreachable)}`);
+      }
+    }
   }
 }
 

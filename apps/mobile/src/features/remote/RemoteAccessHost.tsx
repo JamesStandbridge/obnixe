@@ -5,7 +5,7 @@ import { ApprovalSheet } from "@/features/remote/components";
 import { notifyApprovalRequest } from "@/features/remote/notifications";
 import { useSnackbar } from "@/ui/SnackbarHost";
 
-/** Serves remote agents for the whole app: starts the tunnel at launch and asks the user about every authorization. */
+/** Serves remote agents for the whole app: reconnects to the relay at launch and asks the user about every authorization. */
 export function RemoteAccessHost() {
   const { pending } = useRemoteAccess();
   const notify = useSnackbar();

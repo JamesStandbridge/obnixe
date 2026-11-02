@@ -15,5 +15,6 @@ export * from "./relay.ts";
 export * from "./remote/http.ts";
 export * from "./remote/mcp.ts";
 export * from "./remote/oauth.ts";
+export * from "./remote/relay.ts";
 export * from "./remote/server.ts";
 export * from "./session.ts";

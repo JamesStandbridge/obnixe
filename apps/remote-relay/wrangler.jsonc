@@ -1,0 +1,14 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "obnixe-remote-relay",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-10-23",
+  "workers_dev": false,
+  "minify": true,
+  "routes": [{ "pattern": "*.obnixe.app/*", "zone_name": "obnixe.app" }],
+  "durable_objects": {
+    "bindings": [{ "name": "PHONES", "class_name": "PhoneLink" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["PhoneLink"] }],
+  "observability": { "enabled": false }
+}

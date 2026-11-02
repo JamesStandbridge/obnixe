@@ -1,7 +1,5 @@
 package app.obnixe.remote
 
-import android.os.Build
-import app.obnixe.tunnel.Tunnel
 import expo.modules.kotlin.exception.Exceptions
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
@@ -13,7 +11,7 @@ class ObnixeRemoteModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("ObnixeRemote")
 
-    Events("onRequest", "onStatus")
+    Events("onFrame", "onStatus")
 
     OnCreate {
       RemoteHub.module = this@ObnixeRemoteModule
@@ -23,35 +21,30 @@ class ObnixeRemoteModule : Module() {
       if (RemoteHub.module === this@ObnixeRemoteModule) RemoteHub.module = null
     }
 
-    Function("isSupported") {
-      Build.SUPPORTED_ABIS.contains("arm64-v8a")
-    }
-
     Function("status") {
       statusMap(RemoteHub.status)
     }
 
-    Function("start") { authtoken: String ->
-      RemoteService.start(context, authtoken)
+    Function("start") { url: String ->
+      RemoteService.start(context, url)
     }
 
     Function("stop") {
       RemoteService.stop(context)
     }
 
-    Function("respond") { id: Double, status: Int, headers: String, body: String ->
-      Tunnel.respond(id.toLong(), status.toLong(), headers, body)
+    Function("send") { text: String ->
+      RemoteHub.link?.send(text) ?: false
     }
   }
 
-  internal fun emitRequest(id: Long, method: String, target: String, headers: String, body: String) {
-    sendEvent("onRequest", mapOf("id" to id.toDouble(), "method" to method, "target" to target, "headers" to headers, "body" to body))
+  internal fun emitFrame(text: String) {
+    sendEvent("onFrame", mapOf("text" to text))
   }
 
-  internal fun emitStatus(status: TunnelStatus) {
+  internal fun emitStatus(status: LinkStatus) {
     sendEvent("onStatus", statusMap(status))
   }
 
-  private fun statusMap(status: TunnelStatus): Map<String, String> =
-    mapOf("state" to status.state, "url" to status.url, "message" to status.message)
+  private fun statusMap(status: LinkStatus): Map<String, String> = mapOf("state" to status.state, "message" to status.message)
 }

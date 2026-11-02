@@ -13,7 +13,7 @@ import type { RemoteGrant } from "./oauth.ts";
 import { RemoteServer } from "./server.ts";
 import type { PendingAuthorization } from "./server.ts";
 
-const base = "https://calm-otter.ngrok-free.app";
+const base = "https://abcdefghijklmnopqrstuvwxyz.obnixe.app";
 const redirectUri = "https://claude.ai/api/mcp/auth_callback";
 const verifier = "a-verifier-long-enough-to-satisfy-rfc-7636-rules-0123456789";
 const challenge = toBase64Url(sha256(utf8ToBytes(verifier)));

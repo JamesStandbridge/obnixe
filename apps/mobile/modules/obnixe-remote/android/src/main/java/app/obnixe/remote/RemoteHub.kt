@@ -1,33 +1,37 @@
 package app.obnixe.remote
 
-import app.obnixe.tunnel.Handler
-import app.obnixe.tunnel.Tunnel
+import org.json.JSONException
+import org.json.JSONObject
 
-data class TunnelStatus(val state: String, val url: String, val message: String)
+/** Joins the relay link, owned by the foreground service, to the JavaScript module, which may come and go. */
+internal object RemoteHub : RelayLink.Listener {
+  @Volatile var module: ObnixeRemoteModule? = null
+  @Volatile var status = LinkStatus("stopped", "")
+  @Volatile var link: RelayLink? = null
 
-/** Receives the tunnel callbacks from Go threads and forwards them to the JavaScript module while it is alive. */
-internal object RemoteHub : Handler {
-  @Volatile
-  var module: ObnixeRemoteModule? = null
-
-  @Volatile
-  var status: TunnelStatus = TunnelStatus("stopped", "", "")
-    private set
-
-  private const val unavailableHeaders = "{\"content-type\":\"text/plain; charset=utf-8\"}"
-
-  override fun request(id: Long, method: String, target: String, headers: String, body: String) {
-    val receiver = module
-    if (receiver == null) {
-      Tunnel.respond(id, 503, unavailableHeaders, "Obnixe is not running on the phone")
-      return
-    }
-    receiver.emitRequest(id, method, target, headers, body)
+  override fun onStatus(status: LinkStatus) {
+    this.status = status
+    module?.emitStatus(status)
   }
 
-  override fun status(state: String, url: String, message: String) {
-    val next = TunnelStatus(state, url, message)
-    status = next
-    module?.emitStatus(next)
+  override fun onFrame(text: String) {
+    val module = module
+    if (module != null) {
+      module.emitFrame(text)
+      return
+    }
+    try {
+      val frame = JSONObject(text)
+      if (frame.optString("type") != "request") return
+      val answer = JSONObject()
+        .put("type", "response")
+        .put("id", frame.getLong("id"))
+        .put("status", 503)
+        .put("headers", JSONObject().put("content-type", "text/plain; charset=utf-8"))
+        .put("body", "Obnixe is not running on the phone")
+      link?.send(answer.toString())
+    } catch (error: JSONException) {
+      return
+    }
   }
 }

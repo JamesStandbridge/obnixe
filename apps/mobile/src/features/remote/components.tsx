@@ -7,25 +7,40 @@ import { Sheet } from "@/ui/Overlays";
 import { Text } from "@/ui/Text";
 import { useTheme } from "@/ui/theme";
 import { fonts, radii } from "@/ui/tokens";
-import type { TunnelStatus } from "../../../modules/obnixe-remote";
+import type { RemoteLinkState } from "@/features/remote/access";
 
 const monospace = Platform.select({ ios: "Menlo", android: "monospace", default: "ui-monospace, SFMono-Regular, Menlo, monospace" });
 
-export function tunnelLabel(status: TunnelStatus, enabled: boolean): string {
+export function remoteLinkLabel(link: RemoteLinkState, enabled: boolean): string {
   if (!enabled) return "Coupé";
-  switch (status.state) {
+  switch (link) {
     case "online":
       return "En ligne";
     case "connecting":
-      return "Connexion à ngrok…";
-    case "reconnecting":
-      return "Reconnexion…";
-    case "error":
-      return "Erreur";
+      return "Connexion…";
+    case "waiting":
+      return "Hors ligne";
     case "stopped":
       return "Démarrage…";
     default: {
-      const unreachable: never = status.state;
+      const unreachable: never = link;
+      return unreachable;
+    }
+  }
+}
+
+function remoteLinkDetail(link: RemoteLinkState, enabled: boolean): string {
+  if (!enabled) return "Les agents ne peuvent plus joindre ce téléphone";
+  switch (link) {
+    case "online":
+      return "Les agents autorisés peuvent joindre ce téléphone";
+    case "connecting":
+    case "stopped":
+      return "Le téléphone se connecte au relais Obnixe";
+    case "waiting":
+      return "Pas de réseau ou relais injoignable, nouvel essai automatique";
+    default: {
+      const unreachable: never = link;
       return unreachable;
     }
   }
@@ -56,25 +71,17 @@ export function RemoteLink({ detail, onPress }: RemoteLinkProps) {
   );
 }
 
-interface TunnelPanelProps {
-  readonly status: TunnelStatus;
+interface LinkPanelProps {
+  readonly link: RemoteLinkState;
   readonly enabled: boolean;
 }
 
-export function TunnelPanel({ status, enabled }: TunnelPanelProps) {
+export function LinkPanel({ link, enabled }: LinkPanelProps) {
   const { colors } = useTheme();
-  const online = enabled && status.state === "online";
-  const failed = enabled && status.state === "error";
-  const label = tunnelLabel(status, enabled);
-  const detail = !enabled
-    ? "Les agents ne peuvent plus joindre ce téléphone"
-    : online
-      ? "Les agents autorisés peuvent joindre ce téléphone"
-      : failed
-        ? status.message
-        : status.message === ""
-          ? "Le téléphone ouvre son tunnel"
-          : status.message;
+  const online = enabled && link === "online";
+  const failed = enabled && link === "waiting";
+  const label = remoteLinkLabel(link, enabled);
+  const detail = remoteLinkDetail(link, enabled);
   return (
     <View
       style={[styles.panel, { backgroundColor: colors.surface, borderLeftColor: online ? colors.mark : failed ? colors.warn : colors.text3 }]}

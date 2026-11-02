@@ -1,27 +1,18 @@
-import { useState } from "react";
 import type { ReactNode } from "react";
-import { Linking, Pressable, Share, StyleSheet, View } from "react-native";
+import { Pressable, Share, StyleSheet, View } from "react-native";
 import { localDateOf } from "@obnixe/core";
 import type { RemoteGrant } from "@obnixe/core";
 import { environment } from "@/data/database";
 import { AgentAppBar, Heading } from "@/features/agent/components";
 import { remoteAccess, useRemoteAccess } from "@/features/remote/access";
-import { Address, TunnelPanel } from "@/features/remote/components";
+import { Address, LinkPanel } from "@/features/remote/components";
 import { deviceTimeZone, formatTimeAt, relativeDay } from "@/format/dates";
-import { ControlButton, LinkButton, PrimaryButton } from "@/ui/Button";
-import { TextField } from "@/ui/Inputs";
+import { ControlButton, PrimaryButton } from "@/ui/Button";
 import { Section, Screen } from "@/ui/Layout";
 import { Text } from "@/ui/Text";
 import { useTheme } from "@/ui/theme";
 import { fonts } from "@/ui/tokens";
 import { goBack } from "@/ui/navigation";
-
-const signupUrl = "https://dashboard.ngrok.com/signup";
-const authtokenUrl = "https://dashboard.ngrok.com/get-started/your-authtoken";
-
-function open(url: string): void {
-  Linking.openURL(url).catch((error: unknown) => ErrorUtils.getGlobalHandler()(error, false));
-}
 
 function shareAddress(address: string): void {
   Share.share({ message: address }).catch((error: unknown) => ErrorUtils.getGlobalHandler()(error, false));
@@ -76,62 +67,26 @@ function GrantRow({ grant, last }: GrantRowProps) {
   );
 }
 
-function Setup() {
-  const [draft, setDraft] = useState("");
-  const authtoken = draft.trim();
-  const valid = /^[A-Za-z0-9_-]{20,}$/.test(authtoken);
-  const enable = (): void => {
-    if (valid) remoteAccess.enable(authtoken);
-  };
-  return (
-    <Steps
-      steps={[
-        <>
-          <Text>Crée un compte gratuit sur ngrok.com</Text>
-          <LinkButton label="Ouvrir ngrok.com" onPress={() => open(signupUrl)} style={styles.stepLink} />
-        </>,
-        <>
-          <Text>Copie ton authtoken, puis colle-le ici</Text>
-          <LinkButton label="Voir mon authtoken" onPress={() => open(authtokenUrl)} style={styles.stepLink} />
-          <TextField
-            value={draft}
-            onChangeText={setDraft}
-            placeholder="2abc…"
-            autoCapitalize="none"
-            autoCorrect={false}
-            secureTextEntry
-            returnKeyType="done"
-            onSubmitEditing={enable}
-            accessibilityLabel="Authtoken ngrok"
-            style={styles.field}
-          />
-        </>,
-        <PrimaryButton label="Activer l'accès à distance" onPress={enable} disabled={!valid} />,
-      ]}
-    />
-  );
-}
-
 export default function RemoteAccessScreen() {
   const state = useRemoteAccess();
-  const address = state.tunnel.state === "online" && state.tunnel.url !== "" ? `${state.tunnel.url}/mcp` : null;
+  const address = state.origin === null ? null : `${state.origin}/mcp`;
   return (
     <View style={styles.root}>
       <Screen>
         <AgentAppBar onBack={() => goBack("/agent")} />
         <Heading title="Accès à distance" />
         <Text tone="secondary" style={styles.intro}>
-          Claude, sur ce téléphone ou ailleurs, utilise ton suivi sans ordinateur. Le téléphone sert lui-même les outils, à travers un tunnel ngrok gratuit à ton nom. Rien n'est stocké en dehors du téléphone.
+          Claude, sur ce téléphone ou ailleurs, utilise ton suivi sans ordinateur. Le téléphone sert lui-même les outils ; le relais Obnixe ne fait que transmettre les échanges et ne garde rien.
         </Text>
         {!state.available ? (
           <Text tone="secondary" style={styles.intro}>
             Disponible dans l'application Android.
           </Text>
-        ) : !state.hasAuthtoken ? (
-          <Setup />
+        ) : state.origin === null ? (
+          <PrimaryButton label="Activer l'accès à distance" onPress={() => remoteAccess.enable()} style={styles.toggle} />
         ) : (
           <>
-            <TunnelPanel status={state.tunnel} enabled={state.enabled} />
+            <LinkPanel link={state.link} enabled={state.enabled} />
             {address === null || !state.enabled ? null : (
               <>
                 <Address address={address} onShare={() => shareAddress(address)} />
@@ -145,7 +100,7 @@ export default function RemoteAccessScreen() {
             )}
             <ControlButton
               label={state.enabled ? "Couper l'accès à distance" : "Rétablir l'accès à distance"}
-              onPress={() => (state.enabled ? remoteAccess.disable() : remoteAccess.resume())}
+              onPress={() => (state.enabled ? remoteAccess.disable() : remoteAccess.enable())}
               style={styles.toggle}
             />
             <Section title="Agents autorisés">
@@ -157,7 +112,6 @@ export default function RemoteAccessScreen() {
                 state.grants.map((grant, position) => <GrantRow key={grant.id} grant={grant} last={position === state.grants.length - 1} />)
               )}
             </Section>
-            <LinkButton label="Changer de compte ngrok" onPress={() => remoteAccess.forgetAuthtoken()} style={styles.forget} />
           </>
         )}
       </Screen>
@@ -172,13 +126,10 @@ const styles = StyleSheet.create({
   step: { flexDirection: "row", gap: 10, paddingVertical: 12 },
   stepNumber: { width: 24, fontSize: 15, lineHeight: 22 },
   stepBody: { flex: 1, gap: 8 },
-  stepLink: { alignSelf: "flex-start", marginLeft: -10 },
-  field: { marginTop: 4 },
   toggle: { marginTop: 18 },
   grant: { minHeight: 56, paddingVertical: 10, flexDirection: "row", alignItems: "center", gap: 12 },
   grantMain: { flex: 1, minWidth: 0, gap: 3 },
   revoke: { minHeight: 44, paddingHorizontal: 10, marginRight: -10, justifyContent: "center" },
   revokeLabel: { fontFamily: fonts.text700, textDecorationLine: "underline" },
   empty: { paddingVertical: 14 },
-  forget: { alignSelf: "flex-start", marginTop: 14, marginLeft: -10 },
 });

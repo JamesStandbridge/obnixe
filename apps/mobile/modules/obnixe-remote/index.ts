@@ -1,39 +1,32 @@
 import { requireOptionalNativeModule } from "expo";
 import type { NativeModule } from "expo";
 
-export type TunnelState = "connecting" | "online" | "reconnecting" | "error" | "stopped";
+/** `open` once the WebSocket is up, `waiting` between a lost link and the next attempt. */
+export type LinkState = "connecting" | "open" | "waiting" | "stopped";
 
-export interface TunnelStatus {
-  readonly state: TunnelState;
-  readonly url: string;
+export interface LinkStatus {
+  readonly state: LinkState;
   readonly message: string;
 }
 
-/** One HTTP request received through the tunnel; `headers` is a JSON object of lowercase names to values. */
-export interface TunnelRequest {
-  readonly id: number;
-  readonly method: string;
-  readonly target: string;
-  readonly headers: string;
-  readonly body: string;
+/** One text frame received from the relay. */
+export interface LinkFrame {
+  readonly text: string;
 }
 
 type RemoteEvents = {
-  onRequest: (request: TunnelRequest) => void;
-  onStatus: (status: TunnelStatus) => void;
+  onFrame: (frame: LinkFrame) => void;
+  onStatus: (status: LinkStatus) => void;
 };
 
 declare class ObnixeRemoteModule extends NativeModule<RemoteEvents> {
-  isSupported(): boolean;
-  status(): TunnelStatus;
-  /** Starts the foreground service publishing the phone on the ngrok dev domain of `authtoken`'s account. */
-  start(authtoken: string): void;
+  status(): LinkStatus;
+  /** Starts the foreground service keeping a WebSocket to `url` open until stopped. */
+  start(url: string): void;
   stop(): void;
-  /** Answers request `id`; `headers` is a JSON object of names to values. */
-  respond(id: number, status: number, headers: string, body: string): void;
+  /** Sends a text frame; false when the link is down. */
+  send(text: string): boolean;
 }
 
-const native = requireOptionalNativeModule<ObnixeRemoteModule>("ObnixeRemote");
-
-/** The tunnel module, or null where the app was built without it or the device cannot load it. */
-export const remoteTunnel: ObnixeRemoteModule | null = native !== null && native.isSupported() ? native : null;
+/** The relay link module, or null where the app was built without it. */
+export const relayLink: ObnixeRemoteModule | null = requireOptionalNativeModule<ObnixeRemoteModule>("ObnixeRemote");

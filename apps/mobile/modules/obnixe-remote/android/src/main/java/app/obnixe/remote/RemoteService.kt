@@ -13,18 +13,16 @@ import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
-import app.obnixe.tunnel.Tunnel
-import go.Seq
 
-/** Keeps the process, and so the tunnel and the JavaScript that answers it, alive while remote access is on. */
+/** Keeps the process, and so the relay link and the JavaScript that answers it, alive while remote access is on. */
 class RemoteService : Service() {
   companion object {
-    private const val extraAuthtoken = "authtoken"
+    private const val extraUrl = "url"
     private const val channelId = "obnixe-remote"
     private const val notificationId = 7431
 
-    fun start(context: Context, authtoken: String) {
-      val intent = Intent(context, RemoteService::class.java).putExtra(extraAuthtoken, authtoken)
+    fun start(context: Context, url: String) {
+      val intent = Intent(context, RemoteService::class.java).putExtra(extraUrl, url)
       ContextCompat.startForegroundService(context, intent)
     }
 
@@ -36,20 +34,23 @@ class RemoteService : Service() {
   override fun onBind(intent: Intent?): IBinder? = null
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-    val authtoken = intent?.getStringExtra(extraAuthtoken)
-    if (authtoken == null) {
+    val url = intent?.getStringExtra(extraUrl)
+    if (url == null) {
       stopSelf()
       return START_NOT_STICKY
     }
     val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0
     ServiceCompat.startForeground(this, notificationId, notification(), type)
-    Seq.setContext(applicationContext)
-    Tunnel.start(authtoken, RemoteHub)
+    RemoteHub.link?.stop()
+    val link = RelayLink(applicationContext, url, RemoteHub)
+    RemoteHub.link = link
+    link.start()
     return START_NOT_STICKY
   }
 
   override fun onDestroy() {
-    Tunnel.stop()
+    RemoteHub.link?.stop()
+    RemoteHub.link = null
     super.onDestroy()
   }
 

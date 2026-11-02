@@ -1,0 +1,27 @@
+{
+  "name": "obnixe-remote-relay",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cloudflare Worker giving each Obnixe phone a public HTTPS origin and forwarding agent requests to it over a WebSocket.",
+  "license": "UNLICENSED",
+  "author": "James Standbridge",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
+    "test": "vitest run",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "@obnixe/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20261031.1",
+    "@obnixe/schema": "workspace:*",
+    "@types/node": "^26.6.5",
+    "miniflare": "5.20261023.3-beta",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5",
+    "wrangler": "4.156.0",
+    "zod": "^4.6.7"
+  }
+}
