@@ -6,4 +6,4 @@ allowBuilds:
   esbuild: true
 patchedDependencies:
   expo-image-picker@58.0.10: patches/expo-image-picker@58.0.10.patch
-  expo-sqlite@58.0.14: patches/expo-sqlite@58.0.14.patch
+  expo-sqlite@58.0.15: patches/expo-sqlite@58.0.15.patch
