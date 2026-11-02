@@ -41,10 +41,11 @@ export function isConnectionOpen(db: ObnixeDatabase, connectionId: Id): boolean 
   return row !== undefined && row.endedAt === null;
 }
 
-/** Ends connections left open by a killed app, dated at their last activity. */
-export function closeDanglingConnections(db: ObnixeDatabase): void {
+/** Ends connections left open by a killed app, dated at their last activity, except the `kept` ones that outlive the app. */
+export function closeDanglingConnections(db: ObnixeDatabase, kept: ReadonlySet<Id>): void {
   const open = db.select().from(agentConnection).where(isNull(agentConnection.endedAt)).all();
   for (const connection of open) {
+    if (kept.has(connection.id)) continue;
     const last = db.select({ calledAt: agentCall.calledAt }).from(agentCall).where(eq(agentCall.connectionId, connection.id)).orderBy(desc(agentCall.calledAt)).get();
     const endedAt: EpochMs = last?.calledAt ?? connection.startedAt;
     db.update(agentConnection).set({ endedAt, endReason: "screen_closed" }).where(eq(agentConnection.id, connection.id)).run();

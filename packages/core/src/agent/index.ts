@@ -1,3 +1,4 @@
+export * from "./clients.ts";
 export * from "./connection.ts";
 export * from "./contract.ts";
 export * from "./dispatch.ts";
@@ -11,4 +12,8 @@ export * from "./limits.ts";
 export * from "./present.ts";
 export * from "./protocol.ts";
 export * from "./relay.ts";
+export * from "./remote/http.ts";
+export * from "./remote/mcp.ts";
+export * from "./remote/oauth.ts";
+export * from "./remote/server.ts";
 export * from "./session.ts";

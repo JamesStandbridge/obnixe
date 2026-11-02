@@ -641,9 +641,17 @@ describe("connections", () => {
     ok("list_sports", {});
     const calledAt = context.env.now();
     context.advance(60_000);
-    closeDanglingConnections(context.db);
+    closeDanglingConnections(context.db, new Set());
     const rows = context.db.select().from(agentConnection).all();
     expect(rows.every((row) => row.endReason === "screen_closed")).toBe(true);
     expect(rows.find((row) => row.id === connectionId)?.endedAt).toBe(calledAt);
+  });
+
+  it("keeps the connections that outlive the app open", () => {
+    const remote = openConnection(context.db, context.env, { client: "Claude", host: "À distance" });
+    closeDanglingConnections(context.db, new Set([remote]));
+    const rows = context.db.select().from(agentConnection).all();
+    expect(rows.find((row) => row.id === remote)?.endedAt).toBeNull();
+    expect(rows.find((row) => row.id === connectionId)?.endReason).toBe("screen_closed");
   });
 });

@@ -34,6 +34,9 @@ import type { LinkNotice, LinkView } from "@/features/agent/link";
 import { saveBridgeHost, setPermission, useAgentSettings, useAgentTotals, useCalls, useConnection, usePhotoCount, useRevertIndex } from "@/features/agent/queries";
 import type { AgentSettings, CallRow } from "@/features/agent/queries";
 import { useAgentLink } from "@/features/agent/useAgentLink";
+import { useRemoteAccess } from "@/features/remote/access";
+import type { RemoteAccessState } from "@/features/remote/access";
+import { RemoteLink, tunnelLabel } from "@/features/remote/components";
 import { useToggleChange } from "@/features/agent/useToggleChange";
 import { LinkButton } from "@/ui/Button";
 import { Section, Screen } from "@/ui/Layout";
@@ -47,6 +50,10 @@ function openLog(): void {
 
 function openScanner(): void {
   router.push("/agent/scan");
+}
+
+function openRemote(): void {
+  router.push("/agent/remote");
 }
 
 function useSecondsUntil(deadline: number | null): number {
@@ -256,8 +263,15 @@ function bottomLabel(view: LinkView, knownMac: string | null): string {
   }
 }
 
+function remoteDetail(remote: RemoteAccessState): string {
+  if (!remote.hasAuthtoken) return "Claude depuis n'importe où, sans ordinateur";
+  if (remote.enabled && remote.tunnel.state === "online") return `En ligne · ${plural(remote.grants.length, "agent autorisé", "agents autorisés")}`;
+  return tunnelLabel(remote.tunnel, remote.enabled);
+}
+
 export default function Agent() {
   const settings = useAgentSettings();
+  const remote = useRemoteAccess();
   const notify = useSnackbar();
   const [editingHost, setEditingHost] = useState(false);
   const [forgetting, setForgetting] = useState(false);
@@ -329,6 +343,7 @@ export default function Agent() {
         {view.kind === "resuming" ? <Resuming view={view} settings={settings} onEditHost={() => setEditingHost(true)} onForget={askForget} /> : null}
         {view.kind === "connected" ? <Connected connectionId={view.connectionId} settings={settings} knownMac={knownMac} onForget={askForget} /> : null}
         {view.kind === "disconnected" ? <Disconnected connectionId={view.connectionId} at={view.at} knownMac={knownMac} onForget={askForget} /> : null}
+        {remote.available ? <RemoteLink detail={remoteDetail(remote)} onPress={openRemote} /> : null}
       </Screen>
       <BottomAction label={bottomLabel(view, knownMac)} onPress={bottomAction} />
       <ForgetMacSheet

@@ -6,6 +6,7 @@ import type { ConnectionEndReason } from "@obnixe/schema";
 import { db } from "@/data/database";
 import { AgentLink } from "@/features/agent/link";
 import type { LinkNotice, LinkView } from "@/features/agent/link";
+import { remoteConnectionIds } from "@/features/remote/vault";
 import { useKeepAwakeWhile } from "@/ui/useKeepAwakeWhile";
 
 export interface AgentLinkControls {
@@ -41,7 +42,7 @@ export function useAgentLink(host: string | null, onNotice: (notice: LinkNotice)
   useEffect(() => {
     const link = linkRef.current;
     if (link === null) return;
-    closeDanglingConnections(db());
+    closeDanglingConnections(db(), remoteConnectionIds());
     link.start();
     const subscription = AppState.addEventListener("change", (state) => {
       if (state === "background") link.suspend();

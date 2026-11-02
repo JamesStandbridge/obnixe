@@ -1,4 +1,5 @@
 export * from "../bytes.ts";
+export * from "./clients.ts";
 export * from "./contract.ts";
 export * from "./encoding.ts";
 export * from "./hosts.ts";
