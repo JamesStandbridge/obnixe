@@ -137,6 +137,13 @@ describe("phone connection", () => {
     second.socket.close(1000, "done");
   });
 
+  it("serves the public pages on the www host", async () => {
+    const privacy = await relay.dispatchFetch("https://www.obnixe.app/confidentialite");
+    expect(privacy.status).toBe(200);
+    expect(await privacy.text()).toContain("Politique de confidentialité");
+    expect((await relay.dispatchFetch("https://www.obnixe.app/ailleurs")).status).toBe(404);
+  });
+
   it("refuses unknown hosts and malformed phone keys", async () => {
     expect((await relay.dispatchFetch("https://not-a-phone.obnixe.app/")).status).toBe(404);
     expect((await relay.dispatchFetch("https://relay.obnixe.app/connect?key=abc", { headers: { upgrade: "websocket" } })).status).toBe(400);
