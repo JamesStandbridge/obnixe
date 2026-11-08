@@ -138,9 +138,9 @@ describe("phone connection", () => {
   });
 
   it("serves the public pages on the www host", async () => {
-    const privacy = await relay.dispatchFetch("https://www.obnixe.app/confidentialite");
+    const privacy = await relay.dispatchFetch("https://www.obnixe.app/privacy");
     expect(privacy.status).toBe(200);
-    expect(await privacy.text()).toContain("Politique de confidentialité");
+    expect(await privacy.text()).toContain("Privacy policy");
     expect((await relay.dispatchFetch("https://www.obnixe.app/ailleurs")).status).toBe(404);
   });
 
