@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { Vibration } from "react-native";
+import { Platform, Vibration } from "react-native";
 import { addBatteryLevelListener, getBatteryLevelAsync } from "expo-battery";
 import { ImpactFeedbackStyle, impactAsync } from "expo-haptics";
 // The package index loads the push topic module, which Expo Go on Android does not ship, so local notification APIs are imported from their own files.
@@ -9,6 +9,8 @@ import { scheduleNotificationAsync } from "expo-notifications/build/scheduleNoti
 import { setNotificationChannelAsync } from "expo-notifications/build/setNotificationChannelAsync";
 import type { Id } from "@obnixe/schema";
 import { undo, write } from "@/data/write";
+import { alertPulses, vibrationPattern } from "@/features/recording/alerts";
+import { playAlertSound } from "@/features/tracking/alertSound";
 import { DerivedRebuild } from "@/features/tracking/derivedRebuild";
 import type { DerivedRebuildState } from "@/features/tracking/derivedRebuild";
 import { RecorderHost } from "@/features/tracking/recorderHost";
@@ -17,7 +19,6 @@ import { tracker } from "../../../modules/obnixe-tracker";
 
 const pauseChannelId = "recording-pause";
 const pauseReminderId = "recording-pause-reminder";
-const alertVibrationMs = 200;
 
 function report(error: unknown): void {
   ErrorUtils.getGlobalHandler()(error, false);
@@ -29,7 +30,10 @@ const feedback: RecorderFeedback = {
   haptic: () => {
     impactAsync(ImpactFeedbackStyle.Medium).catch(report);
   },
-  alert: () => Vibration.vibrate(alertVibrationMs),
+  alert: (event, sound) => {
+    Vibration.vibrate(vibrationPattern(alertPulses(event), Platform.OS === "ios" ? "ios" : "android"));
+    if (sound) playAlertSound(report).catch(report);
+  },
   pauseReminder: () => {
     setNotificationChannelAsync(pauseChannelId, { name: "Activité en pause", importance: AndroidImportance.DEFAULT })
       .then(() =>

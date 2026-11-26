@@ -1,5 +1,5 @@
 import { and, asc, desc, eq, gt, gte, inArray, isNull, ne, sql } from "drizzle-orm";
-import { agentConnection, changeset, exercise, exerciseZone, painReport, programItem, programSlot, programVariant, session, sessionItem, strengthEntry, strengthSet, zoneTracking } from "@obnixe/schema";
+import { agentConnection, changeset, exercise, exerciseZone, painReport, programItem, programSlot, programVariant, recording, session, sessionItem, strengthEntry, strengthSet, zoneTracking } from "@obnixe/schema";
 import type { EpochMs, ExerciseMeasure, Id, LocalDate, PainLevel, ProgramItem, ProgramSlot, Session, SportKey, ZoneKey } from "@obnixe/schema";
 import type { ObnixeDatabase } from "../database.ts";
 import type { Mutation } from "../writer.ts";
@@ -17,14 +17,16 @@ export interface OpenSession {
   readonly setCount: number;
   readonly itemCount: number;
   readonly lastActivityAt: EpochMs;
+  readonly recorded: boolean;
 }
 
 export function openSession(db: ObnixeDatabase): OpenSession | null {
   const row = db
-    .select({ session, slotName: programSlot.name, variantName: programVariant.name })
+    .select({ session, slotName: programSlot.name, variantName: programVariant.name, recordingId: recording.id })
     .from(session)
     .leftJoin(programSlot, eq(session.slotId, programSlot.id))
     .leftJoin(programVariant, eq(session.variantId, programVariant.id))
+    .leftJoin(recording, eq(recording.sessionId, session.id))
     .where(and(ne(session.status, "completed"), isNull(session.deletedAt)))
     .orderBy(desc(session.startedAt))
     .get();
@@ -48,6 +50,7 @@ export function openSession(db: ObnixeDatabase): OpenSession | null {
     setCount: Number(sets?.count ?? 0),
     itemCount: Number(items?.count ?? 0),
     lastActivityAt: Math.max(...candidates.map(Number)) as EpochMs,
+    recorded: row.recordingId !== null,
   };
 }
 

@@ -72,12 +72,13 @@ describe("live metrics", () => {
 describe("live readout", () => {
   const run = profileOf("run");
   const none = { readout: null, heartRateDevice: null } as const;
+  const venu = { id: "C4:7D:2A:10:9E:01", name: "Venu 3S" };
 
   it("uses annex A, the heart rate taking the last place when a source is memorized (SPT-005)", () => {
     expect(liveReadout(run, none)).toEqual({ main: "pace_now", secondary: ["distance", "moving", "pace_avg", "cadence"] });
-    expect(liveReadout(run, { readout: null, heartRateDevice: "Venue 3S" })).toEqual({ main: "pace_now", secondary: ["distance", "moving", "pace_avg", "heart_rate"] });
+    expect(liveReadout(run, { readout: null, heartRateDevice: venu })).toEqual({ main: "pace_now", secondary: ["distance", "moving", "pace_avg", "heart_rate"] });
     const chosen: NonNullable<RecordingSettings["readout"]> = { main: "distance", secondary: ["moving", "heart_rate", "clock"] };
-    expect(liveReadout(run, { readout: chosen, heartRateDevice: "Venue 3S" })).toEqual(chosen);
+    expect(liveReadout(run, { readout: chosen, heartRateDevice: venu })).toEqual(chosen);
   });
 
   it("leaves out the metrics the profile does not compute", () => {

@@ -4,12 +4,13 @@ import type { NativeScrollEvent, NativeSyntheticEvent, ScrollViewInstance } from
 import Animated, { FadeInDown, FadeOutUp, LinearTransition, useAnimatedStyle } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Stack, useRouter } from "expo-router";
-import { notificationAsync, NotificationFeedbackType } from "expo-haptics";
-import type { LiveLap, RecorderPhase, ResolvedProfile } from "@obnixe/core";
-import type { EpochMs, MetricKey } from "@obnixe/schema";
+import type { LiveLap, RecorderPhase, RecordingAlertEvent, ResolvedProfile } from "@obnixe/core";
+import { sports } from "@obnixe/schema";
+import type { EpochMs, MetricKey, ZoneKey } from "@obnixe/schema";
 import { updateSettings, useRecordingDisplay } from "@/data/settings";
 import { SwitchRow } from "@/features/activity/components";
 import { LiveMap } from "@/features/maps/LiveMap";
+import { ElevationPage } from "@/features/recording/ElevationPage";
 import { LiveControls } from "@/features/recording/LiveControls";
 import { Chronometer, MetricTile, SignalBars } from "@/features/recording/LiveParts";
 import { lapFigures, metricCaptions, metricText } from "@/features/recording/metrics";
@@ -19,12 +20,13 @@ import { liveReadout } from "@/features/recording/readout";
 import { targetLabel, targetProgress } from "@/features/recording/target";
 import { openSystemSettings } from "@/features/tracking/permissions";
 import { recorder } from "@/features/tracking/recorder";
-import type { RecordingView } from "@/features/tracking/recorderHost";
+import type { LiveAlert, RecordingView } from "@/features/tracking/recorderHost";
 import { useNow } from "@/features/training/useLiveLoad";
 import { deviceTimeZone } from "@/format/dates";
 import { formatLongClock } from "@/format/durations";
+import { lowerFirst, zoneLabel } from "@/format/labels";
 import { Icon } from "@/ui/icons/Icon";
-import { IconButton, MenuItem } from "@/ui/Inputs";
+import { IconButton, MenuItem, ZoneRow } from "@/ui/Inputs";
 import { useLoop } from "@/ui/motion";
 import { Sheet } from "@/ui/Overlays";
 import { useSnackbar } from "@/ui/SnackbarHost";
@@ -34,21 +36,25 @@ import { fonts, layout, radii } from "@/ui/tokens";
 import { useKeepAwakeWhile } from "@/ui/useKeepAwakeWhile";
 import type { TrackerIssueKind } from "../../../modules/obnixe-tracker";
 
-type Page = "metrics" | "laps" | "map";
+type Page = "metrics" | "laps" | "profile" | "map";
 
-const pages: readonly { readonly key: Page; readonly label: string }[] = [
-  { key: "metrics", label: "Données" },
-  { key: "laps", label: "Tours" },
-  { key: "map", label: "Carte" },
-];
+interface PageTab {
+  readonly key: Page;
+  readonly label: string;
+}
 
-const lapBannerMs = 5000;
+const metricsTab: PageTab = { key: "metrics", label: "Données" };
+const lapsTab: PageTab = { key: "laps", label: "Tours" };
+const profileTab: PageTab = { key: "profile", label: "Profil" };
+const mapTab: PageTab = { key: "map", label: "Carte" };
+
+const alertBannerMs = 5000;
 
 interface LiveScreenProps {
   readonly recording: RecordingView;
 }
 
-/** `UX-001`, `UX-002`: the live pages of a recording, with its controls and lock. */
+/** `UX-001`, `UX-002`: the live pages of a recording, the elevation profile for the sports showing the climb, with its controls and lock. */
 export function LiveScreen({ recording }: LiveScreenProps) {
   const { colors, name: palette } = useTheme();
   const insets = useSafeAreaInsets();
@@ -60,26 +66,20 @@ export function LiveScreen({ recording }: LiveScreenProps) {
   const pager = useRef<ScrollViewInstance>(null);
   const [page, setPage] = useState<Page>("metrics");
   const [locked, setLocked] = useState(false);
-  const [menu, setMenu] = useState(false);
+  const [menu, setMenu] = useState<"closed" | "options" | "pain">("closed");
   const [confirmStop, setConfirmStop] = useState(false);
   const [controlsHeight, setControlsHeight] = useState(120);
 
   const { sessionId, profile, state, live, laps, clock } = recording;
   const phase = state.phase;
   const readout = useMemo(() => liveReadout(profile, recording.settings), [profile, recording.settings]);
+  const pages = useMemo((): readonly PageTab[] => (profile.metrics.includes("ascent") ? [metricsTab, lapsTab, profileTab, mapTab] : [metricsTab, lapsTab, mapTab]), [profile]);
   const target = useMemo(() => sessionTargetOf(sessionId), [sessionId]);
   const timeZone = useMemo(() => deviceTimeZone(), []);
   const now = useNow(readout.main === "clock" || readout.secondary.includes("clock") ? 15_000 : 3_600_000);
   const text = (key: MetricKey): MetricText => metricText(key, live.metrics, profile, now as EpochMs, timeZone);
-  const lapBanner = useLapBanner(laps);
+  const alertBanner = useAlertBanner(recording.alert);
   const progress = target === null ? null : targetProgress(target, live);
-
-  const reached = progress?.reached === true;
-  const announced = useRef(reached);
-  useEffect(() => {
-    if (reached && !announced.current) void notificationAsync(NotificationFeedbackType.Success);
-    announced.current = reached;
-  }, [reached]);
 
   useEffect(() => {
     if (!locked || Platform.OS !== "android") return undefined;
@@ -107,6 +107,13 @@ export function LiveScreen({ recording }: LiveScreenProps) {
     void recorder.stop().then(failed);
   };
 
+  const reportPain = (zone: ZoneKey, level: "discomfort" | "stop"): void => {
+    setMenu("closed");
+    const outcome = recorder.reportPain(zone, level);
+    if (outcome.ok) notify({ text: `Douleur notée · ${lowerFirst(zoneLabel(zone))}`, aboveTabBar: false, extraOffset: 96 });
+    else failed(outcome);
+  };
+
   const feed = recorder.mapFeed();
   const pausedFor = phase === "paused" && clock !== null ? Math.max(0, clock.elapsedMs - state.since) : null;
 
@@ -122,7 +129,7 @@ export function LiveScreen({ recording }: LiveScreenProps) {
           <SignalBars level={live.signal.level} />
           <IconButton icon="sun" label="Mode plein soleil" pressed={palette === "sunlight"} onPress={() => updateSettings({ theme: palette === "sunlight" ? "dark" : "sunlight" })} />
           <IconButton icon="lock" label="Verrouiller l'écran" onPress={() => setLocked(true)} />
-          <IconButton icon="more" label="Options de la sortie" edge="end" onPress={() => setMenu(true)} />
+          <IconButton icon="more" label="Options de la sortie" edge="end" onPress={() => setMenu("options")} />
         </View>
         <View style={styles.tabs} accessibilityRole="tablist">
           {pages.map((item) => {
@@ -162,7 +169,7 @@ export function LiveScreen({ recording }: LiveScreenProps) {
             ]}
           />
         ) : null}
-        {lapBanner === null ? null : <LapBanner key={`lap-${lapBanner.index}`} lap={lapBanner} profile={profile} />}
+        {alertBanner === null ? null : <Banner key={`alert-${alertBanner.id}`} tone={alertBanner.notice.tone} title={alertBanner.notice.title} detail={alertBanner.notice.detail} />}
       </View>
 
       <ScrollView
@@ -211,6 +218,12 @@ export function LiveScreen({ recording }: LiveScreenProps) {
           <LapsPage current={live.lap} laps={laps} profile={profile} />
         </View>
 
+        {pages.includes(profileTab) ? (
+          <View style={[styles.page, { width }]}>
+            <ElevationPage points={recording.elevation} sport={profile.sport} altitude={text("altitude")} ascent={text("ascent")} descent={text("descent")} />
+          </View>
+        ) : null}
+
         <View style={[styles.page, styles.mapPage, { width }]}>
           {feed === null ? null : <LiveMap feed={feed} sport={profile.sport} visible={page === "map"} />}
           <View style={[styles.mapCard, { backgroundColor: colors.bg, borderColor: colors.line }]} pointerEvents="none">
@@ -242,8 +255,9 @@ export function LiveScreen({ recording }: LiveScreenProps) {
 
       {locked ? <LockShield top={insets.top} bottom={controlsHeight} /> : null}
 
-      <Sheet open={menu} title="Options de la sortie" onClose={() => setMenu(false)}>
+      <Sheet open={menu === "options"} title="Options de la sortie" onClose={() => setMenu("closed")}>
         <View>
+          <MenuItem label="Signaler une douleur" detail={recording.pains.length === 0 ? "Enregistrée avec la sortie" : `${recording.pains.length} signalée${recording.pains.length > 1 ? "s" : ""}`} onPress={() => setMenu("pain")} />
           <SwitchRow title="Pause automatique" detail="Quand tu t'arrêtes" value={"autoPause" in state && state.autoPause} onChange={(value) => failed(recorder.setAutoPause(value))} />
           <SwitchRow title="Garder l'écran allumé" detail="Pour toutes les sorties" value={display.keepScreenOn} onChange={(value) => updateSettings({ keepScreenOn: value })} />
           <SwitchRow
@@ -256,10 +270,17 @@ export function LiveScreen({ recording }: LiveScreenProps) {
             label="Revenir à l'accueil"
             detail="L'enregistrement continue"
             onPress={() => {
-              setMenu(false);
+              setMenu("closed");
               router.navigate("/");
             }}
           />
+        </View>
+      </Sheet>
+      <Sheet open={menu === "pain"} title="Signaler une douleur" context="Touche le niveau de la zone concernée" onClose={() => setMenu("closed")}>
+        <View>
+          {sports[profile.sport].painZones.map((zone) => (
+            <ZoneRow key={zone} name={zoneLabel(zone)} value={null} levels={painLevels} onChange={(level) => (level === "discomfort" || level === "stop" ? reportPain(zone, level) : undefined)} />
+          ))}
         </View>
       </Sheet>
       <Sheet open={confirmStop} title="Terminer la sortie ?" context="Tu verras le résumé avant d'enregistrer" onClose={() => setConfirmStop(false)}>
@@ -272,21 +293,28 @@ export function LiveScreen({ recording }: LiveScreenProps) {
   );
 }
 
-function useLapBanner(laps: readonly LiveLap[]): LiveLap | null {
-  const seen = useRef(laps.length);
-  const [shown, setShown] = useState<LiveLap | null>(null);
+const painLevels = ["discomfort", "stop"] as const;
+
+/** Alerts a lasting banner already tells: the automatic pause and the lost heart-rate source. */
+function hasStateBanner(event: RecordingAlertEvent): boolean {
+  return event.kind === "auto_pause" || (event.kind === "sensor" && event.change === "lost");
+}
+
+/** `REC-075`: each new alert for 5 s; the vibration and the notification come from the recorder. */
+function useAlertBanner(alert: LiveAlert | null): LiveAlert | null {
+  const seen = useRef(alert?.id ?? 0);
+  const [shown, setShown] = useState<LiveAlert | null>(null);
   useEffect(() => {
-    if (laps.length <= seen.current) {
-      seen.current = laps.length;
+    if (alert === null || alert.id <= seen.current) return undefined;
+    seen.current = alert.id;
+    if (hasStateBanner(alert.event)) {
+      setShown(null);
       return undefined;
     }
-    seen.current = laps.length;
-    const latest = laps[laps.length - 1] ?? null;
-    setShown(latest);
-    void notificationAsync(NotificationFeedbackType.Success);
-    const timer = setTimeout(() => setShown(null), lapBannerMs);
+    setShown(alert);
+    const timer = setTimeout(() => setShown(null), alertBannerMs);
     return () => clearTimeout(timer);
-  }, [laps]);
+  }, [alert]);
   return shown;
 }
 
@@ -393,16 +421,6 @@ function IssueBanner({ issue }: { readonly issue: TrackerIssueKind }) {
       return unreachable;
     }
   }
-}
-
-interface LapBannerProps {
-  readonly lap: LiveLap;
-  readonly profile: ResolvedProfile;
-}
-
-function LapBanner({ lap, profile }: LapBannerProps) {
-  const figures = lapFigures(lap, profile);
-  return <Banner tone="mark" title={figures.title} detail={`${figures.duration} · ${figures.distance.value} ${figures.distance.unit} · ${figures.rate.value} ${figures.rate.unit}`} />;
 }
 
 interface LapsPageProps {

@@ -74,13 +74,13 @@ export function slotStartOf(slotId: Id, variantId: Id | null): SlotStart | null 
 
 export function recordingTitle(sessionId: Id): string | null {
   const row = db()
-    .select({ sport: session.sport, title: session.title, values: session.values, slotName: programSlot.name, variantName: programVariant.name })
+    .select({ sport: session.sport, title: session.title, values: session.values, startedAt: session.startedAt, timeZone: session.timeZone, slotName: programSlot.name, variantName: programVariant.name })
     .from(session)
     .leftJoin(programSlot, eq(session.slotId, programSlot.id))
     .leftJoin(programVariant, eq(session.variantId, programVariant.id))
     .where(eq(session.id, sessionId))
     .get();
-  return row === undefined ? null : sessionTitle(row);
+  return row === undefined ? null : sessionTitle({ ...row, recorded: true });
 }
 
 /** Where a recording link leads once the recording is over: its session, unless it was deleted. */

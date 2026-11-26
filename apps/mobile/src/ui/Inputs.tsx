@@ -153,9 +153,10 @@ interface ZoneRowProps {
   readonly detail?: string;
   readonly value: PainLevel | null;
   readonly onChange: (value: PainLevel | null) => void;
+  readonly levels?: readonly PainLevel[];
 }
 
-export function ZoneRow({ name, detail, value, onChange }: ZoneRowProps) {
+export function ZoneRow({ name, detail, value, onChange, levels }: ZoneRowProps) {
   const { colors } = useTheme();
   return (
     <View style={[styles.zone, { borderTopColor: colors.line }]}>
@@ -167,7 +168,7 @@ export function ZoneRow({ name, detail, value, onChange }: ZoneRowProps) {
           </Text>
         )}
       </View>
-      <PainLevels label={name} value={value} onChange={onChange} />
+      <PainLevels label={name} value={value} onChange={onChange} levels={levels} />
     </View>
   );
 }

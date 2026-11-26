@@ -87,7 +87,7 @@ async function recorded(seconds: number, saved: boolean): Promise<Recorded> {
     const { track } = journalTrackOf(journal, startedAt);
     const processed = processTrack(track, plan.profile, { laps: { kind: "recorded", autoLap: null }, trim: { startMs: 0, endMs: null } });
     const stored = await writeTrack(plan.recordingId, encodeTrack(track));
-    write("Sortie", planRecordingSave(db(), environment, { sessionId: plan.sessionId, track, processed, stored }));
+    write("Sortie", planRecordingSave(db(), environment, { sessionId: plan.sessionId, track, processed, stored, pains: [] }));
   }
   return { sessionId: plan.sessionId, recordingId: plan.recordingId, journal };
 }

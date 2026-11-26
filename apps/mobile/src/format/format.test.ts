@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { LocalDate } from "@obnixe/schema";
+import type { EpochMs, LocalDate } from "@obnixe/schema";
 import { relativeDay, shortDate } from "@/format/dates";
 import { formatClock, formatLongClock } from "@/format/durations";
 import { capitalize, lowerFirst, plural, sessionTitle } from "@/format/labels";
@@ -43,7 +43,7 @@ describe("labels", () => {
   });
 
   it("titles sessions from the title, the program slot or the sport fields", () => {
-    const base: SessionTitleSource = { sport: "strength", title: null, slotName: null, variantName: null, values: {} };
+    const base: SessionTitleSource = { sport: "strength", title: null, slotName: null, variantName: null, values: {}, startedAt: Date.UTC(2026, 10, 27, 6, 30) as EpochMs, timeZone: "Europe/Paris", recorded: false };
     expect(sessionTitle({ ...base, title: "Jambes" })).toBe("Jambes");
     expect(sessionTitle(base)).toBe("Musculation libre");
     expect(sessionTitle({ ...base, slotName: "Séance A", variantName: "Salle" })).toBe("Séance A · Salle");
@@ -52,6 +52,17 @@ describe("labels", () => {
     expect(sessionTitle({ ...base, sport: "hike", values: { kind: "trail", route: "GR20" } })).toBe("Rando · GR20");
     expect(sessionTitle({ ...base, sport: "climb", values: { place: "Arkose", discipline: "boulder" } })).toBe("Bloc · Arkose");
     expect(sessionTitle({ ...base, sport: "climb", values: {} })).toBe("Escalade");
+  });
+
+  it("adds the moment of the day to a recorded activity without a title, in its own time zone (REC-053)", () => {
+    const recorded: SessionTitleSource = { sport: "run", title: null, slotName: null, variantName: null, values: {}, startedAt: Date.UTC(2026, 10, 27, 6, 30) as EpochMs, timeZone: "Europe/Paris", recorded: true };
+    expect(sessionTitle({ ...recorded, sport: "run" })).toBe("Course du matin");
+    expect(sessionTitle({ ...recorded, sport: "hike", startedAt: Date.UTC(2026, 10, 27, 13, 0) as EpochMs })).toBe("Rando de l'après-midi");
+    expect(sessionTitle({ ...recorded, sport: "bike", startedAt: Date.UTC(2026, 10, 27, 18, 30) as EpochMs })).toBe("Vélo du soir");
+    expect(sessionTitle({ ...recorded, sport: "walk", timeZone: "America/New_York" })).toBe("Marche de nuit");
+    expect(sessionTitle({ ...recorded, sport: "run", values: { kind: "easy" } })).toBe("Course du matin · footing");
+    expect(sessionTitle({ ...recorded, sport: "run", slotName: "Footing" })).toBe("Footing");
+    expect(sessionTitle({ ...recorded, sport: "run", title: "Marathon" })).toBe("Marathon");
   });
 });
 
