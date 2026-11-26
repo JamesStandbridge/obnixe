@@ -145,14 +145,12 @@ export function metEntryFor(sport: SportKey, values: FieldValues, movingSpeed: n
       return metTable.hikeCrossCountry;
     case "bike":
       return bikeEntry(values, movingSpeed);
-    case "swim": {
+    case "swim":
       if (choice(values, "water") === "open_water") return metTable.swimOpenWater;
-      const stroke = choice(values, "kind");
-      if (stroke === "crawl") return metTable.swimCrawl;
-      if (stroke === "breaststroke") return metTable.swimBreaststroke;
-      if (stroke === "drills") return metTable.swimDrills;
+      if (kind === "crawl") return metTable.swimCrawl;
+      if (kind === "breaststroke") return metTable.swimBreaststroke;
+      if (kind === "drills") return metTable.swimDrills;
       return metTable.swimLaps;
-    }
     case "strength":
     case "climb":
     case "yoga":
