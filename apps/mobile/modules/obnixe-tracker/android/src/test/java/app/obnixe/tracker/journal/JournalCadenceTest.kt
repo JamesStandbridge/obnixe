@@ -41,7 +41,7 @@ class JournalCadenceTest {
   }
 
   @Test
-  fun `waits for the write interval and restarts it on every write`() {
+  fun `REC-080 waits at most the write interval and restarts it on every write`() {
     val cadence = JournalCadence(5_000, 0)
     assertFalse(cadence.writeDue(4_999))
     assertTrue(cadence.writeDue(5_000))
@@ -55,7 +55,7 @@ class JournalCadenceTest {
   }
 
   @Test
-  fun `an hour with the screen on delivers every second and writes at most 720 batches`() {
+  fun `PRF-051 an hour with the screen on delivers every second and writes at most 720 batches`() {
     val writer = JournalWriter.create(File(directory, "session.ojr"), header)
     val cadence = JournalCadence(5_000, 0)
     val arrivedAt = HashMap<Sample, Long>()
