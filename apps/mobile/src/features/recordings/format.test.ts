@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { distanceText, effortFigure, effortTitle, paceSeconds, rateFigure, speedFigure } from "@/features/recordings/format";
+import { climbText, distanceText, effortFigure, effortTitle, paceSeconds, rateFigure, speedFigure } from "@/features/recordings/format";
 
 describe("recorded activity figures", () => {
   it("writes the pace per km or per 100 m, the speed in km/h", () => {
@@ -23,5 +23,11 @@ describe("recorded activity figures", () => {
     expect(effortTitle("trail:ascent_1h")).toBe("D+ en 1 h");
     expect(effortFigure({ effort: "run:distance:5000", elapsedMs: 1_234_000, ascentMm: null })).toEqual({ value: "20:34", unit: "" });
     expect(effortFigure({ effort: "trail:ascent_1h", elapsedMs: 3_600_000, ascentMm: 812_400 })).toEqual({ value: "812", unit: "m" });
+  });
+
+  it("describes a climb by its start, length, grades, D+, moving time and VAM (GPS-062)", () => {
+    const climb = { startDistanceMm: 3_240_000, distanceMm: 2_410_000, ascentMm: 148_300, gradeAvg: 0.0613, gradeMax: 0.112, movingMs: 1_100_000, vamMetersPerHour: 485 };
+    expect(climbText(climb)).toEqual({ detail: "Au km 3,2 · 2,41 km à 6,1 % · max 11,2 %", ascent: "+148 m", effort: "18:20 · 485 m/h" });
+    expect(climbText({ ...climb, movingMs: 0, vamMetersPerHour: null }).effort).toBe("0:00");
   });
 });

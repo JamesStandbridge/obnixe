@@ -27,6 +27,8 @@ export function alertLabel(alert: RecordingAlert, profile: Pick<ResolvedProfile,
       return { title: "Objectif atteint", detail: "Distance ou durée de la séance du programme" };
     case "auto_pause":
       return { title: "Pause et reprise automatiques", detail: "Quand tu t'arrêtes et repars" };
+    case "segment":
+      return { title: "Segments", detail: "À l'entrée, puis le temps et l'écart au meilleur passage" };
     case "gps":
       return { title: "Signal GPS", detail: "Perdu puis retrouvé" };
     case "sensor":

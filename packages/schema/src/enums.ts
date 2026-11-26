@@ -126,5 +126,5 @@ export type BiologicalSex = (typeof biologicalSexes)[number];
 export const mapStyles = ["obnixe_outdoor", "plan_ign"] as const;
 export type MapStyle = (typeof mapStyles)[number];
 
-export const recordingAlerts = ["lap", "split", "auto_pause", "goal", "gps", "sensor", "battery"] as const;
+export const recordingAlerts = ["lap", "split", "auto_pause", "goal", "segment", "gps", "sensor", "battery"] as const;
 export type RecordingAlert = (typeof recordingAlerts)[number];

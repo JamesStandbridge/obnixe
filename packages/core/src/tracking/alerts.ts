@@ -1,5 +1,6 @@
 import type { HeartRateRange, PaceRange, RecordingAlert, RecordingAlertSettings } from "@obnixe/schema";
 import type { LiveLap, LiveSnapshot } from "./live.ts";
+import type { LiveSegmentEvent } from "./liveSegments.ts";
 import type { RecorderAlert, RecorderPhase } from "./recorder.ts";
 import type { HeartRateZoneBounds } from "./zones.ts";
 
@@ -28,6 +29,7 @@ export type RecordingAlertEvent =
   | { readonly kind: "goal"; readonly goal: AlertGoal }
   | ({ readonly kind: "pace_range"; readonly range: PaceRange } & RangeStatus)
   | ({ readonly kind: "heart_rate_range"; readonly range: HeartRateRange } & RangeStatus)
+  | LiveSegmentEvent
   | { readonly kind: "gps"; readonly change: SignalChange }
   | { readonly kind: "sensor"; readonly change: SignalChange }
   | { readonly kind: "battery"; readonly level: BatteryAlertLevel };
@@ -55,6 +57,9 @@ export function alertSettingOf(kind: RecordingAlertKind): RecordingAlert | null 
     case "auto_pause":
     case "auto_resume":
       return "auto_pause";
+    case "segment_entered":
+    case "segment_finished":
+      return "segment";
     case "pace_range":
     case "heart_rate_range":
       return null;
@@ -188,6 +193,11 @@ export class AlertMonitor {
     if (connected === !this.sensorLost) return [];
     this.sensorLost = !connected;
     return this.emit([{ kind: "sensor", change: connected ? "back" : "lost" }]);
+  }
+
+  /** `SEG-004`: the segment entries and passes of the live track. */
+  segments(events: readonly LiveSegmentEvent[]): readonly RecordingAlertEvent[] {
+    return events.length === 0 ? [] : this.emit(events);
   }
 
   battery(level: BatteryAlertLevel): readonly RecordingAlertEvent[] {

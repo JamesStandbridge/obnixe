@@ -3,7 +3,7 @@ import type { AlertGoal, RangeStatus, RecordingAlertEvent, ResolvedProfile } fro
 import type { HeartRateRange, PaceRange } from "@obnixe/schema";
 import { lapFigures } from "@/features/recording/metrics";
 import { targetLabel } from "@/features/recording/target";
-import { formatClock } from "@/format/durations";
+import { formatClock, formatLongClock } from "@/format/durations";
 import { formatNumber } from "@/format/numbers";
 
 export type AlertTone = "mark" | "warn" | "stop";
@@ -29,9 +29,14 @@ const pulses = {
   long: [500],
   rising: [short, gap, 300],
   warning: [300, 200, 300],
+  entering: [300, gap, short],
+  finishing: [short, gap, short, gap, 300],
 } as const satisfies Readonly<Record<string, AlertPulses>>;
 
-/** `REC-075`: a vibration per alert type, one for a lap or a split, two for a reached target, three short ones out of a span. */
+/**
+ * `REC-075`: a vibration per alert type, one for a lap or a split, two for a reached target, three short ones out of a span,
+ * long then short on entering a segment, short twice then long at its end (`SEG-004`).
+ */
 export function alertPulses(event: RecordingAlertEvent): AlertPulses {
   switch (event.kind) {
     case "lap":
@@ -51,6 +56,10 @@ export function alertPulses(event: RecordingAlertEvent): AlertPulses {
       return event.change === "back" ? pulses.back : pulses.long;
     case "battery":
       return pulses.warning;
+    case "segment_entered":
+      return pulses.entering;
+    case "segment_finished":
+      return pulses.finishing;
     default: {
       const unreachable: never = event;
       throw new Error(`Unhandled alert ${JSON.stringify(unreachable)}`);
@@ -120,6 +129,18 @@ function heartRateTitle(status: RangeStatus["status"]): string {
   }
 }
 
+/** The gap to the best pass, « −0:05 » when faster. */
+function segmentGapText(elapsedMs: number, bestElapsedMs: number): string {
+  const seconds = Math.round((elapsedMs - bestElapsedMs) / 1000);
+  return `${seconds < 0 ? "−" : "+"}${formatClock(Math.abs(seconds))}`;
+}
+
+function segmentFinishDetail(elapsedMs: number, bestElapsedMs: number | null): string {
+  if (bestElapsedMs === null) return "Premier passage";
+  const gap = segmentGapText(elapsedMs, bestElapsedMs);
+  return elapsedMs < bestElapsedMs ? `Meilleur passage, ${gap}` : `${gap} sur le meilleur passage`;
+}
+
 function goalDetail(goal: AlertGoal): string {
   return `Objectif ${targetLabel(goal)} atteint`;
 }
@@ -145,6 +166,10 @@ export function alertNotice(event: RecordingAlertEvent, profile: Pick<ResolvedPr
       return { title: paceTitle(event.range, event.status), detail: `Cible ${paceSpan(event.range)}`, tone: event.status === "back" ? "mark" : "warn" };
     case "heart_rate_range":
       return { title: heartRateTitle(event.status), detail: `Cible ${heartRateSpan(event.range)}`, tone: event.status === "back" ? "mark" : "warn" };
+    case "segment_entered":
+      return { title: `Segment ${event.name}`, detail: event.bestElapsedMs === null ? "Premier passage, chrono lancé" : `Meilleur passage ${formatLongClock(event.bestElapsedMs / 1000)}`, tone: "mark" };
+    case "segment_finished":
+      return { title: `${event.name} · ${formatLongClock(event.elapsedMs / 1000)}`, detail: segmentFinishDetail(event.elapsedMs, event.bestElapsedMs), tone: "mark" };
     case "gps":
       return event.change === "lost"
         ? { title: "Signal GPS perdu", detail: "La distance reprend au retour du signal", tone: "warn" }

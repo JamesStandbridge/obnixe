@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { defaultRecordingSettings, resolveProfile } from "@obnixe/core";
 import type { RecordAnnouncement, RecordingAlertEvent, ResolvedProfile } from "@obnixe/core";
-import type { EpochMs, FieldValues, RecordingSettings, SportKey } from "@obnixe/schema";
+import type { EpochMs, FieldValues, Id, RecordingSettings, SportKey } from "@obnixe/schema";
 import { alertNotice, alertPulses, beepWave, heartRateSpanBpm, vibrationPattern } from "@/features/recording/alerts";
 import { elevationShape } from "@/features/recording/elevation";
 import { lapFigures, metricText, summaryFigures } from "@/features/recording/metrics";
@@ -10,6 +10,7 @@ import { liveReadout, storedReadout, withMetric, withSecondaryAdded, withSeconda
 import { effortLabel, recordLines } from "@/features/recording/records";
 import { boundsOf, summaryTrack } from "@/features/recording/summaryTrack";
 import {
+  alertLabel,
   autoLapChoiceOf,
   autoLapLabel,
   autoLapOptions,
@@ -197,6 +198,19 @@ describe("recording alerts", () => {
     expect(notice({ kind: "gps", change: "lost" }).title).toBe("Signal GPS perdu");
     expect(notice({ kind: "sensor", change: "back" }).title).toBe("Capteur cardiaque reconnecté");
     expect(notice({ kind: "battery", level: "critical" }).tone).toBe("stop");
+  });
+
+  it("names the segment on entry and gives its time against the best pass at the end (SEG-004)", () => {
+    const segmentId = "seg" as Id;
+    expect(alertNotice({ kind: "segment_entered", segmentId, name: "Col du Coq", bestElapsedMs: 1_265_000 }, run)).toEqual({ title: "Segment Col du Coq", detail: "Meilleur passage 21:05", tone: "mark" });
+    expect(alertNotice({ kind: "segment_entered", segmentId, name: "Col du Coq", bestElapsedMs: null }, run).detail).toBe("Premier passage, chrono lancé");
+    const finished = (elapsedMs: number, bestElapsedMs: number | null) => alertNotice({ kind: "segment_finished", segmentId, name: "Col du Coq", elapsedMs, bestElapsedMs }, run);
+    expect(finished(3_725_000, 3_737_000)).toEqual({ title: "Col du Coq · 1:02:05", detail: "Meilleur passage, −0:12", tone: "mark" });
+    expect(finished(1_330_000, 1_265_000).detail).toBe("+1:05 sur le meilleur passage");
+    expect(finished(1_330_000, null).detail).toBe("Premier passage");
+    expect(alertPulses({ kind: "segment_entered", segmentId, name: "Col du Coq", bestElapsedMs: null })).toEqual([300, 120, 100]);
+    expect(alertPulses({ kind: "segment_finished", segmentId, name: "Col du Coq", elapsedMs: 1, bestElapsedMs: null })).toEqual([100, 120, 100, 120, 300]);
+    expect(alertLabel("segment", run).title).toBe("Segments");
   });
 
   it("tells alerts apart by their vibration, on both systems (REC-075)", () => {

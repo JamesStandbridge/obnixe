@@ -77,6 +77,7 @@ describe("catalog", () => {
     expect([...profile.bestEffortMeters].sort((left, right) => left - right)).toEqual(profile.bestEffortMeters);
     expect(profile.bestEffortMeters.every((meters) => meters > 0)).toBe(true);
     expect(profile.bestAscentWindowMs === null || profile.metrics.includes("ascent")).toBe(true);
+    expect(profile.climbMinimumAscentMeters === null || (profile.climbMinimumAscentMeters > 0 && profile.metrics.includes("vam"))).toBe(true);
   });
 
   it.each(Object.entries(sports) as [string, SportDefinition][])("%s overrides options of an existing choice field", (_, sport) => {
