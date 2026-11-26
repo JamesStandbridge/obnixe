@@ -9,12 +9,22 @@ const articles: Partial<Readonly<Record<SportKey, string>>> = {
   swim: "la natation",
   bike: "la sortie vélo",
   yoga: "le yoga",
+  ski_touring: "la sortie en ski de rando",
+  nordic_ski: "le ski de fond",
+  alpine_ski: "la journée de ski",
+  paddle: "la sortie sur l'eau",
+  inline_skate: "la sortie en roller",
 };
 
 const gearLabels: Partial<Readonly<Record<SportKey, string>>> = {
   run: "Chaussures",
   hike: "Chaussures",
   bike: "Vélo utilisé",
+  ski_touring: "Skis utilisés",
+  nordic_ski: "Skis utilisés",
+  alpine_ski: "Skis ou planche",
+  paddle: "Embarcation",
+  inline_skate: "Rollers utilisés",
 };
 
 export function sportArticle(sport: SportKey): string {

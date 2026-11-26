@@ -330,6 +330,17 @@ describe("annex D sport mapping", () => {
     [fitSport.swimming, fitSubSport.openWater, true, { sport: "swim", values: { water: "open_water" } }],
     [fitSport.swimming, fitSubSport.lapSwimming, false, { sport: "swim", values: { water: "pool" } }],
     [fitSport.swimming, null, true, { sport: "swim", values: { water: "open_water" } }],
+    [fitSport.alpineSkiing, fitSubSport.backcountry, true, { sport: "ski_touring", values: { kind: "touring" } }],
+    [fitSport.alpineSkiing, fitSubSport.generic, true, { sport: "alpine_ski", values: { kind: "ski" } }],
+    [fitSport.snowboarding, fitSubSport.generic, true, { sport: "alpine_ski", values: { kind: "snowboard" } }],
+    [fitSport.crossCountrySkiing, fitSubSport.generic, true, { sport: "nordic_ski", values: { kind: "classic" } }],
+    [fitSport.crossCountrySkiing, fitSubSport.skateSkiing, true, { sport: "nordic_ski", values: { kind: "skate" } }],
+    [fitSport.kayaking, fitSubSport.generic, true, { sport: "paddle", values: { kind: "kayak" } }],
+    [fitSport.paddling, fitSubSport.generic, true, { sport: "paddle", values: { kind: "canoe" } }],
+    [fitSport.standUpPaddleboarding, fitSubSport.generic, true, { sport: "paddle", values: { kind: "sup" } }],
+    [fitSport.rowing, fitSubSport.generic, true, { sport: "paddle", values: { kind: "rowing" } }],
+    [fitSport.rowing, fitSubSport.indoorRowing, false, null],
+    [fitSport.inlineSkating, fitSubSport.generic, true, { sport: "inline_skate", values: {} }],
   ])("maps FIT sport %i / %s", (sport, subSport, positioned, expected) => {
     expect(sportOfFit(sport, subSport, positioned)).toEqual(expected);
   });
@@ -338,6 +349,11 @@ describe("annex D sport mapping", () => {
     expect(sportOfGpxType("Trail Running")).toEqual({ sport: "trail", values: {} });
     expect(sportOfGpxType("mountain_biking")).toEqual({ sport: "bike", values: { kind: "mtb" } });
     expect(sportOfGpxType("hike")).toEqual({ sport: "hike", values: {} });
+    expect(sportOfGpxType("Backcountry Skiing")).toEqual({ sport: "ski_touring", values: { kind: "touring" } });
+    expect(sportOfGpxType("cross_country_skiing")).toEqual({ sport: "nordic_ski", values: {} });
+    expect(sportOfGpxType("Snowboarding")).toEqual({ sport: "alpine_ski", values: { kind: "snowboard" } });
+    expect(sportOfGpxType("Stand-up paddling")).toEqual({ sport: "paddle", values: { kind: "sup" } });
+    expect(sportOfGpxType("inline_skating")).toEqual({ sport: "inline_skate", values: {} });
     expect(sportOfGpxType("kitesurfing")).toBeNull();
     expect(sportOfFit(fitSport.running + 100, null, true)).toBeNull();
     expect(sportOfTcx("Biking")).toEqual({ sport: "bike", values: { kind: "road" } });

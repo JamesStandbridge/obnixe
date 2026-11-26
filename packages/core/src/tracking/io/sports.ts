@@ -9,7 +9,24 @@ export interface SportGuess {
 const guess = (sport: SportKey, values: FieldValues = {}): SportGuess => ({ sport, values });
 
 /** FIT `sport` and `sub_sport` values of the profile. */
-export const fitSport = { generic: 0, running: 1, cycling: 2, swimming: 5, walking: 11, hiking: 17, eBiking: 21, snowshoeing: 35 } as const;
+export const fitSport = {
+  generic: 0,
+  running: 1,
+  cycling: 2,
+  swimming: 5,
+  walking: 11,
+  crossCountrySkiing: 12,
+  alpineSkiing: 13,
+  snowboarding: 14,
+  rowing: 15,
+  hiking: 17,
+  paddling: 19,
+  eBiking: 21,
+  inlineSkating: 30,
+  snowshoeing: 35,
+  standUpPaddleboarding: 37,
+  kayaking: 41,
+} as const;
 export const fitSubSport = {
   generic: 0,
   treadmill: 1,
@@ -17,12 +34,15 @@ export const fitSubSport = {
   trail: 3,
   spin: 5,
   indoorCycling: 6,
+  indoorRowing: 14,
   road: 7,
   mountain: 8,
   downhill: 9,
   cyclocross: 11,
   lapSwimming: 17,
   openWater: 18,
+  backcountry: 37,
+  skateSkiing: 42,
   gravelCycling: 46,
   eBikeMountain: 47,
   commuting: 48,
@@ -69,6 +89,22 @@ export function sportOfFit(sport: number, subSport: number | null, positioned: b
       const openWater = subSport === fitSubSport.openWater || (subSport !== fitSubSport.lapSwimming && positioned);
       return guess("swim", { water: openWater ? "open_water" : "pool" });
     }
+    case fitSport.alpineSkiing:
+      return subSport === fitSubSport.backcountry ? guess("ski_touring", { kind: "touring" }) : guess("alpine_ski", { kind: "ski" });
+    case fitSport.snowboarding:
+      return guess("alpine_ski", { kind: "snowboard" });
+    case fitSport.crossCountrySkiing:
+      return guess("nordic_ski", { kind: subSport === fitSubSport.skateSkiing ? "skate" : "classic" });
+    case fitSport.kayaking:
+      return guess("paddle", { kind: "kayak" });
+    case fitSport.paddling:
+      return guess("paddle", { kind: "canoe" });
+    case fitSport.standUpPaddleboarding:
+      return guess("paddle", { kind: "sup" });
+    case fitSport.rowing:
+      return subSport === fitSubSport.indoorRowing ? null : guess("paddle", { kind: "rowing" });
+    case fitSport.inlineSkating:
+      return guess("inline_skate");
     default:
       return null;
   }
@@ -108,6 +144,33 @@ const gpxTypes: Readonly<Record<string, SportGuess>> = {
   swim: guess("swim", { water: "open_water" }),
   swimming: guess("swim", { water: "open_water" }),
   open_water_swimming: guess("swim", { water: "open_water" }),
+  ski_touring: guess("ski_touring", { kind: "touring" }),
+  backcountry_ski: guess("ski_touring", { kind: "touring" }),
+  backcountry_skiing: guess("ski_touring", { kind: "touring" }),
+  splitboarding: guess("ski_touring", { kind: "splitboard" }),
+  nordic_ski: guess("nordic_ski"),
+  nordic_skiing: guess("nordic_ski"),
+  cross_country_skiing: guess("nordic_ski"),
+  skate_skiing: guess("nordic_ski", { kind: "skate" }),
+  alpine_ski: guess("alpine_ski", { kind: "ski" }),
+  alpine_skiing: guess("alpine_ski", { kind: "ski" }),
+  resort_skiing: guess("alpine_ski", { kind: "ski" }),
+  snowboard: guess("alpine_ski", { kind: "snowboard" }),
+  snowboarding: guess("alpine_ski", { kind: "snowboard" }),
+  paddle: guess("paddle"),
+  paddling: guess("paddle"),
+  kayak: guess("paddle", { kind: "kayak" }),
+  kayaking: guess("paddle", { kind: "kayak" }),
+  canoe: guess("paddle", { kind: "canoe" }),
+  canoeing: guess("paddle", { kind: "canoe" }),
+  sup: guess("paddle", { kind: "sup" }),
+  stand_up_paddling: guess("paddle", { kind: "sup" }),
+  stand_up_paddleboarding: guess("paddle", { kind: "sup" }),
+  rowing: guess("paddle", { kind: "rowing" }),
+  inline_skate: guess("inline_skate"),
+  inline_skating: guess("inline_skate"),
+  inline_skating_fitness: guess("inline_skate", { kind: "fitness" }),
+  rollerblading: guess("inline_skate"),
 };
 
 /** Annex D, GPX column, with the `type` values written by Garmin Connect, Strava and Komoot. */
@@ -143,6 +206,19 @@ function fitCycling(values: FieldValues): FitSportPair {
   }
 }
 
+function fitPaddle(values: FieldValues): FitSportPair {
+  switch (values.kind) {
+    case "canoe":
+      return fitPair(fitSport.paddling, fitSubSport.generic);
+    case "sup":
+      return fitPair(fitSport.standUpPaddleboarding, fitSubSport.generic);
+    case "rowing":
+      return fitPair(fitSport.rowing, fitSubSport.generic);
+    default:
+      return fitPair(fitSport.kayaking, fitSubSport.generic);
+  }
+}
+
 /** Annex D, FIT column, for the export (`IO-003`): a sport without a FIT counterpart is `generic`. */
 export function fitSportOf(sport: SportKey, values: FieldValues): FitSportPair {
   switch (sport) {
@@ -158,6 +234,16 @@ export function fitSportOf(sport: SportKey, values: FieldValues): FitSportPair {
       return fitCycling(values);
     case "swim":
       return fitPair(fitSport.swimming, values.water === "pool" ? fitSubSport.lapSwimming : fitSubSport.openWater);
+    case "ski_touring":
+      return fitPair(fitSport.alpineSkiing, fitSubSport.backcountry);
+    case "nordic_ski":
+      return fitPair(fitSport.crossCountrySkiing, values.kind === "skate" ? fitSubSport.skateSkiing : fitSubSport.generic);
+    case "alpine_ski":
+      return values.kind === "snowboard" ? fitPair(fitSport.snowboarding, fitSubSport.generic) : fitPair(fitSport.alpineSkiing, fitSubSport.generic);
+    case "paddle":
+      return fitPaddle(values);
+    case "inline_skate":
+      return fitPair(fitSport.inlineSkating, fitSubSport.generic);
     case "strength":
     case "climb":
     case "yoga":
@@ -182,6 +268,11 @@ export function tcxSportOf(sport: SportKey): TcxSport {
     case "walk":
     case "hike":
     case "swim":
+    case "ski_touring":
+    case "nordic_ski":
+    case "alpine_ski":
+    case "paddle":
+    case "inline_skate":
     case "strength":
     case "climb":
     case "yoga":

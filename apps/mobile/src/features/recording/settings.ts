@@ -2,7 +2,7 @@ import type { HeartRateZone, ResolvedProfile } from "@obnixe/core";
 import { autoLapDurationsMs, autoLapMeters, sportKeys } from "@obnixe/schema";
 import type { HeartRateRange, PaceRange, RecordingAlert, RecordingSettings, SportKey } from "@obnixe/schema";
 import { heartRateSpan } from "@/features/recording/alerts";
-import { formatClock } from "@/format/durations";
+import { paceRangeText } from "@/features/workouts/format";
 import { formatNumber } from "@/format/numbers";
 
 export type AutoLap = RecordingSettings["autoLap"];
@@ -22,7 +22,7 @@ export function alertLabel(alert: RecordingAlert, profile: Pick<ResolvedProfile,
     case "lap":
       return { title: "Tours", detail: "Manuels et automatiques" };
     case "split":
-      return { title: "Splits", detail: profile.splitMeters === null ? "Sans split pour ce sport" : `Tous les ${formatNumber(profile.splitMeters / 1000, 0)} km, sans tour automatique` };
+      return { title: "Splits", detail: profile.splitMeters === null ? "Sans split pour ce sport" : `Tous les ${distanceLabel(profile.splitMeters)}, sans tour automatique` };
     case "goal":
       return { title: "Objectif atteint", detail: "Distance ou durée de la séance du programme" };
     case "auto_pause":
@@ -86,24 +86,56 @@ export function autoLapChoiceOf(autoLap: AutoLap): AutoLapChoice {
   return autoLap.trigger === "distance" ? `distance:${autoLap.meters}` : `duration:${autoLap.ms}`;
 }
 
-/** The span a sport starts from when its alert is switched on, after its primary measure. */
-export function defaultPaceRange(profile: Pick<ResolvedProfile, "primary" | "sport">): PaceRange {
-  switch (profile.primary) {
-    case "pace":
-      return profile.sport === "walk" ? { kind: "pace", fastestSecondsPerKm: 600, slowestSecondsPerKm: 720 } : { kind: "pace", fastestSecondsPerKm: 300, slowestSecondsPerKm: 360 };
-    case "speed":
-      return profile.sport === "hike" ? { kind: "speed", minMmS: kmhTenthsToMmS(30), maxMmS: kmhTenthsToMmS(50) } : { kind: "speed", minMmS: kmhTenthsToMmS(250), maxMmS: kmhTenthsToMmS(300) };
+const pace = (fastestSecondsPerKm: number, slowestSecondsPerKm: number): PaceRange => ({ kind: "pace", fastestSecondsPerKm, slowestSecondsPerKm });
+const speed = (minKmhTenths: number, maxKmhTenths: number): PaceRange => ({ kind: "speed", minMmS: kmhTenthsToMmS(minKmhTenths), maxMmS: kmhTenthsToMmS(maxKmhTenths) });
+
+/** The span a sport starts from when its alert is switched on, in its primary measure. */
+export function defaultPaceRange(profile: Pick<ResolvedProfile, "sport">): PaceRange {
+  switch (profile.sport) {
+    case "walk":
+      return pace(600, 720);
+    case "nordic_ski":
+      return pace(240, 330);
+    case "swim":
+      return pace(1200, 1500);
+    case "hike":
+      return speed(30, 50);
+    case "ski_touring":
+      return speed(20, 40);
+    case "alpine_ski":
+      return speed(300, 500);
+    case "paddle":
+      return speed(60, 90);
+    case "inline_skate":
+      return speed(150, 220);
+    case "bike":
+      return speed(250, 300);
+    case "run":
+    case "trail":
+    case "strength":
+    case "climb":
+    case "yoga":
+      return pace(300, 360);
     default: {
-      const unreachable: never = profile.primary;
-      throw new Error(`Unhandled primary measure ${String(unreachable)}`);
+      const unreachable: never = profile.sport;
+      throw new Error(`Unhandled sport ${String(unreachable)}`);
     }
   }
 }
 
 export const paceStepSeconds = 5;
 export const speedStepKmhTenths = 5;
-export const paceBounds = { min: 120, max: 1800 } as const;
 export const speedBoundsKmhTenths = { min: 20, max: 1080 } as const;
+
+export interface PaceBounds {
+  readonly min: number;
+  readonly max: number;
+}
+
+/** Bounds of a pace target in seconds per `pacePerMeters`. */
+export function paceBoundsOf(profile: Pick<ResolvedProfile, "pacePerMeters">): PaceBounds {
+  return profile.pacePerMeters === 100 ? { min: 60, max: 300 } : { min: 120, max: 1800 };
+}
 
 export function kmhTenthsToMmS(tenths: number): number {
   return Math.round((tenths * 100) / 3.6);
@@ -117,11 +149,11 @@ export function formatKmhTenths(tenths: number): string {
   return formatNumber(tenths / 10, 1, 1);
 }
 
-export function paceRangeLabel(range: PaceRange | null): string {
+export function paceRangeLabel(range: PaceRange | null, profile: Pick<ResolvedProfile, "pacePerMeters">): string {
   if (range === null) return "Aucune";
   switch (range.kind) {
     case "pace":
-      return `${formatClock(range.fastestSecondsPerKm)} – ${formatClock(range.slowestSecondsPerKm)} /km`;
+      return paceRangeText(range, profile);
     case "speed":
       return `${formatKmhTenths(mmSToKmhTenths(range.minMmS))} – ${formatKmhTenths(mmSToKmhTenths(range.maxMmS))} km/h`;
     default: {

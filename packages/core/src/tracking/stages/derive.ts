@@ -695,6 +695,75 @@ export function trackClimbsOf(series: TrackSeries, minimumAscentMeters: number):
   return climbs;
 }
 
+/** The descents (`runs`), on top of the profile's minimum D-. */
+export const trackDescentRules = {
+  /** A rise of this much above the lowest point ends a descent (lift, skins, climb back); a smaller bump belongs to it. */
+  reboundMeters: 20,
+} as const;
+
+/** A descent of an activity (`runs`): from a top to the next bottom. */
+export interface TrackDescent {
+  /** Times of the top and the bottom, on the time base of the samples. */
+  readonly startMs: number;
+  readonly endMs: number;
+  /** Counted distance from the activity start to the top. */
+  readonly startDistanceMm: number;
+  readonly distanceMm: number;
+  /** From the hysteresis automaton, like the activity's D- (`ELE-010`). */
+  readonly descentMm: number;
+  readonly movingMs: number;
+  /** `speed_max` over the descent; null without a counted interval. */
+  readonly speedMaxMmS: number | null;
+}
+
+function measuredDescent(series: TrackSeries, top: number, bottom: number): TrackDescent {
+  const speedMax = maxWindowSpeed({
+    length: bottom - top + 1,
+    t: series.t.subarray(top, bottom + 1),
+    speed: series.speed.subarray(top, bottom + 1),
+    interval: series.interval.subarray(top, bottom + 1),
+  });
+  return {
+    startMs: series.t[top] ?? 0,
+    endMs: series.t[bottom] ?? 0,
+    startDistanceMm: millimeters(series.distance[top] ?? 0),
+    distanceMm: millimeters((series.distance[bottom] ?? 0) - (series.distance[top] ?? 0)),
+    descentMm: millimeters((series.descent[bottom] ?? 0) - (series.descent[top] ?? 0)),
+    movingMs: Math.round((series.moving[bottom] ?? 0) - (series.moving[top] ?? 0)),
+    speedMaxMmS: speedMax === null ? null : Math.round(speedMax * 1000),
+  };
+}
+
+/**
+ * Descents (`runs`): each top followed by a drop of at least the rebound, down to the lowest point before a rise of the
+ * rebound, kept when its D- reaches `minimumMeters`. O(n).
+ */
+export function trackDescentsOf(series: TrackSeries, minimumMeters: number): readonly TrackDescent[] {
+  const { length, altitude } = series;
+  const descents: TrackDescent[] = [];
+  const keep = (top: number, bottom: number): void => {
+    const descent = measuredDescent(series, top, bottom);
+    if (descent.descentMm >= millimeters(minimumMeters)) descents.push(descent);
+  };
+  let top = -1;
+  let bottom = -1;
+  for (let index = 0; index < length; index += 1) {
+    const height = altitude[index] ?? Number.NaN;
+    if (Number.isNaN(height)) continue;
+    if (bottom < 0) {
+      if (top < 0 || height >= (altitude[top] ?? 0)) top = index;
+      else if ((altitude[top] ?? 0) - height >= trackDescentRules.reboundMeters) bottom = index;
+    } else if (height < (altitude[bottom] ?? 0)) bottom = index;
+    else if (height - (altitude[bottom] ?? 0) >= trackDescentRules.reboundMeters) {
+      keep(top, bottom);
+      top = index;
+      bottom = -1;
+    }
+  }
+  if (top >= 0 && bottom > top) keep(top, bottom);
+  return descents;
+}
+
 /** Highest mean of the smoothed speed over a centered 3 s window of counted intervals (`speed_max`), O(n). */
 export function maxWindowSpeed(series: Pick<TrackSeries, "length" | "t" | "speed" | "interval">): number | null {
   const { t, speed, interval, length } = series;

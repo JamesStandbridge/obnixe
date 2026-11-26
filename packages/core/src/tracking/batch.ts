@@ -19,8 +19,9 @@ import {
   splitsOf,
   summarizeLaps,
   trackClimbsOf,
+  trackDescentsOf,
 } from "./stages/derive.ts";
-import type { AutoLap, BestEffortResult, LapBounds, LapSummary, MotionInterval, SplitSummary, TrackClimb, TrackSeries } from "./stages/derive.ts";
+import type { AutoLap, BestEffortResult, LapBounds, LapSummary, MotionInterval, SplitSummary, TrackClimb, TrackDescent, TrackSeries } from "./stages/derive.ts";
 import { classifyIntervals, motionVerticalSpeedWindowMs } from "./stages/motion.ts";
 import type { MotionInput } from "./stages/motion.ts";
 import { absentValue } from "./types.ts";
@@ -60,6 +61,7 @@ export interface ProcessedTrack {
   readonly laps: readonly LapSummary[];
   readonly bestEfforts: readonly BestEffortResult[];
   readonly climbs: readonly TrackClimb[];
+  readonly descents: readonly TrackDescent[];
 }
 
 const orNull = (value: number): number | null => (value === absentValue ? null : value);
@@ -280,5 +282,6 @@ export function processTrack(track: Track, profile: ResolvedProfile, options: Pr
     laps: summarizeLaps(series, heartRate, hasElevation, lapBounds, window),
     bestEfforts: bestEffortsOf(series, pauses, profile.sport, profile, hasElevation, window.startMs),
     climbs: profile.climbMinimumAscentMeters === null || !hasElevation ? [] : trackClimbsOf(series, profile.climbMinimumAscentMeters),
+    descents: profile.descentMinimumMeters === null || !hasElevation ? [] : trackDescentsOf(series, profile.descentMinimumMeters),
   };
 }

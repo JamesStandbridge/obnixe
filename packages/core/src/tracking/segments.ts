@@ -47,8 +47,15 @@ export function segmentFamilyOf(sport: SportKey): SegmentFamily | null {
       return "foot";
     case "bike":
       return "bike";
-    case "strength":
+    case "ski_touring":
+    case "nordic_ski":
+    case "alpine_ski":
+      return "snow";
+    case "paddle":
     case "swim":
+      return "water";
+    case "inline_skate":
+    case "strength":
     case "climb":
     case "yoga":
       return null;

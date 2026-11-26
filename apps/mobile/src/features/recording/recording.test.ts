@@ -209,6 +209,16 @@ describe("recording alerts", () => {
     expect(notice({ kind: "battery", level: "critical" }).tone).toBe("stop");
   });
 
+  it("counts an open-water swim per 100 m (SPT-009)", () => {
+    const swim = profileOf("swim");
+    expect(alertNotice({ kind: "split", index: 3, meters: 100, movingMs: 130_000 }, swim)).toEqual({ title: "300 m", detail: "2:10 · 2:10 /100 m", tone: "mark" });
+    expect(alertNotice({ kind: "pace_range", range: defaultPaceRange(swim), status: "below", repeat: 0 }, swim).detail).toBe("Cible 2:00 – 2:30 /100 m");
+    expect(paceRangeLabel(defaultPaceRange(swim), swim)).toBe("2:00 – 2:30 /100 m");
+    expect(alertLabel("split", swim).detail).toBe("Tous les 100 m, sans tour automatique");
+    expect(defaultPaceRange(profileOf("nordic_ski", { kind: "skate" })).kind).toBe("pace");
+    expect(defaultPaceRange(profileOf("paddle", { kind: "kayak" })).kind).toBe("speed");
+  });
+
   it("names the segment on entry and gives its time against the best pass at the end (SEG-004)", () => {
     const segmentId = "seg" as Id;
     expect(alertNotice({ kind: "segment_entered", segmentId, name: "Col du Coq", bestElapsedMs: 1_265_000 }, run)).toEqual({ title: "Segment Col du Coq", detail: "Meilleur passage 21:05", tone: "mark" });
@@ -297,8 +307,8 @@ describe("recording settings", () => {
   it("starts a span from the sport's measure and keeps a heart-rate span ordered", () => {
     expect(defaultPaceRange(run)).toEqual({ kind: "pace", fastestSecondsPerKm: 300, slowestSecondsPerKm: 360 });
     expect(defaultPaceRange(profileOf("walk"))).toEqual({ kind: "pace", fastestSecondsPerKm: 600, slowestSecondsPerKm: 720 });
-    expect(paceRangeLabel(defaultPaceRange(profileOf("hike")))).toBe("3,0 – 5,0 km/h");
-    expect(paceRangeLabel(defaultPaceRange(bike))).toBe("25,0 – 30,0 km/h");
+    expect(paceRangeLabel(defaultPaceRange(profileOf("hike")), run)).toBe("3,0 – 5,0 km/h");
+    expect(paceRangeLabel(defaultPaceRange(bike), bike)).toBe("25,0 – 30,0 km/h");
     expect(mmSToKmhTenths(kmhTenthsToMmS(275))).toBe(275);
     expect(withZoneEnd({ lowest: 2, highest: 3 }, "lowest", 4)).toEqual({ lowest: 4, highest: 4 });
     expect(withZoneEnd({ lowest: 3, highest: 4 }, "highest", 2)).toEqual({ lowest: 2, highest: 2 });

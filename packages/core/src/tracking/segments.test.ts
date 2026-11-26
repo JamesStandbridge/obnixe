@@ -62,7 +62,7 @@ describe("segment creation (SEG-001)", () => {
   it("refuses a blank name, a sport without segments and a stretch under 100 m", () => {
     const range = { from: locate(processed.series.distance, 1100), to: locate(processed.series.distance, 1180) };
     expect(segmentProblem(processed.series, { name: " ", sport: "run", sessionId: "session" as Id, range })).toBe("name");
-    expect(segmentProblem(processed.series, { name: "Pont", sport: "swim", sessionId: "session" as Id, range })).toBe("sport");
+    expect(segmentProblem(processed.series, { name: "Pont", sport: "inline_skate", sessionId: "session" as Id, range })).toBe("sport");
     expect(segmentProblem(processed.series, { name: "Pont", sport: "run", sessionId: "session" as Id, range })).toBe("length");
     expect(() => newSegment(env, processed.series, false, { name: "Pont", sport: "run", sessionId: "session" as Id, range })).toThrow(InvalidSegmentError);
   });
@@ -72,6 +72,12 @@ describe("segment creation (SEG-001)", () => {
     expect(segmentFamilyOf("hike")).toBe("foot");
     expect(segmentFamilyOf("bike")).toBe("bike");
     expect(segmentFamilyOf("climb")).toBeNull();
+    expect(segmentFamilyOf("ski_touring")).toBe("snow");
+    expect(segmentFamilyOf("nordic_ski")).toBe("snow");
+    expect(segmentFamilyOf("alpine_ski")).toBe("snow");
+    expect(segmentFamilyOf("paddle")).toBe("water");
+    expect(segmentFamilyOf("swim")).toBe("water");
+    expect(segmentFamilyOf("inline_skate")).toBeNull();
   });
 
   it("renames without touching the geometry", () => {

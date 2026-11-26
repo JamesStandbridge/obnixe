@@ -470,7 +470,7 @@ describe("bridge behind the relay", () => {
     await until(async () => (await controlStatus(controlPort)) === "connected", "bridge session open");
     const sports = await relayedBridge.callTool({ name: "list_sports", arguments: {} });
     expect(sports.isError).toBe(false);
-    expect(JSON.parse(textOf(sports)).catalogVersion).toBe(2);
+    expect(JSON.parse(textOf(sports)).catalogVersion).toBe(3);
     await relayedBridge.close();
     await until(() => relayed.state.closed, "relayed phone closed with the bridge");
     expect(relayed.relayNotices).toEqual(["peer", "peer_left"]);

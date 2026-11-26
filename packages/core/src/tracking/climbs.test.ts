@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SportKey } from "@obnixe/schema";
-import { intervalCodes, trackClimbRules, trackClimbsOf } from "./stages/derive.ts";
+import { intervalCodes, trackClimbRules, trackClimbsOf, trackDescentsOf } from "./stages/derive.ts";
 import type { TrackSeries } from "./stages/derive.ts";
 import { runBatch } from "./testing/run.ts";
 import { buildTruth, clearSky, move, simulate, stop } from "./testing/scenarios.ts";
@@ -27,7 +27,12 @@ function profileSeries(ramps: readonly Ramp[]): TrackSeries {
   for (const ramp of ramps) for (let meter = 0; meter < ramp.meters; meter += 1) altitudes.push((altitudes.at(-1) ?? 0) + ramp.grade);
   const length = altitudes.length;
   const ascent = new Float64Array(length);
-  for (let index = 1; index < length; index += 1) ascent[index] = (ascent[index - 1] ?? 0) + Math.max(0, (altitudes[index] ?? 0) - (altitudes[index - 1] ?? 0));
+  const descent = new Float64Array(length);
+  for (let index = 1; index < length; index += 1) {
+    const rise = (altitudes[index] ?? 0) - (altitudes[index - 1] ?? 0);
+    ascent[index] = (ascent[index - 1] ?? 0) + Math.max(0, rise);
+    descent[index] = (descent[index - 1] ?? 0) + Math.max(0, -rise);
+  }
   const index = Float64Array.from({ length }, (_, position) => position);
   return {
     length,
@@ -42,7 +47,7 @@ function profileSeries(ramps: readonly Ramp[]): TrackSeries {
     distance: index,
     moving: Float64Array.from(index, (value) => value * 1000),
     ascent,
-    descent: new Float64Array(length),
+    descent,
     gradeAdjustedDistance: null,
     steps: null,
     heartBeats: null,
@@ -131,5 +136,35 @@ describe("climbs (GPS-062)", () => {
   it("finds nothing on the flat", () => {
     const legs = [move(5000, 5, 0), move(5000, 5, 180)];
     for (const seed of seeds) expect(runBatch(outing("bike", legs, { ...clearSky, altitude: { ...clearSky.altitude, sigma: 8 } }, seed)).climbs, `seed ${seed}`).toEqual([]);
+  });
+});
+
+describe("descents (runs)", () => {
+  const ramp = (meters: number, grade: number): Ramp => ({ meters, grade });
+
+  it("splits the runs at a rebound and drops one under the minimum", () => {
+    const drops = (ramps: readonly Ramp[], minimum: number): readonly number[] => trackDescentsOf(profileSeries(ramps), minimum).map((run) => Math.round(run.descentMm / 1000));
+    expect(drops([ramp(200, 0), ramp(1000, -0.2), ramp(500, 0.4), ramp(800, -0.25), ramp(100, 0)], 30)).toEqual([200, 200]);
+    expect(drops([ramp(200, 0), ramp(1000, -0.2), ramp(100, 0.1), ramp(800, -0.25), ramp(100, 0)], 30)).toEqual([400]);
+    expect(drops([ramp(200, 0), ramp(100, -0.2), ramp(500, 0.4), ramp(800, -0.25), ramp(100, 0)], 30)).toEqual([200]);
+    expect(drops([ramp(1000, 0.1), ramp(500, 0)], 30)).toEqual([]);
+    const [run] = trackDescentsOf(profileSeries([ramp(200, 0), ramp(1000, -0.2), ramp(200, 0.4)]), 30);
+    expect(run?.startDistanceMm).toBe(200_000);
+    expect(run?.distanceMm).toBe(1_000_000);
+    expect(run?.movingMs).toBe(1_000_000);
+    expect(run?.speedMaxMmS).toBeCloseTo(1000, 0);
+  });
+
+  it("finds the alpine runs between lift rides, and none for the sports without them", () => {
+    const legs = [move(1500, 4, 0, 300), move(1500, 10, 180, -300), move(1200, 4, 0, 200), move(1000, 9, 180, -200), stop(60_000)];
+    for (const seed of seeds) {
+      const alpine = runBatch(outing("alpine_ski", legs, barometer, seed));
+      expect(alpine.descents, `seed ${seed}`).toHaveLength(2);
+      expect(near((alpine.descents[0]?.descentMm ?? 0) / 1000, 300, 15), `seed ${seed} ${alpine.descents[0]?.descentMm}`).toBe(true);
+      expect(near((alpine.descents[1]?.descentMm ?? 0) / 1000, 200, 15), `seed ${seed} ${alpine.descents[1]?.descentMm}`).toBe(true);
+      expect(near((alpine.descents[0]?.distanceMm ?? 0) / 1000, 1500, 150), `seed ${seed}`).toBe(true);
+      expect(alpine.descents.every((run) => (run.speedMaxMmS ?? 0) > 8000)).toBe(true);
+      expect(runBatch(outing("hike", legs, barometer, seed)).descents).toEqual([]);
+    }
   });
 });

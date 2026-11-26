@@ -132,6 +132,27 @@ export const poses = {
     near: { arm: { root: p(112, 68), joint: p(137, 68), end: p(164, 68) }, leg: { root: p(106, 112), joint: p(138, 126), end: p(142, 166) }, toe: p(155, 168) },
     far: { arm: { root: p(88, 68), joint: p(63, 68), end: p(36, 68) }, leg: { root: p(94, 112), joint: p(72, 140), end: p(52, 166) }, toe: p(40, 168) },
   },
+  ski: {
+    head: p(124, 58),
+    neck: p(115, 74),
+    hip: p(92, 112),
+    near: { arm: { root: p(114, 78), joint: p(130, 96), end: p(148, 102) }, leg: { root: p(94, 112), joint: p(122, 124), end: p(112, 154) }, toe: p(128, 155) },
+    far: { arm: { root: p(108, 78), joint: p(118, 100), end: p(138, 108) }, leg: { root: p(90, 112), joint: p(112, 132), end: p(98, 158) }, toe: p(114, 159) },
+  },
+  glide: {
+    head: p(118, 42),
+    neck: p(112, 60),
+    hip: p(98, 106),
+    near: { arm: { root: p(114, 64), joint: p(134, 80), end: p(148, 92) }, leg: { root: p(100, 106), joint: p(122, 132), end: p(124, 160) }, toe: p(138, 162) },
+    far: { arm: { root: p(108, 64), joint: p(90, 84), end: p(72, 98) }, leg: { root: p(96, 106), joint: p(82, 134), end: p(60, 154) }, toe: p(72, 160) },
+  },
+  paddle: {
+    head: p(102, 50),
+    neck: p(100, 68),
+    hip: p(94, 114),
+    near: { arm: { root: p(110, 72), joint: p(126, 90), end: p(142, 82) }, leg: { root: p(98, 114), joint: p(124, 108), end: p(150, 118) }, toe: p(156, 112) },
+    far: { arm: { root: p(92, 72), joint: p(78, 90), end: p(66, 80) }, leg: { root: p(92, 114), joint: p(118, 112), end: p(144, 122) }, toe: p(150, 116) },
+  },
   stand: {
     head: p(100, 40),
     neck: p(100, 58),

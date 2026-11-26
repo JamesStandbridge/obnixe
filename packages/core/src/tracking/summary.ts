@@ -167,10 +167,11 @@ export const recordedValueKeys = ["distance", "elevation_gain", "heart_rate_avg"
 
 /**
  * The session values derived from the `recording` row (`SPT-003`), at the stop and after any trim or recomputation:
- * `distance`, `elevation_gain` when the profile shows the ascent, `heart_rate_avg`, and `paused_seconds = elapsed - moving`.
+ * the profile's `recordedValues`, `distance`, `elevation_gain` when the profile shows the ascent, `heart_rate_avg`, and
+ * `paused_seconds = elapsed - moving`.
  */
-export function sessionValuesFromRecording(values: FieldValues, recording: RecordingValues, profile: Pick<RecordingProfile, "metrics">): SessionValuesUpdate {
-  const derived: Record<string, FieldValue> = { ...values, distance: Math.round(recording.distanceMm / 1000) };
+export function sessionValuesFromRecording(values: FieldValues, recording: RecordingValues, profile: Pick<RecordingProfile, "metrics" | "recordedValues">): SessionValuesUpdate {
+  const derived: Record<string, FieldValue> = { ...values, ...profile.recordedValues, distance: Math.round(recording.distanceMm / 1000) };
   if (profile.metrics.includes("ascent") && recording.ascentMm !== null) derived.elevation_gain = Math.round(recording.ascentMm / 1000);
   else delete derived.elevation_gain;
   if (recording.heartRateAvg === null) delete derived.heart_rate_avg;

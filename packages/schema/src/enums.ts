@@ -118,7 +118,7 @@ export type LapTrigger = (typeof lapTriggers)[number];
 export const energyMethods = ["heart_rate", "mechanical", "met"] as const;
 export type EnergyMethod = (typeof energyMethods)[number];
 
-export const segmentFamilies = ["foot", "bike"] as const;
+export const segmentFamilies = ["foot", "bike", "snow", "water"] as const;
 export type SegmentFamily = (typeof segmentFamilies)[number];
 
 export const biologicalSexes = ["female", "male"] as const;

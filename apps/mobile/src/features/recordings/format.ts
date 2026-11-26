@@ -1,5 +1,5 @@
 import { isAscentEffort } from "@obnixe/core";
-import type { RecordingSummary, ResolvedProfile, TrackClimb, TrackDetails } from "@obnixe/core";
+import type { RecordingSummary, ResolvedProfile, TrackClimb, TrackDescent, TrackDetails } from "@obnixe/core";
 import type { BestEffortKey, MetricKey } from "@obnixe/schema";
 import { effortLabel } from "@/features/recording/records";
 import type { FigureText } from "@/features/stats/format";
@@ -169,5 +169,22 @@ export function climbText(climb: TrackClimb): ClimbText {
     detail: `Au km ${formatNumber(climb.startDistanceMm / 1_000_000, 1)} · ${length.value} ${length.unit} à ${gradeText(climb.gradeAvg)} · max ${gradeText(climb.gradeMax)}`,
     ascent: `+${formatInteger(climb.ascentMm / 1000)} m`,
     effort: `${elapsedText(climb.movingMs)}${vam}`,
+  };
+}
+
+export interface DescentText {
+  readonly detail: string;
+  readonly descent: string;
+  readonly effort: string;
+}
+
+/** Where the descent starts and its length, its D−, then its moving time and top speed. */
+export function descentText(descent: TrackDescent): DescentText {
+  const length = distanceText(descent.distanceMm);
+  const top = descent.speedMaxMmS === null ? "" : ` · max ${formatNumber(descent.speedMaxMmS * 0.0036, 1)} km/h`;
+  return {
+    detail: `Au km ${formatNumber(descent.startDistanceMm / 1_000_000, 1)} · ${length.value} ${length.unit}`,
+    descent: `−${formatInteger(descent.descentMm / 1000)} m`,
+    effort: `${elapsedText(descent.movingMs)}${top}`,
   };
 }

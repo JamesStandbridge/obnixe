@@ -22,7 +22,8 @@ describe("resolveProfile (SPT-002)", () => {
 
   it("records no track for sports or options without a profile", () => {
     expect(resolveProfile("bike", { kind: "indoor" })).toBeNull();
-    expect(resolveProfile("swim", { water: "open_water" })).toBeNull();
+    expect(resolveProfile("swim", { water: "pool" })).toBeNull();
+    expect(resolveProfile("swim", { water: "open_water" })?.pacePerMeters).toBe(100);
     expect(resolveProfile("strength", {})).toBeNull();
   });
 });

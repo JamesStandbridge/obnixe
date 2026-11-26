@@ -12,7 +12,7 @@ import { gearLabel } from "@/features/activity/presentation";
 import { ActivityCharts } from "@/features/recordings/ActivityCharts";
 import { ActivityMap } from "@/features/recordings/ActivityMap";
 import { summaryFigures } from "@/features/recordings/format";
-import { ClimbsSection, EffortsSection, EnergySection, LapsSection, QualitySection, SplitsSection, WeatherSection, ZonesSection } from "@/features/recordings/RecordingSections";
+import { ClimbsSection, DescentsSection, EffortsSection, EnergySection, LapsSection, QualitySection, SplitsSection, WeatherSection, ZonesSection } from "@/features/recordings/RecordingSections";
 import { WorkoutStepsSection } from "@/features/recordings/WorkoutStepsSection";
 import type { RecordedActivity, RecordedActivityState, TrackUnavailable } from "@/features/recordings/useRecordedActivity";
 import { canDrawSegment } from "@/features/segments/SegmentSheet";
@@ -62,9 +62,9 @@ export function loadRecorded(sessionId: Id): RecordedData | null {
 /**
  * The parts of `SUM-001` after the summary, in order. Guided steps (`WKT-007`) belong to guided sessions.
  */
-type LeadingSection = "map" | "summary" | "charts" | "splits" | "laps" | "climbs" | "efforts" | "segments" | "workout" | "zones" | "energy" | "weather" | "gear";
+type LeadingSection = "map" | "summary" | "charts" | "splits" | "laps" | "climbs" | "descents" | "efforts" | "segments" | "workout" | "zones" | "energy" | "weather" | "gear";
 
-const leadingSections: readonly LeadingSection[] = ["map", "summary", "charts", "splits", "laps", "climbs", "efforts", "segments", "workout", "zones", "energy", "weather", "gear"];
+const leadingSections: readonly LeadingSection[] = ["map", "summary", "charts", "splits", "laps", "climbs", "descents", "efforts", "segments", "workout", "zones", "energy", "weather", "gear"];
 
 function primaryKeys(activity: RecordedActivity): ReadonlySet<MetricKey> {
   return new Set<MetricKey>(["distance", "moving", activity.profile.primary === "pace" ? "pace_avg" : "speed_avg"]);
@@ -207,6 +207,8 @@ function ActivityBody({ activity, recorded, rebuilding, searchingSegments, onRec
         return <LapsSection key={section} activity={activity} />;
       case "climbs":
         return <ClimbsSection key={section} activity={activity} />;
+      case "descents":
+        return <DescentsSection key={section} activity={activity} />;
       case "efforts":
         return <EffortsSection key={section} activity={activity} ranks={recorded.ranks} rebuilding={rebuilding} />;
       case "zones":

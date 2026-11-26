@@ -2,7 +2,7 @@ import { Linking, StyleSheet, View } from "react-native";
 import { router } from "expo-router";
 import type { ActivityWeather, EffortRank, HeartRateZone, HeartRateZoneReport, SplitSummary } from "@obnixe/core";
 import type { BestEffortKey, CadenceSource, ElevationSource, EnergyMethod, Recording, SensorSource, Session } from "@obnixe/schema";
-import { climbText, distanceText, effortFigure, effortTitle, elapsedText, paceFigure, paceSeconds, rateFigure } from "@/features/recordings/format";
+import { climbText, descentText, distanceText, effortFigure, effortTitle, elapsedText, paceFigure, paceSeconds, rateFigure } from "@/features/recordings/format";
 import { trackPalettes } from "@/features/recordings/palette";
 import type { RecordedActivity } from "@/features/recordings/useRecordedActivity";
 import { weatherText } from "@/features/recordings/weatherText";
@@ -127,6 +127,20 @@ export function ClimbsSection({ activity }: ActivityProps) {
       {climbs.map((climb, index) => {
         const text = climbText(climb);
         return <Row key={climb.startDistanceMm} title={`Montée ${index + 1}`} detail={text.detail} value={text.ascent} valueDetail={text.effort} last={index === climbs.length - 1} />;
+      })}
+    </Section>
+  );
+}
+
+/** The descents of the snow sports that detect them (`runs`), in track order. */
+export function DescentsSection({ activity }: ActivityProps) {
+  const descents = activity.processed.descents;
+  if (descents.length === 0) return null;
+  return (
+    <Section title="Descentes">
+      {descents.map((descent, index) => {
+        const text = descentText(descent);
+        return <Row key={descent.startDistanceMm} title={`Descente ${index + 1}`} detail={text.detail} value={text.descent} valueDetail={text.effort} last={index === descents.length - 1} />;
       })}
     </Section>
   );

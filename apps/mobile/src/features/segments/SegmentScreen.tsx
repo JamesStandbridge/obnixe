@@ -43,8 +43,8 @@ const framePadding = 36;
 const maxFitZoom = 17;
 
 /** The sport whose colors a family's segments are drawn with. */
-const familySport: Readonly<Record<SegmentFamily, SportKey>> = { foot: "run", bike: "bike" };
-const familyLabels: Readonly<Record<SegmentFamily, string>> = { foot: "Segment à pied", bike: "Segment à vélo" };
+const familySport: Readonly<Record<SegmentFamily, SportKey>> = { foot: "run", bike: "bike", snow: "nordic_ski", water: "paddle" };
+const familyLabels: Readonly<Record<SegmentFamily, string>> = { foot: "Segment à pied", bike: "Segment à vélo", snow: "Segment à ski", water: "Segment sur l'eau" };
 
 interface SegmentData {
   readonly board: SegmentBoard;

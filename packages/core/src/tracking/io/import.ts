@@ -281,6 +281,7 @@ function energyOf(db: ObnixeDatabase, computation: ImportComputation): EnergyEst
       distanceMm: computation.summary.distanceMm,
       path: processed === null ? null : { distance: processed.series.distance, grade: processed.series.grade },
       heartRate: track.samples.heartRate.length === 0 ? null : track.samples.heartRate,
+      descents: processed === null ? null : processed.descents.map((descent) => ({ startMs: descent.startMs, endMs: descent.endMs })),
     },
     { massGrams: weighed.grams, birthYear, sex },
   );

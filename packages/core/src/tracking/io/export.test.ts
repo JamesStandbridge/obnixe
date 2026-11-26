@@ -79,7 +79,7 @@ describe("GPX export (IO-001, IO-002)", () => {
 
   it("exports every fix of a sport without a profile, cut at the pauses", () => {
     const activity = activityOf("multi-track.gpx");
-    const swim = computeImport(activity, { sport: "swim", values: { water: "open_water" } });
+    const swim = computeImport(activity, { sport: "swim", values: { water: "pool" } });
     expect(swim.processed).toBeNull();
     const back = readGpx(encoder.encode(exportOf(swim)));
     expect(back.points).toHaveLength(activity.points.length);
@@ -222,6 +222,16 @@ describe("FIT sport and sub sport (annex D)", () => {
     { guess: { sport: "bike", values: { kind: "mtb", e_bike: true } }, fit: { sport: fitSport.eBiking, subSport: fitSubSport.eBikeMountain }, back: { sport: "bike", values: { kind: "mtb", e_bike: true } } },
     { guess: { sport: "swim", values: { water: "pool" } }, fit: { sport: fitSport.swimming, subSport: fitSubSport.lapSwimming }, back: { sport: "swim", values: { water: "pool" } } },
     { guess: { sport: "swim", values: { water: "open_water" } }, fit: { sport: fitSport.swimming, subSport: fitSubSport.openWater }, back: { sport: "swim", values: { water: "open_water" } } },
+    { guess: { sport: "ski_touring", values: { kind: "splitboard" } }, fit: { sport: fitSport.alpineSkiing, subSport: fitSubSport.backcountry }, back: { sport: "ski_touring", values: { kind: "touring" } } },
+    { guess: { sport: "nordic_ski", values: { kind: "skate" } }, fit: { sport: fitSport.crossCountrySkiing, subSport: fitSubSport.skateSkiing }, back: { sport: "nordic_ski", values: { kind: "skate" } } },
+    { guess: { sport: "nordic_ski", values: { kind: "classic" } }, fit: { sport: fitSport.crossCountrySkiing, subSport: fitSubSport.generic }, back: { sport: "nordic_ski", values: { kind: "classic" } } },
+    { guess: { sport: "alpine_ski", values: { kind: "ski" } }, fit: { sport: fitSport.alpineSkiing, subSport: fitSubSport.generic }, back: { sport: "alpine_ski", values: { kind: "ski" } } },
+    { guess: { sport: "alpine_ski", values: { kind: "snowboard" } }, fit: { sport: fitSport.snowboarding, subSport: fitSubSport.generic }, back: { sport: "alpine_ski", values: { kind: "snowboard" } } },
+    { guess: { sport: "paddle", values: { kind: "kayak" } }, fit: { sport: fitSport.kayaking, subSport: fitSubSport.generic }, back: { sport: "paddle", values: { kind: "kayak" } } },
+    { guess: { sport: "paddle", values: { kind: "canoe" } }, fit: { sport: fitSport.paddling, subSport: fitSubSport.generic }, back: { sport: "paddle", values: { kind: "canoe" } } },
+    { guess: { sport: "paddle", values: { kind: "sup" } }, fit: { sport: fitSport.standUpPaddleboarding, subSport: fitSubSport.generic }, back: { sport: "paddle", values: { kind: "sup" } } },
+    { guess: { sport: "paddle", values: { kind: "rowing" } }, fit: { sport: fitSport.rowing, subSport: fitSubSport.generic }, back: { sport: "paddle", values: { kind: "rowing" } } },
+    { guess: { sport: "inline_skate", values: { kind: "speed" } }, fit: { sport: fitSport.inlineSkating, subSport: fitSubSport.generic }, back: { sport: "inline_skate", values: {} } },
     { guess: { sport: "strength", values: {} }, fit: { sport: fitSport.generic, subSport: fitSubSport.generic }, back: null },
   ];
 
@@ -259,9 +269,9 @@ describe("TCX export (IO-003)", () => {
     }
   });
 
-  it("maps walks, hikes and swims to Other", () => {
-    const sports: readonly SportKey[] = ["run", "trail", "bike", "walk", "hike", "swim"];
-    expect(sports.map(tcxSportOf)).toEqual(["Running", "Running", "Biking", "Other", "Other", "Other"]);
+  it("maps walks, hikes, swims and the snow, water and skating sports to Other", () => {
+    const sports: readonly SportKey[] = ["run", "trail", "bike", "walk", "hike", "swim", "ski_touring", "nordic_ski", "alpine_ski", "paddle", "inline_skate"];
+    expect(sports.map(tcxSportOf)).toEqual(["Running", "Running", "Biking", "Other", "Other", "Other", "Other", "Other", "Other", "Other", "Other"]);
   });
 
   it.each(scenarioNames)("gives back the distance, moving time and ascent of %s when imported again", (name) => {

@@ -46,9 +46,25 @@ describe("catalog", () => {
     expect(boulder.safeParse({ grade: gradeValue("french", "6b"), attempts: 2, result: "sent" }).success).toBe(false);
   });
 
-  it("records exactly the V1 outdoor sports (SPT-001)", () => {
+  it("records the outdoor sports of V1 and V2 (SPT-001)", () => {
     const recordable = (Object.entries(sports) as [SportKey, SportDefinition][]).filter(([, sport]) => sport.recording !== null).map(([key]) => key);
-    expect(recordable.sort()).toEqual(["bike", "hike", "run", "trail", "walk"]);
+    expect(recordable.sort()).toEqual(["alpine_ski", "bike", "hike", "inline_skate", "nordic_ski", "paddle", "run", "ski_touring", "swim", "trail", "walk"]);
+  });
+
+  it("records an open-water swim only, per 100 m (SPT-009)", () => {
+    const swim = sports.swim;
+    expect(swim.recordingOverrides).toEqual({ field: "water", byOption: { pool: null } });
+    expect(swim.recording?.recordedValues).toEqual({ water: "open_water" });
+    expect(swim.recording?.pacePerMeters).toBe(100);
+    expect(swim.recording?.splitMeters).toBe(100);
+    expect(swim.recording?.autoPauseDefault).toBe(false);
+  });
+
+  it.each(Object.entries(sports) as [string, SportDefinition][])("%s records values of its own session fields", (_, sport) => {
+    for (const [key, value] of Object.entries(sport.recording?.recordedValues ?? {})) {
+      const field = sport.sessionFields.find((candidate) => candidate.key === key);
+      expect(field?.type === "choice" ? field.options.map((option) => option.key) : []).toContain(value);
+    }
   });
 
   it.each(recordingProfiles())("%s has a coherent recording profile", (_, profile) => {
@@ -78,6 +94,7 @@ describe("catalog", () => {
     expect(profile.bestEffortMeters.every((meters) => meters > 0)).toBe(true);
     expect(profile.bestAscentWindowMs === null || profile.metrics.includes("ascent")).toBe(true);
     expect(profile.climbMinimumAscentMeters === null || (profile.climbMinimumAscentMeters > 0 && profile.metrics.includes("vam"))).toBe(true);
+    expect(profile.descentMinimumMeters === null || (profile.descentMinimumMeters > 0 && profile.metrics.includes("descent"))).toBe(true);
   });
 
   it.each(Object.entries(sports) as [string, SportDefinition][])("%s overrides options of an existing choice field", (_, sport) => {
