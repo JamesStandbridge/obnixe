@@ -1,6 +1,9 @@
 {
-  "platforms": ["android"],
+  "platforms": ["android", "ios"],
   "android": {
     "modules": ["app.obnixe.tracker.ObnixeTrackerModule"]
+  },
+  "ios": {
+    "modules": ["ObnixeTrackerModule"]
   }
 }
