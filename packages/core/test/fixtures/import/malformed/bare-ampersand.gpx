@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="Test" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>Run & fun</name><type>running</type><trkseg>
+<trkpt lat="45.8992130" lon="6.1294180"><ele>447.0</ele><time>2026-11-02T07:31:05.000Z</time></trkpt>
+<trkpt lat="45.8992594" lon="6.1294645"><ele>448.0</ele><time>2026-11-02T07:31:07.000Z</time></trkpt>
+<trkpt lat="45.8993086" lon="6.1295003"><ele>449.0</ele><time>2026-11-02T07:31:09.000Z</time></trkpt>
+<trkpt lat="45.8993579" lon="6.1295338"><ele>450.0</ele><time>2026-11-02T07:31:11.000Z</time></trkpt>
+<trkpt lat="45.8994116" lon="6.1295679"><ele>450.9</ele><time>2026-11-02T07:31:13.000Z</time></trkpt>
+<trkpt lat="45.8994584" lon="6.1296017"><ele>451.9</ele><time>2026-11-02T07:31:15.000Z</time></trkpt>
+<trkpt lat="45.8995077" lon="6.1296346"><ele>452.9</ele><time>2026-11-02T07:31:17.000Z</time></trkpt>
+<trkpt lat="45.8995574" lon="6.1296571"><ele>453.8</ele><time>2026-11-02T07:31:19.000Z</time></trkpt>
+<trkpt lat="45.8996109" lon="6.1296789"><ele>454.7</ele><time>2026-11-02T07:31:21.000Z</time></trkpt>
+<trkpt lat="45.8996615" lon="6.1296941"><ele>455.6</ele><time>2026-11-02T07:31:23.000Z</time></trkpt>
+</trkseg></trk></gpx>

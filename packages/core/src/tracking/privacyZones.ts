@@ -1,7 +1,11 @@
+import { isNull } from "drizzle-orm";
+import { privacyZone } from "@obnixe/schema";
 import type { Id, PrivacyZone } from "@obnixe/schema";
-import type { Environment } from "../database.ts";
+import type { Environment, ObnixeDatabase } from "../database.ts";
+import { readSettings } from "../settings.ts";
 import type { Mutation } from "../writer.ts";
 import type { GeoPoint } from "./geo.ts";
+import type { MaskOptions, MaskZone } from "./privacy.ts";
 
 /** Radius chosen by the user (`PRV-010`), also enforced by the `privacy_zone_radius` check. */
 export const privacyZoneRadiusBounds = { minMeters: 100, maxMeters: 2000 } as const;
@@ -64,4 +68,27 @@ export function editPrivacyZone(zone: PrivacyZone, draft: PrivacyZoneDraft): Mut
   if (fields.radiusMeters !== zone.radiusMeters) patch.radiusMeters = fields.radiusMeters;
   if (Object.keys(patch).length === 0) return null;
   return { kind: "update", table: "privacy_zone", key: zone.id, patch };
+}
+
+/** What `maskTrack` removes from everything that leaves the detail screen. */
+export interface PrivacyMask extends MaskOptions {
+  readonly zones: readonly MaskZone[];
+}
+
+/** The zones outside the trash and `settings.hide_track_ends_meters` (`PRV-010`, `PRV-012`): previews, shares, the agent. */
+export function activePrivacyMask(db: ObnixeDatabase): PrivacyMask {
+  const zones = db
+    .select({ latitudeE7: privacyZone.latitudeE7, longitudeE7: privacyZone.longitudeE7, radiusMeters: privacyZone.radiusMeters, maskScalePermille: privacyZone.maskScalePermille })
+    .from(privacyZone)
+    .where(isNull(privacyZone.deletedAt))
+    .all();
+  return { zones, hideEndsMeters: readSettings(db).hideTrackEndsMeters };
+}
+
+/**
+ * The mask of a file export (`PRV-011`): the active mask, or none when the user includes the full track. The box is unchecked
+ * by default while `settings.export_privacy` is on.
+ */
+export function exportPrivacyMask(db: ObnixeDatabase, includeFullTrack: boolean = !readSettings(db).exportPrivacy): PrivacyMask | null {
+  return includeFullTrack ? null : activePrivacyMask(db);
 }

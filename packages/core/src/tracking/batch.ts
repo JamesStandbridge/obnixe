@@ -62,7 +62,7 @@ export interface ProcessedTrack {
 
 const orNull = (value: number): number | null => (value === absentValue ? null : value);
 
-function fixAt(fixes: FixColumns, index: number): Fix {
+export function fixAt(fixes: FixColumns, index: number): Fix {
   return {
     type: "fix",
     t: fixes.t[index] ?? 0,
