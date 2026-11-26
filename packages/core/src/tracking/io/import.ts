@@ -29,7 +29,7 @@ import { trackingAlgorithmVersion } from "../version.ts";
 import { forEachHeartRateSpan, isHeartRateReading } from "../zones.ts";
 import type { TimeSpan } from "../zones.ts";
 import { importedTrack } from "./activity.ts";
-import type { FileFormat, ImportedActivity } from "./activity.ts";
+import type { ArchiveFormat, FileFormat, ImportedActivity } from "./activity.ts";
 import type { SportGuess } from "./sports.ts";
 
 export const importSummary = "Import d'une activité";
@@ -66,6 +66,8 @@ export interface ImportDraft {
   readonly timeZone: string;
   /** The session the import replaces (`IO-012` *Remplacer*), moved to the trash in the same changeset. */
   readonly replaceSessionId: Id | null;
+  /** The account archive the file comes from (`IO-053`), recorded as `recording.import_format` instead of the file format. */
+  readonly archiveFormat?: ArchiveFormat;
 }
 
 /** The `.otrk` to write, synced and verified, before committing the request that references it. */
@@ -226,29 +228,41 @@ export function computeImport(activity: ImportedActivity, sport: SportGuess): Im
 const distanceOf = (row: { readonly distanceMm: number | null; readonly values: FieldValues }): number | null =>
   row.distanceMm ?? (typeof row.values.distance === "number" ? row.values.distance * 1000 : null);
 
-/** The file already imported, or the sessions of the same sport starting within 120 s with a distance within 5 % (`IO-012`). */
-export function findImportDuplicate(db: ObnixeDatabase, computation: ImportComputation): ImportDuplicate {
-  const { activity, summary } = computation;
+/** The distance the duplicate rule compares (`IO-012`): the pool distance of a lap swim, the measured one otherwise. */
+export function importDistanceMm(computation: ImportComputation): number {
+  const { pool } = computation.activity;
+  return pool === null ? computation.summary.distanceMm : pool.distanceMeters * 1000;
+}
+
+/** Whether a distance is within 5 % of a known one (`IO-012`); a session without distance matches only an activity without one. */
+export function withinDuplicateDistance(distanceMm: number, knownMm: number | null): boolean {
+  return knownMm === null ? distanceMm === 0 : Math.abs(distanceMm - knownMm) <= duplicateDistanceRatio * knownMm;
+}
+
+/** The session in force whose recording holds `externalId`. */
+export function importHolder(db: ObnixeDatabase, externalId: string): Id | null {
   const held = db
     .select({ sessionId: session.id })
     .from(recording)
     .innerJoin(session, eq(session.id, recording.sessionId))
-    .where(and(eq(recording.externalId, activity.externalId), isNull(session.deletedAt)))
+    .where(and(eq(recording.externalId, externalId), isNull(session.deletedAt)))
     .get();
-  if (held !== undefined) return { kind: "already_imported", sessionId: held.sessionId };
+  return held?.sessionId ?? null;
+}
+
+/** The file already imported, or the sessions of the same sport starting within 120 s with a distance within 5 % (`IO-012`). */
+export function findImportDuplicate(db: ObnixeDatabase, computation: ImportComputation): ImportDuplicate {
+  const { activity } = computation;
+  const held = importHolder(db, activity.externalId);
+  if (held !== null) return { kind: "already_imported", sessionId: held };
   const candidates = db
     .select({ id: session.id, values: session.values, distanceMm: recording.distanceMm })
     .from(session)
     .leftJoin(recording, eq(recording.sessionId, session.id))
     .where(and(eq(session.sport, computation.sport.sport), isNull(session.deletedAt), between(session.startedAt, (activity.startedAt - duplicateStartMs) as EpochMs, (activity.startedAt + duplicateStartMs) as EpochMs)))
     .all();
-  const distance = activity.pool === null ? summary.distanceMm : activity.pool.distanceMeters * 1000;
-  const sessionIds = candidates
-    .filter((candidate) => {
-      const known = distanceOf(candidate);
-      return known === null ? distance === 0 : Math.abs(distance - known) <= duplicateDistanceRatio * known;
-    })
-    .map((candidate) => candidate.id);
+  const distance = importDistanceMm(computation);
+  const sessionIds = candidates.filter((candidate) => withinDuplicateDistance(distance, distanceOf(candidate))).map((candidate) => candidate.id);
   return sessionIds.length === 0 ? { kind: "none" } : { kind: "probable", sessionIds };
 }
 
@@ -361,7 +375,7 @@ export function planImport(db: ObnixeDatabase, env: Environment, draft: ImportDr
         id: recordingId,
         sessionId,
         source: "import",
-        importFormat: activity.format,
+        importFormat: draft.archiveFormat ?? activity.format,
         externalId: activity.externalId,
         device,
         algorithmVersion: summary.algorithmVersion,
