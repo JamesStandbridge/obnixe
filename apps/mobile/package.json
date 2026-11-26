@@ -7,6 +7,7 @@
     "@expo-google-fonts/sofia-sans": "^0.4.3",
     "@expo-google-fonts/sofia-sans-condensed": "^0.4.2",
     "@expo/metro-runtime": "~58.0.17",
+    "@maplibre/maplibre-react-native": "^11.5.1",
     "@noble/ciphers": "^2.4.0",
     "@noble/hashes": "^2.4.0",
     "@obnixe/core": "workspace:*",
@@ -32,6 +33,7 @@
     "expo-splash-screen": "~58.0.14",
     "expo-sqlite": "~58.0.18",
     "expo-status-bar": "~58.0.5",
+    "maplibre-gl": "^5.24.1",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "react-native": "0.88.1",
@@ -44,10 +46,12 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@maplibre/maplibre-gl-style-spec": "26.4.4",
     "@types/node": "^26.6.5",
     "@types/react": "~19.3.0",
     "babel-plugin-inline-import": "^3.0.0",
     "babel-preset-expo": "^58.0.20",
+    "opentype.js": "2.0.0",
     "typescript": "~6.0.3",
     "vitest": "^5.0.5"
   },
@@ -56,6 +60,7 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
+    "maps:assets": "node scripts/build-map-assets.mjs",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
     "test": "vitest run"
   },

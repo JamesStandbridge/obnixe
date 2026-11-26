@@ -1,0 +1,58 @@
+{
+  "peak": {
+    "x": 0,
+    "y": 0,
+    "width": 24,
+    "height": 24,
+    "pixelRatio": 1,
+    "sdf": true
+  },
+  "saddle": {
+    "x": 24,
+    "y": 0,
+    "width": 24,
+    "height": 24,
+    "pixelRatio": 1,
+    "sdf": true
+  },
+  "hut": {
+    "x": 48,
+    "y": 0,
+    "width": 24,
+    "height": 24,
+    "pixelRatio": 1,
+    "sdf": true
+  },
+  "shelter": {
+    "x": 72,
+    "y": 0,
+    "width": 24,
+    "height": 24,
+    "pixelRatio": 1,
+    "sdf": true
+  },
+  "water": {
+    "x": 96,
+    "y": 0,
+    "width": 24,
+    "height": 24,
+    "pixelRatio": 1,
+    "sdf": true
+  },
+  "badge": {
+    "x": 120,
+    "y": 0,
+    "width": 24,
+    "height": 24,
+    "pixelRatio": 1,
+    "sdf": true
+  },
+  "dot": {
+    "x": 144,
+    "y": 0,
+    "width": 24,
+    "height": 24,
+    "pixelRatio": 1,
+    "sdf": true
+  }
+}
