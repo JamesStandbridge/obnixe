@@ -96,12 +96,18 @@ describe("track .otrk", () => {
       { type: "pressure", t: 9, pascals: 0 },
       { type: "steps", t: 2, count: 0 },
       { type: "steps", t: 3, count: 4_294_967_295 },
+      { type: "power", t: 7, watts: 0, cadence: null },
+      { type: "power", t: 8, watts: 65_535, cadence: 0 },
+      { type: "power", t: 8, watts: 312, cadence: 65_534 },
+      { type: "cadence", t: 1, perMinute: 0 },
+      { type: "cadence", t: 2, perMinute: 65_535 },
     ];
     const edge = trackOf(samples, [{ kind: "start", t: 0 }, { kind: "stop", t: 4_294_967_295 }]);
     const decoded = decodeTrack(encodeTrack(edge));
     expect(decoded.samples).toEqual(edge.samples);
     expect(decoded.marks).toEqual(edge.marks);
     expect(decoded.samples.heartRate.rrInterval[0]).toBe(-2_147_483_648);
+    expect(Array.from(decoded.samples.power.cadence)).toEqual([-2_147_483_648, 0, 65_534]);
   });
 
   it("encodes an empty track and decodes it to empty columns", () => {
@@ -134,6 +140,7 @@ describe("track .otrk", () => {
     expect(() => encodeTrack(trackOf([{ ...baseFix, horizontalAccuracyDm: -1 }]))).toThrow(TrackEncodeError);
     expect(() => encodeTrack(trackOf([{ type: "steps", t: 0, count: 5 }, { type: "steps", t: 1, count: 4 }]))).toThrow(TrackEncodeError);
     expect(() => encodeTrack(trackOf([], [{ kind: "lap", t: 10 }, { kind: "stop", t: 9 }]))).toThrow(TrackEncodeError);
+    expect(() => encodeTrack(trackOf([{ type: "power", t: 0, watts: 200, cadence: 65_535 }]))).toThrow(TrackEncodeError);
     expect(() => encodeTrack({ ...trackOf([]), startedAt: -1 as EpochMs })).toThrow(TrackEncodeError);
     const unordered = toSampleColumns([baseFix, { ...baseFix, t: 10 }]);
     unordered.fixes.t[1] = 0;
@@ -182,6 +189,9 @@ describe("track .otrk", () => {
       rejects(forge([{ kind: 4, count: 1, bytes: varints([0, 65_536, 0], [false, true, true]) }]), /heart rate 0 is out of range/);
       rejects(forge([{ kind: 1, count: 1, bytes: varints([0, 0b1, 0, 0, 0, -2_147_483_648], [false, false, true, true, true, true]) }]), /altitudeEllipsoidMm 0 is out of range/);
       rejects(forge([{ kind: 5, count: 1, bytes: varints([0, 4], []) }]), /unknown kind/);
+      rejects(forge([{ kind: 6, count: 1, bytes: varints([0, 65_536, 0], [false, true, true]) }]), /power 0 is out of range/);
+      rejects(forge([{ kind: 6, count: 1, bytes: varints([0, 0, -1], [false, true, true]) }]), /power cadence 0 is out of range/);
+      rejects(forge([{ kind: 7, count: 1, bytes: varints([0, 65_536], [false, true]) }]), /cadence 0 is out of range/);
       rejects(forge([{ kind: 3, count: 2, bytes: varints([4_294_967_295, 1, 0, 0], []) }]), /time 1 overflows/);
     });
   });

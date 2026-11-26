@@ -100,7 +100,7 @@ describe("processTrack (GPS-001, GPS-002)", () => {
     expect(processed.bestEfforts.find((effort) => effort.effort === "run:distance:5000")?.elapsedMs).toBeLessThan(1_520_000);
     expect(processed.details.gradeAdjustedDistanceMm).not.toBeNull();
     const energy = estimateEnergy(
-      { sport: "run", values: {}, startedAt: trackOf([]).startedAt, elapsed: processed.elapsed, moving: processed.moving, distanceMm: processed.summary.distanceMm, path: processed.series, heartRate: null, descents: null },
+      { sport: "run", values: {}, startedAt: trackOf([]).startedAt, elapsed: processed.elapsed, moving: processed.moving, distanceMm: processed.summary.distanceMm, path: processed.series, heartRate: null, descents: null, power: null },
       { massGrams: 70_000, birthYear: 1990, sex: "male" },
     );
     expect(energy?.method).toBe("mechanical");
@@ -138,15 +138,22 @@ describe("processTrack (GPS-001, GPS-002)", () => {
 
 describe("session values (SPT-003)", () => {
   it("derive distance, ascent, heart rate and paused seconds from the recording row", () => {
-    const recording = { elapsedMs: 3_600_400, movingMs: 3_000_000, distanceMm: 10_000_600, ascentMm: 120_400, heartRateAvg: 151 };
+    const recording = { elapsedMs: 3_600_400, movingMs: 3_000_000, distanceMm: 10_000_600, ascentMm: 120_400, heartRateAvg: 151, powerAvg: null };
     expect(sessionValuesFromRecording({ kind: "easy", distance: 1, heart_rate_avg: 99 }, recording, profileOf({ sport: "run" }))).toEqual({
       values: { kind: "easy", distance: 10_001, elevation_gain: 120, heart_rate_avg: 151 },
       pausedSeconds: 600,
     });
-    expect(sessionValuesFromRecording({ elevation_gain: 3, heart_rate_avg: 99 }, { ...recording, ascentMm: null, heartRateAvg: null }, { metrics: ["distance"], recordedValues: {} })).toEqual({
+    expect(sessionValuesFromRecording({ elevation_gain: 3, heart_rate_avg: 99 }, { ...recording, ascentMm: null, heartRateAvg: null }, { metrics: ["distance"], recordedValues: {}, sport: "run" })).toEqual({
       values: { distance: 10_001 },
       pausedSeconds: 600,
     });
     expect(sessionValuesFromRecording({ water: "pool" }, recording, profileOf({ sport: "swim" })).values).toEqual({ water: "open_water", distance: 10_001, heart_rate_avg: 151 });
+  });
+
+  it("derive the average power of rides only (SPT-008)", () => {
+    const recording = { elapsedMs: 3_600_000, movingMs: 3_600_000, distanceMm: 30_000_000, ascentMm: null, heartRateAvg: null, powerAvg: 212 };
+    expect(sessionValuesFromRecording({ power_avg: 150 }, recording, profileOf({ sport: "bike" })).values).toEqual({ distance: 30_000, power_avg: 212 });
+    expect(sessionValuesFromRecording({ power_avg: 150 }, { ...recording, powerAvg: null }, profileOf({ sport: "bike" })).values).toEqual({ distance: 30_000 });
+    expect(sessionValuesFromRecording({}, recording, profileOf({ sport: "run" })).values).toEqual({ distance: 30_000 });
   });
 });

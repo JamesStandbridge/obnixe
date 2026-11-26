@@ -24,8 +24,8 @@ const simulatedFlag = 1;
 const maxLatitudeE7 = 900_000_000;
 const maxLongitudeE7 = 1_800_000_000;
 
-const recordType = { fix: 1, pressure: 2, steps: 3, heart_rate: 4, mark: 5 } as const;
-const recordLength: Readonly<Record<number, number>> = { 1: 38, 2: 9, 3: 9, 4: 10, 5: 6 };
+const recordType = { fix: 1, pressure: 2, steps: 3, heart_rate: 4, mark: 5, power: 6, cadence: 7 } as const;
+const recordLength: Readonly<Record<number, number>> = { 1: 38, 2: 9, 3: 9, 4: 10, 5: 6, 6: 9, 7: 7 };
 
 const platformCodes = { android: 1, ios: 2 } as const;
 export type JournalPlatform = keyof typeof platformCodes;
@@ -168,6 +168,10 @@ function readRecord(view: DataView, at: number, type: number): JournalRecord | n
       const kind = markByCode[view.getUint8(at + 5)];
       return kind === undefined ? null : { type: "mark", kind, t };
     }
+    case recordType.power:
+      return { type: "power", t, watts: view.getUint16(at + 5, true), cadence: optionalU16(view.getUint16(at + 7, true)) };
+    case recordType.cadence:
+      return { type: "cadence", t, perMinute: view.getUint16(at + 5, true) };
     default:
       return null;
   }
@@ -206,7 +210,7 @@ export function readJournal(bytes: Uint8Array, options: ReadJournalOptions = {})
   const afterSequence = options.afterSequence ?? -1;
   const samples: Sample[] = [];
   const marks: TrackerMark[] = [];
-  const clock: StreamClock = { fix: 0, pressure: 0, steps: 0, heart_rate: 0, mark: 0 };
+  const clock: StreamClock = { fix: 0, pressure: 0, steps: 0, heart_rate: 0, cadence: 0, power: 0, mark: 0 };
   let lastSequence: number | null = null;
   let offset = parsed.length;
   while (bytes.length - offset >= batchPrefixLength) {
@@ -288,6 +292,17 @@ function writeRecord(writer: ByteWriter, record: JournalRecord): void {
       writer.u8(recordType.mark);
       writer.u32(record.t);
       writer.u8(markCodes[record.kind]);
+      return;
+    case "power":
+      writer.u8(recordType.power);
+      writer.u32(record.t);
+      writer.u16(Math.min(record.watts, u16Max));
+      writer.u16(u16OrAbsent(record.cadence));
+      return;
+    case "cadence":
+      writer.u8(recordType.cadence);
+      writer.u32(record.t);
+      writer.u16(Math.min(record.perMinute, u16Max));
       return;
     default: {
       const unreachable: never = record;

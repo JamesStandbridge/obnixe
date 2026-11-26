@@ -1,5 +1,7 @@
 import type { BestEffortKey, LapTrigger, RecordingProfile, RecordingSettings, SportKey } from "@obnixe/schema";
 import { minettiRunningCost } from "../energy.ts";
+import { forEachSensorSpan, isAveraged } from "../sensors.ts";
+import type { SensorAveraging, SensorReadings } from "../sensors.ts";
 import type { HeartRateColumns, TrackerMark } from "../types.ts";
 import { forEachHeartRateSpan, isHeartRateReading } from "../zones.ts";
 import type { TimeSpan } from "../zones.ts";
@@ -212,6 +214,19 @@ export interface TrackSeries {
   /** Heartbeats and heart-rate coverage in ms over counted intervals, with a heart-rate stream. */
   readonly heartBeats: Float64Array | null;
   readonly heartRateMs: Float64Array | null;
+  /** Bluetooth cadence over counted intervals, which then replaces the pedometer's (`SPT-008`). */
+  readonly cadence: SensorSeries | null;
+  readonly power: SensorSeries | null;
+}
+
+/** Cumulative columns of a Bluetooth reading over the counted intervals (`accumulateSensor`). */
+export interface SensorSeries {
+  /** Integral of the averaged readings, in value × ms. */
+  readonly integral: Float64Array;
+  /** Time with an averaged reading. */
+  readonly averagedMs: Float64Array;
+  /** Time with any reading. */
+  readonly coveredMs: Float64Array;
 }
 
 /** First fractional index at or after `from` where the non-decreasing `column` reaches `value`; the last index when it never does. */
@@ -309,6 +324,37 @@ export function accumulateHeartRate(series: Pick<TrackSeries, "length" | "t" | "
   return { beats, coveredMs };
 }
 
+/** A sensor's readings integrated over the counted intervals of `series` like `accumulateHeartRate`. */
+export function accumulateSensor(series: Pick<TrackSeries, "length" | "t" | "interval">, readings: SensorReadings, averaging: SensorAveraging): SensorSeries {
+  const length = series.length;
+  const integral = new Float64Array(length);
+  const averagedMs = new Float64Array(length);
+  const coveredMs = new Float64Array(length);
+  if (length < 2) return { integral, averagedMs, coveredMs };
+  let index = 1;
+  forEachSensorSpan(readings, { startMs: series.t[0] ?? 0, endMs: series.t[length - 1] ?? 0 }, (startMs, endMs, value) => {
+    while (index < length && (series.t[index] ?? 0) <= startMs) index += 1;
+    const averaged = isAveraged(value, averaging);
+    for (let interval = index; interval < length; interval += 1) {
+      const from = series.t[interval - 1] ?? 0;
+      if (from >= endMs) break;
+      if (!isCountedCode(series.interval[interval] ?? 0)) continue;
+      const overlap = Math.min(endMs, series.t[interval] ?? 0) - Math.max(startMs, from);
+      if (overlap <= 0) continue;
+      coveredMs[interval] = (coveredMs[interval] ?? 0) + overlap;
+      if (!averaged) continue;
+      integral[interval] = (integral[interval] ?? 0) + value * overlap;
+      averagedMs[interval] = (averagedMs[interval] ?? 0) + overlap;
+    }
+  });
+  for (let interval = 1; interval < length; interval += 1) {
+    integral[interval] = (integral[interval] ?? 0) + (integral[interval - 1] ?? 0);
+    averagedMs[interval] = (averagedMs[interval] ?? 0) + (averagedMs[interval - 1] ?? 0);
+    coveredMs[interval] = (coveredMs[interval] ?? 0) + (coveredMs[interval - 1] ?? 0);
+  }
+  return { integral, averagedMs, coveredMs };
+}
+
 /** Highest heart-rate reading in `[startMs, endMs)`. */
 export function heartRateMaxBetween(heartRate: HeartRateColumns, startMs: number, endMs: number): number | null {
   const { t, bpm, length } = heartRate;
@@ -335,10 +381,12 @@ export interface StretchSummary extends TimeSpan {
   readonly ascentMm: number | null;
   readonly descentMm: number | null;
   readonly gradeAdjustedDistanceMm: number | null;
-  /** Steps per minute of moving time. */
+  /** Steps per minute of moving time, or the mean of the Bluetooth cadence while pedaling or striding. */
   readonly cadenceAvg: number | null;
   readonly heartRateAvg: number | null;
   readonly heartRateMax: number | null;
+  /** Watts, over the time covered by the power meter. */
+  readonly powerAvg: number | null;
 }
 
 export interface SplitSummary extends StretchSummary {
@@ -357,6 +405,10 @@ export function summarizeStretch(series: TrackSeries, heartRate: HeartRateColumn
   const steps = series.steps === null ? null : delta(series.steps);
   const coveredMs = series.heartRateMs === null ? 0 : delta(series.heartRateMs);
   const beats = series.heartBeats === null ? 0 : delta(series.heartBeats);
+  const sensorMean = (sensor: SensorSeries): number | null => {
+    const averagedMs = delta(sensor.averagedMs);
+    return averagedMs > 0 ? Math.round(delta(sensor.integral) / averagedMs) : null;
+  };
   return {
     startMs,
     endMs,
@@ -366,9 +418,10 @@ export function summarizeStretch(series: TrackSeries, heartRate: HeartRateColumn
     ascentMm: hasElevation ? millimeters(delta(series.ascent)) : null,
     descentMm: hasElevation ? millimeters(delta(series.descent)) : null,
     gradeAdjustedDistanceMm: series.gradeAdjustedDistance === null ? null : millimeters(delta(series.gradeAdjustedDistance)),
-    cadenceAvg: steps === null || movingMs <= 0 ? null : Math.round((steps * 60_000) / movingMs),
+    cadenceAvg: series.cadence !== null ? sensorMean(series.cadence) : steps === null || movingMs <= 0 ? null : Math.round((steps * 60_000) / movingMs),
     heartRateAvg: coveredMs > 0 ? Math.round((beats * 60_000) / coveredMs) : null,
     heartRateMax: heartRate === null ? null : heartRateMaxBetween(heartRate, startMs, endMs),
+    powerAvg: series.power === null ? null : sensorMean(series.power),
   };
 }
 

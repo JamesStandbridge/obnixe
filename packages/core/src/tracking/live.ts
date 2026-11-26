@@ -11,6 +11,8 @@ import { AutoLapper, gradeAdjustmentFactor, intervalKind, isCounted, PauseLedger
 import type { AutoLap, LapPoint, MotionIntervalKind } from "./stages/derive.ts";
 import { MotionClassifier, motionVerticalSpeedWindowMs } from "./stages/motion.ts";
 import type { MotionState } from "./stages/motion.ts";
+import { isAveraged, sensorHoldMs } from "./sensors.ts";
+import type { SensorAveraging } from "./sensors.ts";
 import type { HeartRateSample, Sample, TrackerMark } from "./types.ts";
 import { heartRateHoldMs, isHeartRateReading } from "./zones.ts";
 
@@ -63,8 +65,8 @@ export interface LiveSignal {
 
 /**
  * Values of the profile's metrics that have one. Units: ms for times, meters for distances and altitudes, seconds per
- * `pacePerMeters` for paces (instant ones rounded to the second, `GPS-035`), m/s for speeds and the vertical speed, a fraction for the grade, m/h for the VAM, steps per
- * minute, bpm, and meters of accuracy for `gps_quality`. `heart_rate_zone`, `energy` and `clock` belong to the host.
+ * `pacePerMeters` for paces (instant ones rounded to the second, `GPS-035`), m/s for speeds and the vertical speed, a fraction for the grade, m/h for the VAM, steps or
+ * pedal revolutions per minute, bpm, and meters of accuracy for `gps_quality`. `heart_rate_zone`, `energy` and `clock` belong to the host.
  */
 export type LiveMetrics = Readonly<Partial<Record<MetricKey, number>>>;
 
@@ -82,6 +84,10 @@ export interface LiveSnapshot {
   readonly speed: number;
   /** Latest heart-rate reading still held, whatever the profile's metrics. */
   readonly heartRate: number | null;
+  /** Latest power reading still held in watts, whatever the profile's metrics (`SPT-008`). */
+  readonly power: number | null;
+  /** Mean power over the committed moving time covered by the meter, `null` before any. */
+  readonly powerAvg: number | null;
   /** The route followed (`RTE-004`), `null` without one. */
   readonly route: RouteProgress | null;
 }
@@ -169,6 +175,62 @@ class HeartRateLedger {
   }
 }
 
+/** Bluetooth readings since the last committed interval, integrated with the batch hold rule (`accumulateSensor`). */
+class SensorLedger {
+  private readonly averaging: SensorAveraging;
+  private times: number[] = [];
+  private values: number[] = [];
+  private latest: { readonly t: number; readonly value: number } | null = null;
+  integral = 0;
+  averagedMs = 0;
+
+  constructor(averaging: SensorAveraging) {
+    this.averaging = averaging;
+  }
+
+  get active(): boolean {
+    return this.latest !== null;
+  }
+
+  get average(): number | null {
+    return this.averagedMs > 0 ? this.integral / this.averagedMs : null;
+  }
+
+  push(t: number, value: number): void {
+    this.times.push(t);
+    this.values.push(value);
+    this.latest = { t, value };
+  }
+
+  held(now: number): number | null {
+    return this.latest !== null && now - this.latest.t < sensorHoldMs ? this.latest.value : null;
+  }
+
+  /** Adds the held readings over `[startMs, endMs)`; every reading up to `endMs` must have been pushed. */
+  integrate(startMs: number, endMs: number): void {
+    for (let index = 0; index < this.times.length; index += 1) {
+      const at = this.times[index] ?? 0;
+      if (at >= endMs) break;
+      const value = this.values[index] ?? 0;
+      if (!isAveraged(value, this.averaging)) continue;
+      const next = this.times[index + 1] ?? Number.POSITIVE_INFINITY;
+      const overlap = Math.min(next, at + sensorHoldMs, endMs) - Math.max(at, startMs);
+      if (overlap <= 0) continue;
+      this.integral += value * overlap;
+      this.averagedMs += overlap;
+    }
+  }
+
+  /** Drops the readings that no longer hold at `beforeMs`. */
+  prune(beforeMs: number): void {
+    let keep = 0;
+    while (keep + 1 < this.times.length && (this.times[keep + 1] ?? 0) <= beforeMs) keep += 1;
+    if (keep === 0) return;
+    this.times = this.times.slice(keep);
+    this.values = this.values.slice(keep);
+  }
+}
+
 interface Totals {
   readonly distance: number;
   readonly moving: number;
@@ -193,6 +255,10 @@ export class LiveTracker {
   private readonly vam = new VamMeter();
   private readonly gnssAltitude: ScalarKalman = gnssAltitudeFilter({ smoothing: false });
   private readonly heartRate = new HeartRateLedger();
+  private readonly power = new SensorLedger("every");
+  /** The cadence sensor, otherwise the crank data of the power meter, as `cadenceReadings` picks them. */
+  private readonly sensorCadence = new SensorLedger("positive");
+  private readonly powerCadence = new SensorLedger("positive");
   private readonly elevation = new ElevationProfile();
   private hysteresis: ElevationHysteresis | null = null;
   private pending: PendingInterval[] = [];
@@ -274,6 +340,13 @@ export class LiveTracker {
         this.latestReading = isHeartRateReading(sample.bpm) ? sample : null;
         if (this.latestReading !== null && (this.heartRateMax === null || sample.bpm > this.heartRateMax)) this.heartRateMax = sample.bpm;
         return [];
+      case "cadence":
+        this.sensorCadence.push(sample.t, sample.perMinute);
+        return [];
+      case "power":
+        this.power.push(sample.t, sample.watts);
+        if (sample.cadence !== null) this.powerCadence.push(sample.t, sample.cadence);
+        return [];
       default: {
         const unreachable: never = sample;
         throw new Error(`Unhandled sample ${JSON.stringify(unreachable)}`);
@@ -336,6 +409,8 @@ export class LiveTracker {
       position: estimate === null ? null : { latitude: estimate.latitude, longitude: estimate.longitude },
       speed: this.speedNow,
       heartRate: this.heldReading(now),
+      power: this.power.held(now),
+      powerAvg: this.power.average === null ? null : Math.round(this.power.average),
       route: this.route?.state ?? null,
     };
   }
@@ -343,6 +418,11 @@ export class LiveTracker {
   /** The counted distance and the held heart rate at `now`, without computing the metrics of `snapshot`. */
   progress(now: number): TrackerProgress {
     return { t: now, distanceMm: Math.round(this.totals().distance * 1000), heartRate: this.heldReading(now) };
+  }
+
+  private get cadenceSensor(): SensorLedger | null {
+    if (this.sensorCadence.active) return this.sensorCadence;
+    return this.powerCadence.active ? this.powerCadence : null;
   }
 
   private heldReading(now: number): number | null {
@@ -456,8 +536,14 @@ export class LiveTracker {
         this.distance += interval.meters;
         this.moving += durationMs;
         this.heartRate.integrate(interval.startMs, interval.endMs);
+        this.power.integrate(interval.startMs, interval.endMs);
+        this.sensorCadence.integrate(interval.startMs, interval.endMs);
+        this.powerCadence.integrate(interval.startMs, interval.endMs);
       }
       this.heartRate.prune(interval.endMs);
+      this.power.prune(interval.endMs);
+      this.sensorCadence.prune(interval.endMs);
+      this.powerCadence.prune(interval.endMs);
       if (interval.altitude !== null) {
         this.hysteresis ??= new ElevationHysteresis(this.pipeline.hasBarometer ? elevationThresholdMeters.barometer : elevationThresholdMeters.gnss);
         const ascentBefore = this.hysteresis.ascent;
@@ -503,6 +589,7 @@ export class LiveTracker {
     const gradeFactor = gradeAdjustmentFactor(this.grade ?? Number.NaN);
     const reading = this.heldReading(now);
     const route = this.route?.state ?? null;
+    const cadenceSensor = this.cadenceSensor;
     const values: Record<MetricKey, number | null> = {
       elapsed: Math.max(now - this.startMs, 0),
       moving: totals.moving,
@@ -523,7 +610,7 @@ export class LiveTracker {
       grade_now: moving ? this.grade : null,
       vam: this.vam.value,
       vertical_speed: this.verticalSpeedNow,
-      cadence: this.previous?.cadence ?? null,
+      cadence: cadenceSensor === null ? (this.previous?.cadence ?? null) : cadenceSensor.held(now),
       steps: this.firstStepCount === null || this.lastStepCount === null ? null : this.lastStepCount - this.firstStepCount,
       heart_rate: reading,
       heart_rate_avg: this.heartRate.coveredMs > 0 ? (this.heartRate.beats * 60_000) / this.heartRate.coveredMs : null,

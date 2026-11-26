@@ -506,6 +506,60 @@ function course(): Uint8Array {
   return encoder.close();
 }
 
+/** Road ride with a power meter: one record per second with crank cadence and power, a coasting stretch at 0 W and 0 rpm, and the session averages. */
+function powerRide(): Uint8Array {
+  const start = Date.UTC(2026, 10, 22, 8, 15, 0);
+  const samples = path({ start, latitude: 45.92, longitude: 6.14, count: 600, speed: 8.5, cadence: 88, interval: [1, 1] });
+  const end = (samples[samples.length - 1]?.time ?? start) + 1000;
+  const { encoder } = fitHeader(start, { sport: "cycling", subSport: "road" });
+  encoder.onMesg(mesg.EVENT, { timestamp: date(start), event: "timer", eventType: "start", eventGroup: 0 });
+  let energy = 0;
+  let maxPower = 0;
+  samples.forEach((sample, index) => {
+    const coasting = index >= 400 && index < 460;
+    const power = coasting ? 0 : 190 + Math.round(random() * 60);
+    energy += power;
+    maxPower = Math.max(maxPower, power);
+    encoder.onMesg(mesg.RECORD, {
+      timestamp: date(sample.time),
+      positionLat: semicircles(sample.latitude),
+      positionLong: semicircles(sample.longitude),
+      distance: sample.distance,
+      enhancedSpeed: sample.speed,
+      enhancedAltitude: sample.altitude,
+      heartRate: sample.heartRate,
+      cadence: coasting ? 0 : sample.cadence,
+      power,
+    });
+  });
+  const total = samples[samples.length - 1]?.distance ?? 0;
+  const seconds = (end - start) / 1000;
+  const avgPower = Math.round(energy / samples.length);
+  encoder.onMesg(mesg.EVENT, { timestamp: date(end), event: "timer", eventType: "stopAll", eventGroup: 0 });
+  encoder.onMesg(mesg.LAP, { timestamp: date(end), startTime: date(start), totalElapsedTime: seconds, totalTimerTime: seconds, totalDistance: total, avgPower, maxPower, event: "lap", eventType: "stop", lapTrigger: "sessionEnd", sport: "cycling" });
+  encoder.onMesg(mesg.SESSION, {
+    timestamp: date(end),
+    startTime: date(start),
+    totalElapsedTime: seconds,
+    totalTimerTime: seconds,
+    totalDistance: total,
+    totalCalories: 160,
+    avgHeartRate: 141,
+    maxHeartRate: 158,
+    avgPower,
+    maxPower,
+    sport: "cycling",
+    subSport: "road",
+    firstLapIndex: 0,
+    numLaps: 1,
+    event: "session",
+    eventType: "stop",
+    trigger: "activityEnd",
+  });
+  encoder.onMesg(mesg.ACTIVITY, { timestamp: date(end), totalTimerTime: seconds, numSessions: 1, type: "manual", event: "activity", eventType: "stop" });
+  return encoder.close();
+}
+
 const run = venuRun();
 write("venu3s-run.fit", run);
 write("venu3s-pool-swim.fit", venuPool());
@@ -534,3 +588,4 @@ const tcxActivity = (id: string): string => `<Activity Sport="Biking"><Id>${id}<
 write("two-activities.tcx", `${tcx}${tcxActivity("2026-11-01T08:00:00Z")}${tcxActivity("2026-11-01T09:00:00Z")}</Activities></TrainingCenterDatabase>\n`, malformed);
 write("unclosed.tcx", `${tcx}${tcxActivity("2026-11-01T08:00:00Z").replace("</Lap>", "")}</Activities></TrainingCenterDatabase>\n`, malformed);
 write("not-an-activity.txt", "Ceci n'est pas une activité.\n", malformed);
+write("power-ride.fit", powerRide());

@@ -24,6 +24,8 @@ function snapshot(t: number, fields: Partial<LiveSnapshot> = {}): LiveSnapshot {
     position: null,
     speed: 3,
     heartRate: null,
+    power: null,
+    powerAvg: null,
     route: null,
     ...fields,
   };
@@ -124,10 +126,12 @@ describe("signal, sensor, battery and settings", () => {
 
   it("signals a lost heart-rate source once and its return, and each battery level once", () => {
     const target = monitor();
-    expect(target.heartRateSource(true)).toEqual([]);
-    expect(target.heartRateSource(false)).toEqual([{ kind: "sensor", change: "lost" }]);
-    expect(target.heartRateSource(false)).toEqual([]);
-    expect(target.heartRateSource(true)).toEqual([{ kind: "sensor", change: "back" }]);
+    expect(target.sensorSource("heart_rate", true)).toEqual([]);
+    expect(target.sensorSource("heart_rate", false)).toEqual([{ kind: "sensor", sensor: "heart_rate", change: "lost" }]);
+    expect(target.sensorSource("heart_rate", false)).toEqual([]);
+    expect(target.sensorSource("power", false)).toEqual([{ kind: "sensor", sensor: "power", change: "lost" }]);
+    expect(target.sensorSource("heart_rate", true)).toEqual([{ kind: "sensor", sensor: "heart_rate", change: "back" }]);
+    expect(target.sensorSource("power", true)).toEqual([{ kind: "sensor", sensor: "power", change: "back" }]);
     expect(target.battery("low")).toEqual([{ kind: "battery", level: "low" }]);
     expect(target.battery("low")).toEqual([]);
     expect(target.battery("critical")).toEqual([{ kind: "battery", level: "critical" }]);

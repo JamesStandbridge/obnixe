@@ -7,6 +7,7 @@ import type { ResolvedProfile } from "./profile.ts";
 import { distanceMovingAverage, ElevationHysteresis, elevationThresholdMeters, gnssAltitudeFilter, gradeSeries, VamMeter, verticalSigma, VerticalSpeedMeter } from "./stages/altitude.ts";
 import {
   accumulateHeartRate,
+  accumulateSensor,
   bestEffortsOf,
   countedSpans,
   gradeAdjustmentFactor,
@@ -22,6 +23,7 @@ import {
   trackDescentsOf,
 } from "./stages/derive.ts";
 import type { AutoLap, BestEffortResult, LapBounds, LapSummary, MotionInterval, SplitSummary, TrackClimb, TrackDescent, TrackSeries } from "./stages/derive.ts";
+import { cadenceReadings, powerReadings } from "./sensors.ts";
 import { classifyIntervals, motionVerticalSpeedWindowMs } from "./stages/motion.ts";
 import type { MotionInput } from "./stages/motion.ts";
 import { absentValue } from "./types.ts";
@@ -91,7 +93,7 @@ export function activityWindow(samples: SampleColumns, marks: readonly TrackerMa
   let endMs = trim.startMs;
   for (const mark of marks) if (mark.kind === "stop") endMs = mark.t;
   if (endMs > trim.startMs) return { startMs: trim.startMs, endMs };
-  for (const stream of [samples.fixes, samples.pressure, samples.steps, samples.heartRate]) if (stream.length > 0) endMs = Math.max(endMs, stream.t[stream.length - 1] ?? 0);
+  for (const stream of [samples.fixes, samples.pressure, samples.steps, samples.heartRate, samples.cadence, samples.power]) if (stream.length > 0) endMs = Math.max(endMs, stream.t[stream.length - 1] ?? 0);
   for (const mark of marks) endMs = Math.max(endMs, mark.t);
   return { startMs: trim.startMs, endMs };
 }
@@ -236,6 +238,7 @@ export function processTrack(track: Track, profile: ResolvedProfile, options: Pr
   const partial = { length, t: smoothed.t, interval };
   const heartRate = samples.heartRate.length > 0 ? samples.heartRate : null;
   const accumulated = heartRate === null ? null : accumulateHeartRate(partial, heartRate);
+  const cadence = cadenceReadings(samples);
   const series: TrackSeries = {
     length,
     t: smoothed.t,
@@ -254,6 +257,8 @@ export function processTrack(track: Track, profile: ResolvedProfile, options: Pr
     steps,
     heartBeats: accumulated?.beats ?? null,
     heartRateMs: accumulated?.coveredMs ?? null,
+    cadence: cadence === null ? null : accumulateSensor(partial, cadence, "positive"),
+    power: samples.power.length === 0 ? null : accumulateSensor(partial, powerReadings(samples.power), "every"),
   };
 
   const intervals = motionIntervals(series);

@@ -18,6 +18,7 @@ interface TrackpointDraft {
   heartRate: number | null;
   cadence: number | null;
   runCadence: number | null;
+  power: number | null;
   speedMmS: number | null;
   courseCentiDeg: number | null;
   horizontalAccuracyDm: number | null;
@@ -80,6 +81,7 @@ class TcxReader implements XmlHandler {
         heartRate: null,
         cadence: null,
         runCadence: null,
+        power: null,
         speedMmS: null,
         courseCentiDeg: null,
         horizontalAccuracyDm: null,
@@ -147,6 +149,9 @@ class TcxReader implements XmlHandler {
       case "RunCadence":
         point.runCadence = parseDecimal(this.content, "cadence");
         return;
+      case "Watts":
+        point.power = Math.round(parseDecimal(this.content, "power"));
+        return;
       case "Speed":
         point.speedMmS = Math.round(parseDecimal(this.content, "speed") * 1000);
         return;
@@ -187,6 +192,7 @@ class TcxReader implements XmlHandler {
       altitudeMm: point.altitudeMm,
       heartRate: point.heartRate,
       cadence: point.runCadence ?? point.cadence,
+      power: point.power,
       speedMmS: point.speedMmS,
       courseCentiDeg: point.courseCentiDeg,
       horizontalAccuracyDm: point.horizontalAccuracyDm,
@@ -215,6 +221,7 @@ function lapTotals(laps: readonly LapDraft[]): FileTotals | null {
     energyKcal: energy.length === 0 ? null : energy.reduce((total, lap) => total + (lap.energyKcal ?? 0), 0),
     heartRateAvg: ratedMs === 0 ? null : Math.round(rated.reduce((total, lap) => total + (lap.heartRateAvg ?? 0) * lap.timerMs, 0) / ratedMs),
     heartRateMax: maxima.length === 0 ? null : Math.max(...maxima),
+    powerAvg: null,
   };
 }
 
@@ -285,8 +292,8 @@ export function readTcxCourse(bytes: Uint8Array): FileRoute {
 }
 
 /**
- * Reads a TCX activity: laps (`IO-010`), lap totals for activities without positions (`IO-011`), `RunCadence` and `Speed`
- * extensions, and the Obnixe accuracy, course and pressure extensions.
+ * Reads a TCX activity: laps (`IO-010`), lap totals for activities without positions (`IO-011`), `RunCadence`, `Watts` and
+ * `Speed` extensions, and the Obnixe accuracy, course and pressure extensions.
  */
 export function readTcx(bytes: Uint8Array): ImportedActivity {
   const reader = new TcxReader();
@@ -336,14 +343,18 @@ function heartRateElement(name: string, bpm: number | null): string {
   return bpm === null ? "" : `<${name}><Value>${Math.max(1, Math.min(Math.round(bpm), 255))}</Value></${name}>`;
 }
 
-function trackpointOf(point: ExportPoint): string {
+/** A bike's cadence is the trackpoint `Cadence` in pedal revolutions, any other the `RunCadence` extension in strides. */
+function trackpointOf(point: ExportPoint, sport: TcxSport): string {
   const parts = [`<Time>${isoOf(point.time)}</Time>`, `<Position><LatitudeDegrees>${degreesOf(point.latitudeE7)}</LatitudeDegrees><LongitudeDegrees>${degreesOf(point.longitudeE7)}</LongitudeDegrees></Position>`];
   if (point.altitudeMm !== null) parts.push(`<AltitudeMeters>${(Math.round(point.altitudeMm / 100) / 10).toFixed(1)}</AltitudeMeters>`);
   parts.push(`<DistanceMeters>${(point.distanceMm / 1000).toFixed(2)}</DistanceMeters>`);
   parts.push(heartRateElement("HeartRateBpm", point.heartRate));
+  const pedals = sport === "Biking";
+  if (pedals && point.cadence !== null) parts.push(`<Cadence>${Math.min(Math.round(point.cadence), 254)}</Cadence>`);
   const garmin: string[] = [];
   if (point.speedMmS !== null) garmin.push(`<ns3:Speed>${(point.speedMmS / 1000).toFixed(3)}</ns3:Speed>`);
-  if (point.cadence !== null) garmin.push(`<ns3:RunCadence>${Math.min(Math.round(point.cadence), 254)}</ns3:RunCadence>`);
+  if (!pedals && point.cadence !== null) garmin.push(`<ns3:RunCadence>${Math.min(Math.round(point.cadence), 254)}</ns3:RunCadence>`);
+  if (point.power !== null) garmin.push(`<ns3:Watts>${Math.round(point.power)}</ns3:Watts>`);
   const extensions: string[] = garmin.length === 0 ? [] : [`<ns3:TPX>${garmin.join("")}</ns3:TPX>`];
   if (point.courseCentiDeg !== null) extensions.push(`<obnixe:course>${(point.courseCentiDeg / 100).toFixed(2)}</obnixe:course>`);
   extensions.push(...obnixeElements(point));
@@ -353,8 +364,8 @@ function trackpointOf(point: ExportPoint): string {
 
 /**
  * Garmin Training Center v2 (`IO-003`): one `Activity` whose `Lap` elements hold their totals and one `Track` per continuous
- * part, trackpoints with position, altitude, counted distance, heart rate, and speed and stride cadence in the Garmin
- * `ActivityExtension` v2, and the course, fix accuracies and pressure in the Obnixe namespace.
+ * part, trackpoints with position, altitude, counted distance, heart rate, pedaling cadence, and speed, stride cadence and power
+ * in the Garmin `ActivityExtension` v2, and the course, fix accuracies and pressure in the Obnixe namespace.
  */
 export function writeTcx(document: TcxDocument): string {
   const lines: string[] = [
@@ -368,7 +379,7 @@ export function writeTcx(document: TcxDocument): string {
     );
     for (const track of lap.tracks) {
       if (track.length === 0) continue;
-      lines.push("<Track>", ...track.map(trackpointOf), "</Track>");
+      lines.push("<Track>", ...track.map((point) => trackpointOf(point, document.sport)), "</Track>");
     }
     lines.push("</Lap>");
   }

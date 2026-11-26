@@ -52,6 +52,8 @@ function profileSeries(ramps: readonly Ramp[]): TrackSeries {
     steps: null,
     heartBeats: null,
     heartRateMs: null,
+    cadence: null,
+    power: null,
   };
 }
 

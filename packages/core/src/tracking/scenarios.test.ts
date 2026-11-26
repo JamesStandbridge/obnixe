@@ -77,6 +77,8 @@ function runStages(scenario: Scenario): StageRun {
         cadence.push(sample);
         break;
       case "heart_rate":
+      case "cadence":
+      case "power":
         break;
       default: {
         const unreachable: never = sample;

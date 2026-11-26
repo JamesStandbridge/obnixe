@@ -117,6 +117,8 @@ function mergedTrack(phone: Track, computation: ImportComputation, heartRate: bo
       pressure: altitudes === null ? samples.pressure : noPressure,
       steps: samples.steps,
       heartRate: heartRate ? shiftedHeartRate(computation.track.samples.heartRate, offsetMs) : samples.heartRate,
+      cadence: samples.cadence,
+      power: samples.power,
     },
   };
 }
