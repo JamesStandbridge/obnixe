@@ -1,4 +1,4 @@
-import type { OfflineCoverage, ZoomRange } from "@/features/maps/styles";
+import type { OfflineCoverage, OfflineTileKind, ZoomRange } from "@/features/maps/styles";
 
 /** West, south, east, north in degrees. */
 export type Bounds = readonly [number, number, number, number];
@@ -18,9 +18,23 @@ export const maxRegionTiles = 20_000;
 
 const kilobyte = 1024;
 
-/** Mean tile weights measured on OpenFreeMap and Terrain Tiles over mountain, rural and urban France, in KiB. */
+/** Mean tile weights measured on OpenFreeMap, BD ORTHO and Terrain Tiles over mountain, rural and urban France, in KiB. */
 const vectorTileKiB: Readonly<Record<number, number>> = { 5: 400, 6: 320, 7: 320, 8: 250, 9: 200, 10: 130, 11: 100, 12: 100, 13: 90, 14: 120 };
+const imageryTileKiB: Readonly<Record<number, number>> = { 5: 19, 6: 19, 7: 19, 8: 19, 9: 18, 10: 18, 11: 20, 12: 21, 13: 20, 14: 18, 15: 18, 16: 18 };
 const reliefTileKiB: Readonly<Record<number, number>> = { 5: 80, 6: 78, 7: 78, 8: 78, 9: 130, 10: 130, 11: 125, 12: 115 };
+
+function baseTileKiB(kind: OfflineTileKind): Readonly<Record<number, number>> {
+  switch (kind) {
+    case "vector":
+      return vectorTileKiB;
+    case "imagery":
+      return imageryTileKiB;
+    default: {
+      const unreachable: never = kind;
+      return unreachable;
+    }
+  }
+}
 
 const maxLatitude = 85.051129;
 
@@ -53,10 +67,10 @@ function estimateRange(bounds: Bounds, range: ZoomRange, weights: Readonly<Recor
 
 /** Tile count and expected size of an offline region (MAP-031), shown before the download starts. */
 export function estimateRegion(bounds: Bounds, coverage: OfflineCoverage): RegionEstimate {
-  const vector = estimateRange(bounds, coverage.vector, vectorTileKiB);
-  if (coverage.relief === null) return vector;
+  const base = estimateRange(bounds, coverage.base.zoom, baseTileKiB(coverage.base.kind));
+  if (coverage.relief === null) return base;
   const relief = estimateRange(bounds, coverage.relief, reliefTileKiB);
-  return { tiles: vector.tiles + relief.tiles, bytes: vector.bytes + relief.bytes };
+  return { tiles: base.tiles + relief.tiles, bytes: base.bytes + relief.bytes };
 }
 
 const metersPerDegreeLatitude = 111_320;

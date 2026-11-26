@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { processTrack } from "./batch.ts";
+import type { Track } from "./codec/track.ts";
+import { demCorrectionZoom, DemTiles, demTileSize, demTilesFor, sampleTerrarium } from "./dem.ts";
 import { mountainOuting } from "./testing/scenarios.ts";
 import type { Scenario } from "./testing/scenarios.ts";
 import { fixesOf, percentile, profileOf, recordedLaps, routeOfTruth, runLive, trackOf, untrimmed } from "./testing/run.ts";
 
 /** Node timings guard against regressions; the budgets themselves bind on the reference phone (`PLT-030`). */
-const budgetMs = { liveSampleP95: 0.5, batch3h: 600, batch6h: 800 } as const;
+const budgetMs = { liveSampleP95: 0.5, batch3h: 600, batch6h: 800, demCorrection6h: 1200 } as const;
 const attempts = 3;
 
 function fastestBatchMs(scenario: Scenario): number {
@@ -43,6 +45,28 @@ describe("performance budgets", () => {
 
   it("processes a 6 h outing within 800 ms (PRF-021)", () => {
     expect(fastestBatchMs(mountainOuting(6, 2))).toBeLessThanOrEqual(budgetMs.batch6h);
+  }, 60_000);
+
+  it("samples the DEM under a 6 h outing and measures it again within 1.2 s, tiles decoded (ELE-003)", () => {
+    const outing = mountainOuting(6, 2);
+    const track = trackOf(outing.samples, [{ kind: "start", t: 0 }]);
+    const { fixes } = track.samples;
+    const keys = demTilesFor(fixes.latitudeE7, fixes.longitudeE7, demCorrectionZoom);
+    const tiles = new DemTiles(
+      demCorrectionZoom,
+      keys.map((key) => ({ key, elevation: Float32Array.from({ length: demTileSize * demTileSize }, (_, index) => 900 + (index % demTileSize) * 0.4 + Math.floor(index / demTileSize) * 0.2) })),
+    );
+    const profile = profileOf(outing);
+    let fastest = Number.POSITIVE_INFINITY;
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      const started = performance.now();
+      const terrain = sampleTerrarium(fixes, tiles);
+      if (terrain === null) throw new Error("Missing tile");
+      const corrected: Track = { ...track, samples: { ...track.samples, terrain } };
+      expect(processTrack(corrected, profile, { laps: recordedLaps, trim: untrimmed }).summary.elevationSource).toBe("dem");
+      fastest = Math.min(fastest, performance.now() - started);
+    }
+    expect(fastest).toBeLessThanOrEqual(budgetMs.demCorrection6h);
   }, 60_000);
 
   it("PRF-030 grows linearly with the outing in batch mode and stays flat per sample in stream mode", () => {

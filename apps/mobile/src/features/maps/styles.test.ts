@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { validateStyleMin } from "@maplibre/maplibre-gl-style-spec";
 import type { StyleSpecification } from "@maplibre/maplibre-gl-style-spec";
 import type { MapEmphasis } from "@/features/maps/outdoorStyle";
-import { blankStyle, emphasisOf, outdoorStyle, resolveMapBase } from "@/features/maps/styles";
+import { blankStyle, contourSource, demTileUrl, emphasisOf, mapStyleOptions, orthoStyle, outdoorStyle, resolveMapBase } from "@/features/maps/styles";
 import { trackLayers } from "@/features/maps/trackLayers";
 import type { PaletteName } from "@/ui/tokens";
 
@@ -88,7 +88,7 @@ describe("map bases", () => {
       "© OpenStreetMap contributors",
       "Relief : Terrain Tiles, AWS Open Data",
     ]);
-    expect(outdoor.offline).toEqual({ vector: { min: 5, max: 14 }, relief: { min: 5, max: 12 } });
+    expect(outdoor.offline).toEqual({ base: { kind: "vector", zoom: { min: 5, max: 14 } }, relief: { min: 5, max: 12 } });
   });
 
   it("loads Plan IGN from the official style (MAP-007)", () => {
@@ -96,6 +96,42 @@ describe("map bases", () => {
     expect(ign.style).toBe("https://data.geopf.fr/annexes/ressources/vectorTiles/styles/PLAN.IGN/standard.json");
     expect(ign.attribution.map((source) => source.label)).toEqual(["© IGN"]);
     expect(ign.offline.relief).toBeNull();
+    expect(ign.contours).toBeNull();
+  });
+
+  it("shows BD ORTHO aerial imagery from the Géoplateforme, credited to IGN (MAP-007)", () => {
+    const ortho = resolveMapBase({ mapStyle: "ortho_ign", variant: "dark", emphasis: "foot" });
+    expect(validateStyleMin(orthoStyle())).toEqual([]);
+    expect(ortho.style).toEqual(orthoStyle());
+    expect(ortho.attribution.map((source) => source.label)).toEqual(["© IGN"]);
+    expect(ortho.offline).toEqual({ base: { kind: "imagery", zoom: { min: 5, max: 16 } }, relief: null });
+    expect(ortho.contours).toBeNull();
+    const urls = JSON.stringify(orthoStyle()).match(/[a-z]+:\/\/[^"]+/g) ?? [];
+    for (const url of urls) expect(url).toMatch(/^(asset:\/\/maps\/|https:\/\/data\.geopf\.fr\/wmts\?.*LAYER=ORTHOIMAGERY\.ORTHOPHOTOS.*TILEMATRIX=\{z\}&TILEROW=\{y\}&TILECOL=\{x\})/);
+    expect(mapStyleOptions.map((option) => option.value)).toEqual(["obnixe_outdoor", "plan_ign", "ortho_ign"]);
+  });
+
+  it("draws contour lines under the water and roads of Obnixe Outdoor, labelled with the embedded figures (MAP-006)", () => {
+    for (const variant of variants) {
+      const { contours } = resolveMapBase({ mapStyle: "obnixe_outdoor", variant, emphasis: "foot" });
+      if (contours === null) throw new Error("Outdoor has contours");
+      const style = outdoorStyle(variant, "foot");
+      const anchor = style.layers.findIndex((layer) => layer.id === contours.beforeId);
+      expect(anchor).toBeGreaterThan(style.layers.findIndex((layer) => layer.type === "hillshade"));
+      expect(anchor).toBeLessThan(style.layers.findIndex((layer) => layer.id === "water"));
+      const withContours: StyleSpecification = {
+        ...style,
+        sources: { ...style.sources, [contourSource]: { type: "geojson", data: { type: "FeatureCollection", features: [] } } },
+        layers: [...style.layers.slice(0, anchor), ...contours.layers, ...style.layers.slice(anchor)],
+      };
+      expect(validateStyleMin(withContours)).toEqual([]);
+      expect(Math.min(...contours.layers.map((layer) => layer.minzoom ?? 0))).toBe(12);
+      for (const stack of fontStacks(withContours)) expect(existsSync(`${assets}glyphs/${stack}/0-255.pbf`), stack).toBe(true);
+    }
+  });
+
+  it("samples the DEM from the Terrain Tiles of the relief (ELE-003)", () => {
+    expect(demTileUrl({ zoom: 13, x: 4226, y: 2927 })).toBe("https://s3.amazonaws.com/elevation-tiles-prod/terrarium/13/4226/2927.png");
   });
 
   it("falls back to a plain valid ground (MAP-032)", () => {

@@ -7,6 +7,7 @@ import { db, environment } from "@/data/database";
 import { importErrorMessage } from "@/features/activityFiles/importActivity";
 import type { PreviewPath } from "@/features/activityFiles/importActivity";
 import type { LngLat } from "@/features/maps/surface";
+import { demRoute } from "@/features/maps/terrain";
 import { readTrack, TrackWriteError, writeRouteTrack } from "@/features/tracking/trackStore";
 
 /** A route read from a file or an activity, measured by the engine before it is saved (`RTE-001`). */
@@ -54,7 +55,7 @@ function candidateOf(name: string | null, sport: SportGuess | null, path: RouteP
   return { name, sport, path, elevationSource, geometry: new RouteGeometry(path, elevationSource) };
 }
 
-/** A file's altitude is taken as given; without it the route has no D+ until the DEM is available. */
+/** A file's altitude is taken as given; without it the route has no D+ until `withDem` finds the relief. */
 export function readRoute(bytes: Uint8Array): RouteReading {
   try {
     const file = readRouteFile(bytes);
@@ -75,6 +76,13 @@ export function activityCandidate(processed: ProcessedTrack, name: string, sport
     if (error instanceof RouteTooShortError) return null;
     throw error;
   }
+}
+
+/** `ELE-003`: a candidate without altitude measured on the DEM, or left as it is when the relief cannot be downloaded. */
+export async function withDem(candidate: RouteCandidate): Promise<RouteCandidate> {
+  if (candidate.elevationSource !== "none") return candidate;
+  const path = await demRoute(candidate.path);
+  return path === null ? candidate : { ...candidate, path, elevationSource: "dem", geometry: new RouteGeometry(path, "dem") };
 }
 
 /** Distance and D+ of a candidate as the engine measures them, for the preview before saving. */

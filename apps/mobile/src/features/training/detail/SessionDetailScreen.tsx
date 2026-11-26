@@ -19,6 +19,8 @@ import {
   newGear,
   newSegment,
   nextSlot,
+  planElevationCorrection,
+  planElevationRestore,
   planRecompute,
   planSportChange,
   planTrim,
@@ -27,7 +29,7 @@ import {
   sessionHistory,
   trackingAlgorithmVersion,
 } from "@obnixe/core";
-import type { HistoryEntry, PainAnchor, RecordingRewrite, SegmentDraft, SegmentPlan, SessionReport, SportChange, TrackTrim } from "@obnixe/core";
+import type { HistoryEntry, PainAnchor, RecordingRewrite, SegmentDraft, SegmentPlan, SessionReport, SportChange, TerrainPlan, TrackTrim } from "@obnixe/core";
 import { sports } from "@obnixe/schema";
 import type { Id, PainPhase, ProgramSlot, Session } from "@obnixe/schema";
 import { db, environment } from "@/data/database";
@@ -36,6 +38,7 @@ import { gearLabel } from "@/features/activity/presentation";
 import { ExportTrackActions } from "@/features/activityFiles/ExportTrackActions";
 import { writeGearWear } from "@/features/activity/gearWear";
 import { GearSheet } from "@/features/activity/LogSheets";
+import { terrainUnder } from "@/features/maps/terrain";
 import { loadRecorded, RecordedLeading, RecordedTrailing } from "@/features/recordings/RecordedActivityView";
 import type { RecordedData } from "@/features/recordings/RecordedActivityView";
 import { ShareImageAction } from "@/features/recordings/ShareImageAction";
@@ -43,9 +46,10 @@ import { SportSheet } from "@/features/recordings/SportSheet";
 import { TrimSheet } from "@/features/recordings/TrimSheet";
 import { useRecordedActivity } from "@/features/recordings/useRecordedActivity";
 import type { RecordedActivityState } from "@/features/recordings/useRecordedActivity";
-import { activityCandidate, routeSaveError, routeSaveInterrupted, writeRouteFile } from "@/features/routes/routeData";
+import { activityCandidate, routeSaveError, routeSaveInterrupted, withDem, writeRouteFile } from "@/features/routes/routeData";
 import { canDrawSegment, SegmentSheet } from "@/features/segments/SegmentSheet";
 import { useDerivedRebuildState } from "@/features/tracking/recorder";
+import { TrackWriteError, writeTrack } from "@/features/tracking/trackStore";
 import { effortLabels, formatDay, formatLongDate, formatMass, formatTime, sensationPhrases } from "@/features/training/format";
 import { capitalize, lowerFirst, sessionTitle, zoneLabel } from "@/format/labels";
 import { formatClock } from "@/format/durations";
@@ -389,6 +393,35 @@ function Detail({ data, recorded }: DetailProps) {
     rewrite(() => planRecompute(db(), environment, session.id, activity.track), `Recalcul : ${title}`, "Activité recalculée");
   };
 
+  const replaceTrack = async (plan: TerrainPlan, summary: string, message: string): Promise<void> => {
+    try {
+      await writeTrack(plan.recordingId, plan.file.bytes);
+    } catch (error) {
+      if (!(error instanceof TrackWriteError || error instanceof CodedError)) throw error;
+      notify({ text: "Altitude inchangée : écriture de la trace interrompue", ...placement });
+      return;
+    }
+    undoableWrite({ summary, mutations: plan.rewrite.mutations, message, ...placement });
+  };
+
+  const correctElevation = async (): Promise<void> => {
+    setMore(false);
+    if (activity === null) return;
+    notify({ text: "Téléchargement du relief…", ...placement });
+    const terrain = await terrainUnder(activity.track.samples.fixes);
+    if (terrain === null) {
+      notify({ text: "Relief indisponible : vérifie la connexion", ...placement });
+      return;
+    }
+    await replaceTrack(planElevationCorrection(db(), environment, session.id, activity.track, terrain), `Altitude corrigée : ${title}`, "Altitude corrigée par le relief");
+  };
+
+  const restoreElevation = async (): Promise<void> => {
+    setMore(false);
+    if (activity === null) return;
+    await replaceTrack(planElevationRestore(db(), environment, session.id, activity.track), `Altitude d'origine : ${title}`, "Altitude d'origine rétablie");
+  };
+
   const redoRoute = async (): Promise<void> => {
     setMore(false);
     if (activity === null) return;
@@ -398,7 +431,7 @@ function Detail({ data, recorded }: DetailProps) {
       return;
     }
     try {
-      const plan = await writeRouteFile(candidate, title, session.sport, session.id);
+      const plan = await writeRouteFile(await withDem(candidate), title, session.sport, session.id);
       undoableWrite({ summary: `Itinéraire créé : ${title}`, mutations: [plan.mutation], message: "Itinéraire créé", ...placement });
       router.push({ pathname: "/routes/[id]", params: { id: plan.routeId } });
     } catch (error) {
@@ -644,6 +677,11 @@ function Detail({ data, recorded }: DetailProps) {
                     setDrawingSegment(true);
                   }}
                 />
+              ) : null}
+              {activity.saved.recording.elevationSource === "dem" ? (
+                <MenuItem label="Rétablir l'altitude d'origine" detail="celle de l'enregistrement ou du fichier" onPress={() => void restoreElevation()} />
+              ) : activity.track.samples.fixes.length > 0 ? (
+                <MenuItem label="Corriger l'altitude" detail="par le relief, la trace ne quitte pas le téléphone" onPress={() => void correctElevation()} />
               ) : null}
               <MenuItem label="Refaire ce parcours" detail="en faire un itinéraire à suivre" onPress={() => void redoRoute()} />
               {activity.saved.recording.algorithmVersion < trackingAlgorithmVersion ? <MenuItem label="Recalculer avec la dernière version" onPress={recompute} /> : null}

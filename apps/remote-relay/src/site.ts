@@ -64,11 +64,11 @@ const privacy = `
   <p>Si tu connectes une montre ou une ceinture cardiaque, Obnixe lit ta fréquence cardiaque en Bluetooth pendant l'activité. Elle vient aussi des fichiers que tu importes. Elle sert aux zones cardiaques, à l'estimation de l'énergie dépensée et aux graphiques de l'activité. C'est une donnée de santé : elle est enregistrée uniquement sur ton téléphone et nous ne la recevons jamais.</p>
 
   <h2>Cartes</h2>
-  <p>Pour afficher une carte ou télécharger une région hors ligne, l'application charge des tuiles auprès de ces fournisseurs :</p>
+  <p>Pour afficher une carte, télécharger une région hors ligne ou corriger une altitude par le relief, l'application charge des tuiles auprès de ces fournisseurs :</p>
   <ul>
     <li><strong>OpenFreeMap</strong> : fond de carte, construit à partir des données OpenStreetMap ;</li>
-    <li><strong>Amazon Web Services</strong> (Terrain Tiles, AWS Open Data) : ombrage du relief ;</li>
-    <li><strong>IGN</strong> (Géoplateforme) : fond Plan IGN, seulement si tu le choisis.</li>
+    <li><strong>Amazon Web Services</strong> (Terrain Tiles, AWS Open Data) : ombrage du relief, courbes de niveau et correction de l'altitude, calculées sur le téléphone ;</li>
+    <li><strong>IGN</strong> (Géoplateforme) : fond Plan IGN et vue aérienne BD ORTHO, seulement si tu les choisis.</li>
   </ul>
   <p>Ils reçoivent les coordonnées des tuiles demandées, donc la zone que tu regardes ou télécharges, et ton adresse IP. Ils ne reçoivent jamais ta trace. Les tuiles sont gardées en cache sur le téléphone, dans la limite que tu fixes dans les réglages.</p>
 

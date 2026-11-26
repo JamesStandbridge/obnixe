@@ -3,7 +3,7 @@ import { bytesToHex } from "@noble/hashes/utils.js";
 import { deflateSync, inflateSync } from "fflate";
 import type { EpochMs, Id } from "@obnixe/schema";
 import { absentValue, toSampleColumns } from "../types.ts";
-import type { CadenceColumns, FixColumns, HeartRateColumns, PowerColumns, PressureColumns, SampleColumns, StepColumns, TrackerMark } from "../types.ts";
+import type { CadenceColumns, FixColumns, HeartRateColumns, PowerColumns, PressureColumns, SampleColumns, StepColumns, TerrainColumns, TrackerMark } from "../types.ts";
 import { crc32 } from "./crc32.ts";
 import { markByCode, markCodes } from "./marks.ts";
 import { ByteReader, ByteWriter } from "./varint.ts";
@@ -19,6 +19,9 @@ import { ByteReader, ByteWriter } from "./varint.ts";
  * LEB128 delta, mark kinds aside. Fix columns that may be absent are only written where the fix's `presence` bit is set,
  * as deltas between present values; the orthometric altitude is stored relative to the ellipsoidal altitude of the same
  * fix when there is one, since their difference (the geoid undulation) barely changes along a track.
+ *
+ * Beyond annex B, a `terrain` stream (kind 8: times, then zigzag deltas of the altitude in mm) holds the DEM altitude of a
+ * corrected track (`ELE-003`), so that the recorded altitude stays in the fix stream.
  */
 
 export interface Track {
@@ -74,12 +77,12 @@ const crcLength = 4;
 const ellipsoidAltitudeFlag = 1;
 const simulatedFlag = 2;
 
-const streamKinds = { fix: 1, pressure: 2, steps: 3, heart_rate: 4, marks: 5, power: 6, cadence: 7 } as const;
+const streamKinds = { fix: 1, pressure: 2, steps: 3, heart_rate: 4, marks: 5, power: 6, cadence: 7, terrain: 8 } as const;
 type StreamKind = keyof typeof streamKinds;
-const streamOrder: readonly StreamKind[] = ["fix", "pressure", "steps", "heart_rate", "marks", "power", "cadence"];
+const streamOrder: readonly StreamKind[] = ["fix", "pressure", "steps", "heart_rate", "marks", "power", "cadence", "terrain"];
 
 /** Smallest encoding of one entry of each stream, in bytes: one byte per column. */
-const minimumEntryBytes: Readonly<Record<StreamKind, number>> = { fix: 5, pressure: 2, steps: 2, heart_rate: 3, marks: 2, power: 3, cadence: 2 };
+const minimumEntryBytes: Readonly<Record<StreamKind, number>> = { fix: 5, pressure: 2, steps: 2, heart_rate: 3, marks: 2, power: 3, cadence: 2, terrain: 2 };
 
 type OptionalFixColumn = "altitudeEllipsoidMm" | "altitudeMslMm" | "horizontalAccuracyDm" | "verticalAccuracyDm" | "speedCmS" | "speedAccuracyCmS" | "bearingCentiDeg" | "bearingAccuracyCentiDeg";
 
@@ -212,6 +215,11 @@ function writeMarks(writer: ByteWriter, marks: readonly TrackerMark[]): void {
   for (const mark of marks) writer.varUint(markCodes[mark.kind]);
 }
 
+function writeTerrain(writer: ByteWriter, terrain: TerrainColumns): void {
+  writeTimes(writer, terrain.t, terrain.length, "terrain");
+  writeDeltas(writer, terrain.altitudeMm, terrain.length);
+}
+
 function streamLength(track: Track, kind: StreamKind): number {
   switch (kind) {
     case "fix":
@@ -228,6 +236,8 @@ function streamLength(track: Track, kind: StreamKind): number {
       return track.samples.power.length;
     case "cadence":
       return track.samples.cadence.length;
+    case "terrain":
+      return track.samples.terrain.length;
     default: {
       const unreachable: never = kind;
       throw new Error(`Unhandled stream ${String(unreachable)}`);
@@ -251,6 +261,8 @@ function writeStream(writer: ByteWriter, track: Track, kind: StreamKind): void {
       return writePower(writer, track.samples.power);
     case "cadence":
       return writeCadence(writer, track.samples.cadence);
+    case "terrain":
+      return writeTerrain(writer, track.samples.terrain);
     default: {
       const unreachable: never = kind;
       throw new Error(`Unhandled stream ${String(unreachable)}`);
@@ -428,6 +440,13 @@ function readMarks(reader: ByteReader, count: number): TrackerMark[] {
   return marks;
 }
 
+function readTerrain(reader: ByteReader, count: number): TerrainColumns {
+  const t = readTimes(reader, count);
+  const altitudeMm = new Int32Array(count);
+  readDeltas(reader, altitudeMm, count, -int32Max, int32Max, "terrain altitude");
+  return { length: count, t, altitudeMm };
+}
+
 function inflate(compressed: Uint8Array, expectedLength: number): Uint8Array {
   let inflated: Uint8Array;
   try {
@@ -475,7 +494,7 @@ export function decodeTrack(bytes: Uint8Array): Track {
     entries.push({ kind, count, byteLength });
   }
   const payload = inflate(bytes.subarray(payloadStart, crcOffset), totalLength);
-  let { fixes, pressure, steps, heartRate, cadence, power } = toSampleColumns([]);
+  let { fixes, pressure, steps, heartRate, cadence, power, terrain } = toSampleColumns([]);
   let marks: TrackerMark[] = [];
   let fixFlags = 0;
   let offset = 0;
@@ -506,6 +525,9 @@ export function decodeTrack(bytes: Uint8Array): Track {
       case "cadence":
         cadence = readCadence(reader, entry.count);
         break;
+      case "terrain":
+        terrain = readTerrain(reader, entry.count);
+        break;
       default: {
         const unreachable: never = entry.kind;
         throw new Error(`Unhandled stream ${String(unreachable)}`);
@@ -515,5 +537,5 @@ export function decodeTrack(bytes: Uint8Array): Track {
     offset += entry.byteLength;
   }
   if (fixFlags !== flags) throw new TrackDecodeError("flags do not match the fixes");
-  return { startedAt: startedAt as EpochMs, samples: { fixes, pressure, steps, heartRate, cadence, power }, marks };
+  return { startedAt: startedAt as EpochMs, samples: { fixes, pressure, steps, heartRate, cadence, power, terrain }, marks };
 }

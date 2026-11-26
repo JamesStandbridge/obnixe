@@ -103,7 +103,7 @@ export type RecordingSource = (typeof recordingSources)[number];
 export const importFormats = ["gpx", "tcx", "fit", "garmin_archive"] as const;
 export type ImportFormat = (typeof importFormats)[number];
 
-export const elevationSources = ["barometer", "gnss", "file", "none"] as const;
+export const elevationSources = ["barometer", "gnss", "file", "dem", "none"] as const;
 export type ElevationSource = (typeof elevationSources)[number];
 
 export const cadenceSources = ["pedometer", "sensor", "file", "none"] as const;
@@ -124,7 +124,7 @@ export type SegmentFamily = (typeof segmentFamilies)[number];
 export const biologicalSexes = ["female", "male"] as const;
 export type BiologicalSex = (typeof biologicalSexes)[number];
 
-export const mapStyles = ["obnixe_outdoor", "plan_ign"] as const;
+export const mapStyles = ["obnixe_outdoor", "plan_ign", "ortho_ign"] as const;
 export type MapStyle = (typeof mapStyles)[number];
 
 export const recordingAlerts = ["lap", "split", "auto_pause", "goal", "segment", "route", "gps", "sensor", "battery"] as const;

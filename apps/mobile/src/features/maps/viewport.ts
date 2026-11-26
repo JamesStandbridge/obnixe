@@ -1,4 +1,4 @@
-import type { MapCamera } from "@/features/maps/surface";
+import type { MapCamera, MapView } from "@/features/maps/surface";
 import type { Bounds } from "@/features/maps/tiles";
 
 export interface ViewSize {
@@ -38,4 +38,18 @@ export function fitCamera(bounds: Bounds, size: ViewSize, padding: number, maxZo
   const width = Math.max(1, size.width - 2 * padding) / ((mercatorX(east) - mercatorX(west)) * tilePixels);
   const height = Math.max(1, size.height - 2 * padding) / ((bottom - top) * tilePixels);
   return { center: [(west + east) / 2, latitudeAt((top + bottom) / 2)], zoom: Math.min(maxZoom, Math.log2(Math.min(width, height))) };
+}
+
+/** What a camera shows in a view of `size`, until the map reports its own view. */
+export function viewAround(camera: MapCamera, size: ViewSize): MapView {
+  const scale = tilePixels * 2 ** camera.zoom;
+  const x = mercatorX(camera.center[0]);
+  const y = mercatorY(camera.center[1]);
+  const halfWidth = size.width / 2 / scale;
+  const halfHeight = size.height / 2 / scale;
+  return {
+    center: camera.center,
+    zoom: camera.zoom,
+    bounds: [(x - halfWidth) * 360 - 180, latitudeAt(y + halfHeight), (x + halfWidth) * 360 - 180, latitudeAt(y - halfHeight)],
+  };
 }

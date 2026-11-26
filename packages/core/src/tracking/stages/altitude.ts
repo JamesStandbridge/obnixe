@@ -12,7 +12,7 @@ export const offsetReferenceSigma = 5;
 export const gnssAltitudeProcessNoise = 0.3;
 export const altitudeAverageMeters = 50;
 /** Hysteresis threshold `H` by altitude source (`ELE-010`). */
-export const elevationThresholdMeters = { barometer: 2, gnss: 6 } as const;
+export const elevationThresholdMeters = { barometer: 2, gnss: 6, dem: 3 } as const;
 export const gradeHalfWindowMeters = 10;
 export const maxGrade = 0.6;
 export const verticalSpeedWindowMs = 30_000;

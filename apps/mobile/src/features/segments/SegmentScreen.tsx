@@ -244,7 +244,7 @@ function SegmentMap({ segment, geometry }: SegmentMapProps) {
   };
   return (
     <View style={[styles.frame, { borderColor: colors.line, backgroundColor: colors.surface }]} onLayout={onLayout}>
-      {camera === null ? null : <MapSurface mapStyle={base.style} fallbackStyle={base.fallback} initialCamera={camera} overlays={overlays} />}
+      {camera === null ? null : <MapSurface mapStyle={base.style} fallbackStyle={base.fallback} initialCamera={camera} overlays={overlays} contours={base.contours} />}
       {geometry.masked ? (
         <View style={[styles.badge, { backgroundColor: colors.surface, borderColor: colors.line }]} pointerEvents="none">
           <Text variant="caption" tone="secondary">

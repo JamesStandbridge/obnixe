@@ -13,7 +13,7 @@ import { BackButton, BottomPanel, NoticeMark } from "@/features/data/parts";
 import { routeFigures } from "@/features/routes/format";
 import { RouteMap } from "@/features/routes/RouteMap";
 import { RouteProfileChart } from "@/features/routes/RouteProfileChart";
-import { candidateFigures, readRoute, routeMapPath, routeProfilePoints, routeSaveError, routeSaveInterrupted, writeRouteFile } from "@/features/routes/routeData";
+import { candidateFigures, readRoute, routeMapPath, routeProfilePoints, routeSaveError, routeSaveInterrupted, withDem, writeRouteFile } from "@/features/routes/routeData";
 import type { RouteCandidate } from "@/features/routes/routeData";
 import { LinkButton, PrimaryButton } from "@/ui/Button";
 import { TextField } from "@/ui/Inputs";
@@ -26,6 +26,8 @@ interface ChosenRoute {
   readonly candidate: RouteCandidate;
   readonly sport: SportGuess | null;
   readonly name: string;
+  /** Whether the DEM is still being downloaded for a route without altitude (`ELE-003`). */
+  readonly searchingRelief: boolean;
 }
 
 type Stage =
@@ -53,7 +55,9 @@ export function RouteImportScreen() {
         return;
       case "read": {
         const { candidate } = reading;
-        setStage({ kind: "chosen", route: { fileName: picked.name, candidate, sport: candidate.sport, name: candidate.name ?? fileTitle(picked.name) }, error: null });
+        const searchingRelief = candidate.elevationSource === "none";
+        setStage({ kind: "chosen", route: { fileName: picked.name, candidate, sport: candidate.sport, name: candidate.name ?? fileTitle(picked.name), searchingRelief }, error: null });
+        if (searchingRelief) void measureOnRelief(candidate);
         return;
       }
       default: {
@@ -61,6 +65,13 @@ export function RouteImportScreen() {
         throw new Error(`Unhandled reading ${JSON.stringify(unreachable)}`);
       }
     }
+  };
+
+  const measureOnRelief = async (candidate: RouteCandidate): Promise<void> => {
+    const measured = await withDem(candidate);
+    setStage((current) =>
+      current.kind === "chosen" && current.route.candidate === candidate ? { ...current, route: { ...current.route, candidate: measured, searchingRelief: false } } : current,
+    );
   };
 
   const choose = async (): Promise<void> => {
@@ -139,9 +150,13 @@ function ChosenRouteView({ route, saving, onChange, onChoose }: ChosenRouteViewP
         <Text accessibilityRole="header" style={styles.title} numberOfLines={2}>
           {routeFigures(candidateFigures(candidate.geometry))}
         </Text>
-        {candidate.elevationSource === "none" ? (
+        {candidate.elevationSource === "none" || candidate.elevationSource === "dem" ? (
           <Text variant="small" tone="secondary">
-            Le fichier n'a pas d'altitude : pas de D+ pour cet itinéraire
+            {candidate.elevationSource === "dem"
+              ? "Le fichier n'a pas d'altitude : D+ et profil mesurés sur le relief"
+              : route.searchingRelief
+                ? "Le fichier n'a pas d'altitude : recherche du relief…"
+                : "Le fichier n'a pas d'altitude et le relief est indisponible : pas de D+"}
           </Text>
         ) : null}
       </View>

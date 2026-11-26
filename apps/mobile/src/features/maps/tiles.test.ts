@@ -33,6 +33,16 @@ describe("tiles", () => {
     expect(withRelief.tiles - withoutRelief.tiles).toBe(reliefTiles);
   });
 
+  it("weighs aerial imagery up to z16 by its own tiles, without relief", () => {
+    const ortho = resolveMapBase({ mapStyle: "ortho_ign", variant: "dark", emphasis: "foot" });
+    let tiles = 0;
+    for (let zoom = 5; zoom <= 16; zoom += 1) tiles += tileCount(chamonix, zoom);
+    const estimate = estimateRegion(chamonix, ortho.offline);
+    expect(estimate.tiles).toBe(tiles);
+    expect(estimate.tiles).toBeLessThan(maxRegionTiles);
+    expect(estimate.bytes / estimate.tiles / 1024).toBeCloseTo(18, 0);
+  });
+
   it("widens the points' bounding box by the buffer", () => {
     expect(bufferedBounds([], 1000)).toBeNull();
     const bounds = bufferedBounds(

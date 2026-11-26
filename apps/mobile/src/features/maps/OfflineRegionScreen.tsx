@@ -120,7 +120,7 @@ export function OfflineRegionScreen({ target }: OfflineRegionScreenProps) {
     <View style={[styles.root, { backgroundColor: colors.bg }]}>
       <View style={styles.map} onLayout={onLayout}>
         {area === null ? (
-          <MapSurface mapStyle={base.style} fallbackStyle={base.fallback} initialCamera={initialCamera} onViewChanged={setView} />
+          <MapSurface mapStyle={base.style} fallbackStyle={base.fallback} initialCamera={initialCamera} contours={base.contours} onViewChanged={setView} />
         ) : areaCamera === null ? null : (
           <MapSurface ref={surface} mapStyle={base.style} fallbackStyle={base.fallback} initialCamera={areaCamera} overlays={overlays} />
         )}

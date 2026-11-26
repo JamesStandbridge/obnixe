@@ -7,6 +7,7 @@ import type { ProcessedTrack } from "./batch.ts";
 import { decodePolyline, encodePolyline } from "./codec/polyline.ts";
 import { encodeTrack, routeFilePath, trackDigest } from "./codec/track.ts";
 import type { Track } from "./codec/track.ts";
+import type { DemTiles } from "./dem.ts";
 import { BoundingBoxBuilder, ellipsoidDistance } from "./geo.ts";
 import type { GeoPoint } from "./geo.ts";
 import { hasRouteAltitude, reverseRoutePath, RouteGeometry, routeProfile } from "./route.ts";
@@ -93,6 +94,17 @@ export function encodeRoutePath(path: RoutePath): Uint8Array {
     });
   }
   return encodeTrack({ startedAt: 0 as EpochMs, samples: toSampleColumns(fixes), marks: [] });
+}
+
+/** A route without altitude given the DEM altitude of its points (`ELE-003`); `null` when a tile is missing. */
+export function demRoutePath(path: RoutePath, tiles: DemTiles): RoutePath | null {
+  const altitudeMm = new Int32Array(path.length);
+  for (let index = 0; index < path.length; index += 1) {
+    const altitude = tiles.altitudeAt((path.latitudeE7[index] ?? 0) / 1e7, (path.longitudeE7[index] ?? 0) / 1e7);
+    if (altitude === null) return null;
+    altitudeMm[index] = Math.round(altitude * 1000);
+  }
+  return { ...path, altitudeMm };
 }
 
 /** The path stored in a decoded route file, in the direction of the file. */

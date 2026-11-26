@@ -159,11 +159,11 @@ export function summarizeRecording(input: SummaryInput): RecordingSummary {
   };
 }
 
-const fileElevation = (source: ElevationSource): ElevationSource => (source === "none" ? "none" : "file");
+const fileElevation = (source: ElevationSource): ElevationSource => (source === "none" || source === "dem" ? source : "file");
 const fileCadence = (source: CadenceSource): CadenceSource => (source === "none" ? "none" : "file");
 const fileSensor = (source: SensorSource): SensorSource => (source === "none" ? "none" : "file");
 
-/** The summary of an imported track: its altitude, cadence and heart rate all come from the file. */
+/** The summary of an imported track: its altitude, cadence and heart rate all come from the file, unless the DEM corrected its altitude. */
 export function importedSummary(summary: RecordingSummary): RecordingSummary {
   return { ...summary, elevationSource: fileElevation(summary.elevationSource), cadenceSource: fileCadence(summary.cadenceSource), heartRateSource: fileSensor(summary.heartRateSource) };
 }
