@@ -27,6 +27,10 @@ export const journaled = {
   check_in: tables.checkIn,
   pain_report: tables.painReport,
   zone_tracking: tables.zoneTracking,
+  recording: tables.recording,
+  lap: tables.lap,
+  privacy_zone: tables.privacyZone,
+  segment: tables.segment,
 } as const satisfies Record<JournaledTable, SQLiteTable>;
 
 export type Exercise = InferSelectModel<typeof tables.exercise>;
@@ -50,6 +54,12 @@ export type Photo = InferSelectModel<typeof tables.photo>;
 export type CheckIn = InferSelectModel<typeof tables.checkIn>;
 export type PainReport = InferSelectModel<typeof tables.painReport>;
 export type ZoneTracking = InferSelectModel<typeof tables.zoneTracking>;
+export type Recording = InferSelectModel<typeof tables.recording>;
+export type Lap = InferSelectModel<typeof tables.lap>;
+export type PrivacyZone = InferSelectModel<typeof tables.privacyZone>;
+export type BestEffort = InferSelectModel<typeof tables.bestEffort>;
+export type Segment = InferSelectModel<typeof tables.segment>;
+export type SegmentEffort = InferSelectModel<typeof tables.segmentEffort>;
 export type AgentConnection = InferSelectModel<typeof tables.agentConnection>;
 export type AgentCall = InferSelectModel<typeof tables.agentCall>;
 export type Changeset = InferSelectModel<typeof tables.changeset>;

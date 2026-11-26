@@ -5,9 +5,10 @@ import { z } from "zod";
 import { catalogVersion } from "@obnixe/schema";
 import type { EpochMs, RandomFill } from "@obnixe/schema";
 import { decodeUtf8, encodeUtf8, InvalidUtf8Error } from "../utf8.ts";
-import { packSnapshot, unpackSnapshot } from "./container.ts";
+import { packSnapshot, parsePackedSnapshot, readPackedSnapshot } from "./container.ts";
 import { backupSchemaVersion, CorruptedBackupError } from "./snapshot.ts";
 import type { Snapshot } from "./snapshot.ts";
+import type { SnapshotUpgrader } from "./upgrade.ts";
 import { sameBytes } from "../../bytes.ts";
 
 const magic = encodeUtf8("OBNIXE");
@@ -101,6 +102,7 @@ export interface SealOptions {
 
 export interface OpenOptions {
   readonly passphrase: string;
+  readonly upgrader: SnapshotUpgrader;
   readonly onProgress?: (progress: number) => void;
 }
 
@@ -204,9 +206,9 @@ export async function openSnapshot(bytes: Uint8Array, options: OpenOptions): Pro
   assertSupportedVersions(header.schemaVersion, header.catalogVersion);
   const { key, check } = await derive(options.passphrase, hexToBytes(header.salt), header.kdf, options.onProgress);
   if (!sameBytes(check, hexToBytes(header.check))) throw new WrongPassphraseError();
-  const snapshot = unpackSnapshot(decrypt(key, hexToBytes(header.nonce), associatedData, ciphertext));
-  if (snapshot.schemaVersion !== header.schemaVersion || snapshot.catalogVersion !== header.catalogVersion || snapshot.createdAt !== header.createdAt) {
+  const packed = readPackedSnapshot(decrypt(key, hexToBytes(header.nonce), associatedData, ciphertext));
+  if (packed.schemaVersion !== header.schemaVersion || packed.catalogVersion !== header.catalogVersion || packed.createdAt !== header.createdAt) {
     throw new CorruptedBackupError("header does not match content");
   }
-  return snapshot;
+  return parsePackedSnapshot(packed, options.upgrader);
 }

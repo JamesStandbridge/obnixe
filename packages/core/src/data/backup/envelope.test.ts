@@ -2,7 +2,7 @@ import { randomFillSync } from "node:crypto";
 import { beforeEach, describe, expect, it } from "vitest";
 import { catalogVersion } from "@obnixe/schema";
 import type { EpochMs, Id, LocalDate } from "@obnixe/schema";
-import { createTestContext } from "../../testing.ts";
+import { createTestContext, testUpgrader } from "../../testing.ts";
 import type { TestContext } from "../../testing.ts";
 import { fixtures } from "../testFixtures.ts";
 import { decodeUtf8, encodeUtf8 } from "../utf8.ts";
@@ -63,7 +63,7 @@ describe("utf8", () => {
 
 describe("container", () => {
   it("packs rows, settings and photo bytes", () => {
-    const unpacked = unpackSnapshot(packSnapshot(snapshot));
+    const unpacked = unpackSnapshot(packSnapshot(snapshot), testUpgrader);
     expect(unpacked.tables).toEqual(snapshot.tables);
     expect(unpacked.settings).toEqual(snapshot.settings);
     expect(unpacked.photos).toEqual(snapshot.photos);
@@ -71,18 +71,18 @@ describe("container", () => {
 
   it("rejects rows the schema does not accept", () => {
     const broken: Snapshot = { ...snapshot, tables: { ...snapshot.tables, session: snapshot.tables.session.map((row) => ({ ...row, status: "paused" as never })) } };
-    expect(() => unpackSnapshot(packSnapshot(broken))).toThrow(InvalidSnapshotError);
+    expect(() => unpackSnapshot(packSnapshot(broken), testUpgrader)).toThrow(InvalidSnapshotError);
   });
 
   it("rejects session values the catalog does not accept", () => {
     const broken: Snapshot = { ...snapshot, tables: { ...snapshot.tables, session: snapshot.tables.session.map((row) => ({ ...row, values: { distance: 5000 } })) } };
-    expect(() => unpackSnapshot(packSnapshot(broken))).toThrow(InvalidSnapshotError);
+    expect(() => unpackSnapshot(packSnapshot(broken), testUpgrader)).toThrow(InvalidSnapshotError);
   });
 });
 
 describe("envelope", () => {
   it("round trips with the passphrase", async () => {
-    const opened = await openSnapshot(await seal(), { passphrase: "corde rouge 42" });
+    const opened = await openSnapshot(await seal(), { passphrase: "corde rouge 42", upgrader: testUpgrader });
     expect(opened.tables).toEqual(snapshot.tables);
     expect(opened.photos).toEqual(snapshot.photos);
     expect(opened.schemaVersion).toBe(backupSchemaVersion);
@@ -93,7 +93,7 @@ describe("envelope", () => {
     const sealed = await sealSnapshot(snapshot, { passphrase: "secret phrase", fillRandom });
     expect(sealed.header.kdf).toEqual(defaultKdf);
     expect(readBackupHeader(sealed.bytes)).toEqual(sealed.header);
-    await expect(openSnapshot(sealed.bytes, { passphrase: "secret phrase" })).resolves.toMatchObject({ createdAt: snapshot.createdAt });
+    await expect(openSnapshot(sealed.bytes, { passphrase: "secret phrase", upgrader: testUpgrader })).resolves.toMatchObject({ createdAt: snapshot.createdAt });
   });
 
   it("exposes the plaintext header without the passphrase", async () => {
@@ -110,17 +110,17 @@ describe("envelope", () => {
 
   it("normalizes the passphrase", async () => {
     const bytes = await seal(snapshot, "caf\u00e9 du matin");
-    await expect(openSnapshot(bytes, { passphrase: "cafe\u0301 du matin" })).resolves.toMatchObject({ createdAt: snapshot.createdAt });
+    await expect(openSnapshot(bytes, { passphrase: "cafe\u0301 du matin", upgrader: testUpgrader })).resolves.toMatchObject({ createdAt: snapshot.createdAt });
   });
 
   it("tells a wrong passphrase apart", async () => {
-    await expect(openSnapshot(await seal(), { passphrase: "corde rouge 43" })).rejects.toThrow(WrongPassphraseError);
+    await expect(openSnapshot(await seal(), { passphrase: "corde rouge 43", upgrader: testUpgrader })).rejects.toThrow(WrongPassphraseError);
   });
 
   it("detects tampered ciphertext", async () => {
     const bytes = await seal();
     bytes[bytes.length - 20] = (bytes[bytes.length - 20] ?? 0) ^ 0x01;
-    await expect(openSnapshot(bytes, { passphrase: "corde rouge 42" })).rejects.toThrow(CorruptedBackupError);
+    await expect(openSnapshot(bytes, { passphrase: "corde rouge 42", upgrader: testUpgrader })).rejects.toThrow(CorruptedBackupError);
   });
 
   it("detects a tampered header", async () => {
@@ -131,12 +131,12 @@ describe("envelope", () => {
     const last = index + stamp.length - 1;
     bytes[last] = (bytes[last] ?? 0x30) === 0x39 ? 0x38 : (bytes[last] ?? 0x30) + 1;
     expect(readBackupHeader(bytes).createdAt).not.toBe(snapshot.createdAt);
-    await expect(openSnapshot(bytes, { passphrase: "corde rouge 42" })).rejects.toThrow(CorruptedBackupError);
+    await expect(openSnapshot(bytes, { passphrase: "corde rouge 42", upgrader: testUpgrader })).rejects.toThrow(CorruptedBackupError);
   });
 
   it("detects truncation", async () => {
     const bytes = await seal();
-    await expect(openSnapshot(bytes.slice(0, bytes.length - 40), { passphrase: "corde rouge 42" })).rejects.toThrow(CorruptedBackupError);
+    await expect(openSnapshot(bytes.slice(0, bytes.length - 40), { passphrase: "corde rouge 42", upgrader: testUpgrader })).rejects.toThrow(CorruptedBackupError);
     expect(() => readBackupHeader(bytes.slice(0, 30))).toThrow(CorruptedBackupError);
   });
 
@@ -148,7 +148,7 @@ describe("envelope", () => {
   it("refuses backups from a newer schema or catalog", async () => {
     const newerSchema = await seal({ ...snapshot, schemaVersion: backupSchemaVersion + 1 });
     expect(() => readBackupHeader(newerSchema)).toThrow(NewerBackupError);
-    await expect(openSnapshot(newerSchema, { passphrase: "corde rouge 42" })).rejects.toMatchObject({ part: "schema" });
+    await expect(openSnapshot(newerSchema, { passphrase: "corde rouge 42", upgrader: testUpgrader })).rejects.toMatchObject({ part: "schema" });
     const newerCatalog = await seal({ ...snapshot, catalogVersion: catalogVersion + 1 });
     expect(() => readBackupHeader(newerCatalog)).toThrow(expect.objectContaining({ part: "catalog" }) as Error);
   });

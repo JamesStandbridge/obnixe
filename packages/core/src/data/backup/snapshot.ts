@@ -3,10 +3,12 @@ import type { InferSelectModel } from "drizzle-orm";
 import type { SQLiteColumn, SQLiteTable } from "drizzle-orm/sqlite-core";
 import { z } from "zod";
 import {
+  biologicalSexes,
   catalogVersion,
   itemValuesSchema,
   journaled,
   journaledTables,
+  mapStyles,
   massUnits,
   photo,
   program,
@@ -26,7 +28,7 @@ import { readSettings } from "../../settings.ts";
 import type { SettingsValues } from "../../settings.ts";
 import { columnsOf } from "../foreignKeys.ts";
 
-export const backupSchemaVersion = 1;
+export const backupSchemaVersion = 2;
 
 export type TableRow<T extends JournaledTable> = InferSelectModel<(typeof journaled)[T]>;
 
@@ -69,7 +71,16 @@ export class InvalidSnapshotError extends CorruptedBackupError {
 
 /** Agent permissions, the bridge pairing and the rest notification choice belong to this device: importing a backup never grants an agent access. */
 export function keepLocalAccess(incoming: SettingsValues, local: SettingsValues): SettingsValues {
-  return { ...incoming, agentCanReadBody: local.agentCanReadBody, agentCanWrite: local.agentCanWrite, agentCanReadPhotos: local.agentCanReadPhotos, bridgeHost: local.bridgeHost, restAlertsDeclinedAt: local.restAlertsDeclinedAt, restAlertsAskedAt: local.restAlertsAskedAt };
+  return {
+    ...incoming,
+    agentCanReadBody: local.agentCanReadBody,
+    agentCanWrite: local.agentCanWrite,
+    agentCanReadPhotos: local.agentCanReadPhotos,
+    agentCanReadLocation: local.agentCanReadLocation,
+    bridgeHost: local.bridgeHost,
+    restAlertsDeclinedAt: local.restAlertsDeclinedAt,
+    restAlertsAskedAt: local.restAlertsAskedAt,
+  };
 }
 
 export function buildSnapshot(db: ObnixeDatabase, createdAt: EpochMs, photos: readonly PhotoFile[] = []): Snapshot {
@@ -96,6 +107,17 @@ const settingsSchema = z.object({
   bridgeHost: z.string().nullable(),
   restAlertsDeclinedAt: z.custom<EpochMs>((value) => Number.isInteger(value)).nullable(),
   restAlertsAskedAt: z.custom<EpochMs>((value) => Number.isInteger(value)).nullable(),
+  agentCanReadLocation: z.boolean(),
+  keepScreenOn: z.boolean(),
+  countdown: z.boolean(),
+  mapStyle: z.enum(mapStyles),
+  mapCacheMegabytes: z.int().positive(),
+  exportPrivacy: z.boolean(),
+  hideTrackEndsMeters: z.int().min(0).max(1000),
+  birthYear: z.int().min(1900).max(2100).nullable(),
+  sex: z.enum(biologicalSexes).nullable(),
+  maxHeartRate: z.int().min(120).max(230).nullable(),
+  weatherEnabled: z.boolean(),
   updatedAt: z.int(),
 }) satisfies z.ZodType<Omit<SettingsValues, "remindersExportedAt" | "agentChangesSeenAt" | "updatedAt">, unknown>;
 

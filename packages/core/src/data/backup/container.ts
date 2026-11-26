@@ -1,8 +1,10 @@
 import { z } from "zod";
 import type { EpochMs, Id } from "@obnixe/schema";
 import { decodeUtf8, encodeUtf8, InvalidUtf8Error } from "../utf8.ts";
-import { CorruptedBackupError, parseSnapshotSettings, parseSnapshotTables } from "./snapshot.ts";
+import { backupSchemaVersion, CorruptedBackupError, parseSnapshotSettings, parseSnapshotTables } from "./snapshot.ts";
 import type { PhotoFile, Snapshot } from "./snapshot.ts";
+import { upgradeSnapshot } from "./upgrade.ts";
+import type { SnapshotUpgrader } from "./upgrade.ts";
 
 const lengthBytes = 4;
 
@@ -45,7 +47,27 @@ export function packSnapshot(snapshot: Snapshot): Uint8Array {
   return packed;
 }
 
-export function unpackSnapshot(packed: Uint8Array): Snapshot {
+/** A snapshot document whose settings and tables are still in the shape of its own schema version. */
+export interface PackedSnapshot {
+  readonly schemaVersion: number;
+  readonly catalogVersion: number;
+  readonly createdAt: EpochMs;
+  readonly settings: unknown;
+  readonly tables: unknown;
+  readonly photos: readonly PhotoFile[];
+}
+
+/** Snapshots of an older schema version are first carried through the database migrations, so their rows are validated against the current catalog only once converted. */
+export function unpackSnapshot(packed: Uint8Array, upgrader: SnapshotUpgrader): Snapshot {
+  return parsePackedSnapshot(readPackedSnapshot(packed), upgrader);
+}
+
+export function parsePackedSnapshot(document: PackedSnapshot, upgrader: SnapshotUpgrader): Snapshot {
+  if (document.schemaVersion < backupSchemaVersion) return upgradeSnapshot(document, upgrader);
+  return { ...document, settings: parseSnapshotSettings(document.settings), tables: parseSnapshotTables(document.tables) };
+}
+
+export function readPackedSnapshot(packed: Uint8Array): PackedSnapshot {
   if (packed.length < lengthBytes) throw new CorruptedBackupError("snapshot too short");
   const documentLength = new DataView(packed.buffer, packed.byteOffset, packed.byteLength).getUint32(0);
   const blobsStart = lengthBytes + documentLength;
@@ -59,14 +81,7 @@ export function unpackSnapshot(packed: Uint8Array): Snapshot {
     if (entry.offset + entry.length > blobs.length) throw new CorruptedBackupError(`photo ${entry.photoId} truncated`);
     return { photoId: entry.photoId as Id, bytes: blobs.slice(entry.offset, entry.offset + entry.length) };
   });
-  return {
-    schemaVersion: document.schemaVersion,
-    catalogVersion: document.catalogVersion,
-    createdAt: document.createdAt as EpochMs,
-    settings: parseSnapshotSettings(document.settings),
-    tables: parseSnapshotTables(document.tables),
-    photos,
-  };
+  return { schemaVersion: document.schemaVersion, catalogVersion: document.catalogVersion, createdAt: document.createdAt as EpochMs, settings: document.settings, tables: document.tables, photos };
 }
 
 function parseDocument(bytes: Uint8Array): unknown {

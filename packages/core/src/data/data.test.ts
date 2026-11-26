@@ -76,6 +76,8 @@ describe("sports", () => {
       ["hike", false],
       ["swim", false],
       ["bike", false],
+      ["trail", false],
+      ["walk", false],
       ["yoga", false],
     ]);
   });

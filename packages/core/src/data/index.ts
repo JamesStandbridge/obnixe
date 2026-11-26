@@ -3,6 +3,7 @@ export * from "./backup/envelope.ts";
 export * from "./backup/merge.ts";
 export * from "./backup/replace.ts";
 export * from "./backup/snapshot.ts";
+export * from "./backup/upgrade.ts";
 export * from "./firstLaunch.ts";
 export * from "./reminders.ts";
 export * from "./sports.ts";

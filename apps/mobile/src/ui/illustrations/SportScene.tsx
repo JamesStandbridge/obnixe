@@ -52,6 +52,27 @@ const arts: Readonly<Record<SportKey, SportArt>> = {
     ),
     rider: (tones) => <Figure pose={poses.run} colors={tones} />,
   },
+  trail: {
+    streaks: true,
+    back: (tones) => (
+      <G>
+        <Polygon points="0,176 58,92 96,138 150,70 200,150 200,200 0,200" fill={wash(tones.main, 0.16)} />
+        <Polygon points="0,186 200,160 200,200 0,200" fill={wash(tones.main, 0.12)} />
+        {shadow(tones)}
+      </G>
+    ),
+    rider: (tones) => <Figure pose={poses.run} colors={tones} />,
+  },
+  walk: {
+    streaks: false,
+    back: (tones) => (
+      <G>
+        {slab(tones)}
+        {shadow(tones, 100, 46)}
+      </G>
+    ),
+    rider: (tones) => <Figure pose={poses.hike} colors={tones} />,
+  },
   climb: {
     streaks: false,
     back: (tones) => (

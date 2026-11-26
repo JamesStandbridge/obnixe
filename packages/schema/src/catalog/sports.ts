@@ -3,6 +3,8 @@ import { valuesSchema } from "../fields.ts";
 import type { ChoiceOption, FieldDefinition, FieldValues, IndicatorDefinition } from "../fields.ts";
 import type { z } from "zod";
 import type { GradeScaleKey } from "./grades.ts";
+import { bikeProfile, hikeProfile, mountainBikeMotion, runProfile, trailProfile, walkProfile } from "./recording.ts";
+import type { RecordingOverrides, RecordingProfile } from "./recording.ts";
 import type { ZoneKey } from "./zones.ts";
 
 export interface SportDefinition {
@@ -16,6 +18,8 @@ export interface SportDefinition {
   readonly painZones: readonly ZoneKey[];
   readonly usesGear: boolean;
   readonly gradeScaleBy: { readonly field: string; readonly scales: Readonly<Record<string, GradeScaleKey>> } | null;
+  readonly recording: RecordingProfile | null;
+  readonly recordingOverrides: RecordingOverrides | null;
   readonly retired?: true;
 }
 
@@ -27,6 +31,7 @@ const elevationGain: FieldDefinition = { key: "elevation_gain", label: "Dénivel
 const heartRate: FieldDefinition = { key: "heart_rate_avg", label: "Fréquence cardiaque moyenne", type: "quantity", dimension: "heart_rate", min: 30, max: 240, ...optional };
 const place: FieldDefinition = { key: "place", label: "Lieu", type: "text", ...optional };
 const pace = (label: string, per: number): IndicatorDefinition => ({ type: "ratio", key: "pace", label, numerator: "duration", denominator: "distance", per });
+const legPainZones = ["knee_right", "knee_left", "ankle_right", "ankle_left", "achilles_right", "achilles_left", "hip_right", "hip_left"] as const satisfies readonly ZoneKey[];
 const speed: IndicatorDefinition = { type: "ratio", key: "speed", label: "Vitesse moyenne", numerator: "distance", denominator: "duration", per: 3600 };
 
 export const sports = {
@@ -41,13 +46,15 @@ export const sports = {
     painZones: ["shoulder_right", "shoulder_left", "elbow_right", "elbow_left", "lower_back", "knee_right", "knee_left"],
     usesGear: false,
     gradeScaleBy: null,
+    recording: null,
+    recordingOverrides: null,
   },
   run: {
     label: "Course",
     icon: "run",
     archetype: "continuous",
     sessionFields: [
-      kind("Type de sortie", [{ key: "easy", label: "Footing" }, { key: "intervals", label: "Fractionné" }, { key: "trail", label: "Trail" }, { key: "long", label: "Longue" }]),
+      kind("Type de sortie", [{ key: "easy", label: "Footing" }, { key: "tempo", label: "Seuil" }, { key: "intervals", label: "Fractionné" }, { key: "long", label: "Longue" }, { key: "race", label: "Compétition" }]),
       distance,
       elevationGain,
       heartRate,
@@ -55,9 +62,49 @@ export const sports = {
     itemLabel: null,
     itemFields: [],
     indicators: [pace("Allure", 1000)],
-    painZones: ["knee_right", "knee_left", "ankle_right", "ankle_left", "achilles_right", "achilles_left", "hip_right", "hip_left"],
+    painZones: legPainZones,
     usesGear: true,
     gradeScaleBy: null,
+    recording: runProfile,
+    recordingOverrides: null,
+  },
+  trail: {
+    label: "Trail",
+    icon: "trail",
+    archetype: "continuous",
+    sessionFields: [
+      kind("Type de sortie", [{ key: "training", label: "Entraînement" }, { key: "race", label: "Compétition" }, { key: "vertical", label: "Kilomètre vertical" }]),
+      distance,
+      elevationGain,
+      heartRate,
+    ],
+    itemLabel: null,
+    itemFields: [],
+    indicators: [pace("Allure", 1000)],
+    painZones: legPainZones,
+    usesGear: true,
+    gradeScaleBy: null,
+    recording: trailProfile,
+    recordingOverrides: null,
+  },
+  walk: {
+    label: "Marche",
+    icon: "walk",
+    archetype: "continuous",
+    sessionFields: [
+      kind("Type", [{ key: "stroll", label: "Balade" }, { key: "brisk", label: "Marche active" }, { key: "nordic", label: "Marche nordique" }, { key: "commute", label: "Trajet" }]),
+      distance,
+      elevationGain,
+      heartRate,
+    ],
+    itemLabel: null,
+    itemFields: [],
+    indicators: [pace("Allure", 1000)],
+    painZones: ["knee_right", "knee_left", "ankle_right", "ankle_left", "hip_right", "hip_left", "lower_back"],
+    usesGear: true,
+    gradeScaleBy: null,
+    recording: walkProfile,
+    recordingOverrides: null,
   },
   hike: {
     label: "Rando",
@@ -69,6 +116,7 @@ export const sports = {
       elevationGain,
       { key: "pack_mass", label: "Poids du sac", type: "quantity", dimension: "mass", min: null, max: null, ...optional },
       { key: "route", label: "Itinéraire", type: "text", ...optional },
+      heartRate,
     ],
     itemLabel: null,
     itemFields: [],
@@ -76,6 +124,8 @@ export const sports = {
     painZones: ["knee_right", "knee_left", "ankle_right", "ankle_left", "lower_back"],
     usesGear: true,
     gradeScaleBy: null,
+    recording: hikeProfile,
+    recordingOverrides: null,
   },
   swim: {
     label: "Natation",
@@ -83,6 +133,7 @@ export const sports = {
     archetype: "continuous",
     sessionFields: [
       kind("Nage principale", [{ key: "crawl", label: "Crawl" }, { key: "breaststroke", label: "Brasse" }, { key: "mixed", label: "Mixte" }, { key: "drills", label: "Éducatifs" }]),
+      { key: "water", label: "Milieu", type: "choice", multiple: false, options: [{ key: "pool", label: "Bassin" }, { key: "open_water", label: "Eau libre" }], ...optional },
       distance,
       { key: "pool_length", label: "Bassin", type: "quantity", dimension: "distance", min: 10, max: 100, ...optional },
       { key: "lengths", label: "Longueurs", type: "quantity", dimension: "count", min: 1, max: null, ...optional },
@@ -94,15 +145,19 @@ export const sports = {
     painZones: ["shoulder_right", "shoulder_left", "neck"],
     usesGear: false,
     gradeScaleBy: null,
+    recording: null,
+    recordingOverrides: null,
   },
   bike: {
     label: "Vélo",
     icon: "bike",
     archetype: "continuous",
     sessionFields: [
-      kind("Type", [{ key: "road", label: "Route" }, { key: "mtb", label: "VTT" }, { key: "commute", label: "Trajet" }, { key: "indoor", label: "Home trainer" }]),
+      kind("Type", [{ key: "road", label: "Route" }, { key: "gravel", label: "Gravel" }, { key: "mtb", label: "VTT" }, { key: "commute", label: "Trajet" }, { key: "indoor", label: "Home trainer" }]),
+      { key: "e_bike", label: "Assistance électrique", type: "toggle", ...optional },
       distance,
       elevationGain,
+      heartRate,
       { key: "power_avg", label: "Puissance moyenne", type: "quantity", dimension: "power", min: null, max: null, ...optional },
     ],
     itemLabel: null,
@@ -111,6 +166,8 @@ export const sports = {
     painZones: ["knee_right", "knee_left", "lower_back", "neck"],
     usesGear: true,
     gradeScaleBy: null,
+    recording: bikeProfile,
+    recordingOverrides: { field: "kind", byOption: { indoor: null, mtb: { motion: mountainBikeMotion } } },
   },
   climb: {
     label: "Escalade",
@@ -134,6 +191,8 @@ export const sports = {
     painZones: ["fingers_right", "fingers_left", "elbow_right", "elbow_left", "shoulder_right", "shoulder_left"],
     usesGear: false,
     gradeScaleBy: { field: "discipline", scales: { boulder: "fontainebleau", board: "fontainebleau", lead: "french", top_rope: "french" } },
+    recording: null,
+    recordingOverrides: null,
   },
   yoga: {
     label: "Yoga",
@@ -146,12 +205,14 @@ export const sports = {
     painZones: ["lower_back", "hip_right", "hip_left", "wrist_right", "wrist_left"],
     usesGear: false,
     gradeScaleBy: null,
+    recording: null,
+    recordingOverrides: null,
   },
 } as const satisfies Record<string, SportDefinition>;
 
 export type SportKey = keyof typeof sports;
 
-export const catalogVersion = 1;
+export const catalogVersion = 2;
 
 export function sessionValuesSchema(sport: SportDefinition): z.ZodType<FieldValues> {
   return valuesSchema(sport.sessionFields);

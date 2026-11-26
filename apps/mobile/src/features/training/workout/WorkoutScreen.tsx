@@ -44,6 +44,8 @@ function openSessionHref(session: Session): void {
       router.replace({ pathname: "/climb/[id]", params: { id: session.id } });
       return;
     case "run":
+    case "trail":
+    case "walk":
     case "hike":
     case "swim":
     case "bike":

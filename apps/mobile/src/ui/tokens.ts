@@ -61,8 +61,8 @@ export const palettes: Readonly<Record<PaletteName, Palette>> = {
     brand: "#e5ed32",
     brandDeep: "#8c9312",
     brandInk: "#12140a",
-    sport: { strength: "#5b86ff", run: "#ff6a2b", hike: "#e8a84c", swim: "#22cbe3", bike: "#ff4f8b", climb: "#34d67f", yoga: "#a173ff" },
-    sportDeep: { strength: "#2a4fd6", run: "#c8430f", hike: "#a8701f", swim: "#0d8ea3", bike: "#c22760", climb: "#14954f", yoga: "#6a3fd0" },
+    sport: { strength: "#5b86ff", run: "#ff6a2b", trail: "#9ccc3b", walk: "#c9b48a", hike: "#e8a84c", swim: "#22cbe3", bike: "#ff4f8b", climb: "#34d67f", yoga: "#a173ff" },
+    sportDeep: { strength: "#2a4fd6", run: "#c8430f", trail: "#668c1a", walk: "#8e7a52", hike: "#a8701f", swim: "#0d8ea3", bike: "#c22760", climb: "#14954f", yoga: "#6a3fd0" },
     sportInk: "#0b0e11",
   },
   sunlight: {
@@ -91,8 +91,8 @@ export const palettes: Readonly<Record<PaletteName, Palette>> = {
     brand: "#e5ed32",
     brandDeep: "#8c9312",
     brandInk: "#12140a",
-    sport: { strength: "#2350d8", run: "#d2470c", hike: "#94600f", swim: "#007f93", bike: "#c41d5b", climb: "#0f8447", yoga: "#6c3cc9" },
-    sportDeep: { strength: "#173a9e", run: "#9a3207", hike: "#6b4409", swim: "#005766", bike: "#8d1240", climb: "#095e32", yoga: "#4c2694" },
+    sport: { strength: "#2350d8", run: "#d2470c", trail: "#557d0b", walk: "#7a6338", hike: "#94600f", swim: "#007f93", bike: "#c41d5b", climb: "#0f8447", yoga: "#6c3cc9" },
+    sportDeep: { strength: "#173a9e", run: "#9a3207", trail: "#3b5806", walk: "#57462a", hike: "#6b4409", swim: "#005766", bike: "#8d1240", climb: "#095e32", yoga: "#4c2694" },
     sportInk: "#ffffff",
   },
 };

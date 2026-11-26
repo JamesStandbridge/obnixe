@@ -12,3 +12,4 @@ export * from "./agent/index.ts";
 export * from "./training/index.ts";
 export * from "./programs/index.ts";
 export * from "./data/index.ts";
+export * from "./tracking/index.ts";

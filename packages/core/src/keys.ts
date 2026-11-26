@@ -22,6 +22,10 @@ const keyColumns: { readonly [T in JournaledTable]: readonly [string, ...string[
   check_in: ["id"],
   pain_report: ["id"],
   zone_tracking: ["id"],
+  recording: ["id"],
+  lap: ["id"],
+  privacy_zone: ["id"],
+  segment: ["id"],
 };
 
 const separator = "|";

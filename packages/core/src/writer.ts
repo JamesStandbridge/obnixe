@@ -1,4 +1,4 @@
-import { and, eq, getTableColumns, getTableName, is, sql } from "drizzle-orm";
+import { and, eq, getTableColumns, getTableName, is, max, sql } from "drizzle-orm";
 import type { InferInsertModel, SQL } from "drizzle-orm";
 import { SQLiteTable, getTableConfig } from "drizzle-orm/sqlite-core";
 import type { SQLiteColumn } from "drizzle-orm/sqlite-core";
@@ -8,6 +8,8 @@ import {
   itemValuesSchema,
   journaled,
   journaledTables,
+  lap,
+  recording,
   rowSchemas,
   schema,
   session,
@@ -19,6 +21,7 @@ import {
 import type { Author, ChangeOperation, FieldValues, Id, JournaledTable, RowImage, SportKey } from "@obnixe/schema";
 import type { Environment, ObnixeDatabase } from "./database.ts";
 import { keyColumnsOf, keyValues, rowKey } from "./keys.ts";
+import { resolveProfile } from "./tracking/profile.ts";
 
 type Managed = "createdAt" | "updatedAt" | "changesetId";
 
@@ -65,6 +68,19 @@ export class EmptyChangesetError extends Error {
 export class DependentRowsError extends Error {
   constructor(readonly table: JournaledTable, readonly key: string, readonly dependents: readonly string[]) {
     super(`${table} ${key} is referenced by ${dependents.join(", ")}`);
+  }
+}
+
+/** A live recording needs a sport, and an option of it, with a recording profile; imports may also attach a track to other sports. */
+export class UnrecordableSportError extends Error {
+  constructor(readonly sessionId: Id, readonly sport: SportKey) {
+    super(`Session ${sessionId} (${sport}) cannot carry a live recording`);
+  }
+}
+
+export class LapOutsideRecordingError extends Error {
+  constructor(readonly sessionId: Id, readonly endOffsetMs: number, readonly elapsedMs: number | null) {
+    super(elapsedMs === null ? `Session ${sessionId} has no recording for its laps` : `Lap of session ${sessionId} ends at ${endOffsetMs} ms, after the recording (${elapsedMs} ms)`);
   }
 }
 
@@ -150,6 +166,8 @@ function validateSportValues(db: ObnixeDatabase, table: JournaledTable, row: Row
       for (const item of db.select({ values: sessionItem.values }).from(sessionItem).where(eq(sessionItem.sessionId, row.id as Id)).all()) {
         itemValuesSchema(sport, values).parse(item.values);
       }
+      const attached = db.select({ source: recording.source }).from(recording).where(eq(recording.sessionId, row.id as Id)).get();
+      if (attached?.source === "live" && resolveProfile(row.sport as SportKey, values) === null) throw new UnrecordableSportError(row.id as Id, row.sport as SportKey);
       return;
     }
     case "session_item": {
@@ -162,6 +180,22 @@ function validateSportValues(db: ObnixeDatabase, table: JournaledTable, row: Row
     case "program_slot":
       targetValuesSchema(sports[row.sport as SportKey]).parse(row.targetValues as FieldValues);
       return;
+    case "recording": {
+      const sessionId = row.sessionId as Id;
+      const parent = db.select({ sport: session.sport, values: session.values }).from(session).where(eq(session.id, sessionId)).get();
+      if (parent === undefined) throw new RowNotFoundError("session", sessionId);
+      if (row.source === "live" && resolveProfile(parent.sport, parent.values) === null) throw new UnrecordableSportError(sessionId, parent.sport);
+      const lastLapEnd = db.select({ end: max(lap.endOffsetMs) }).from(lap).where(eq(lap.sessionId, sessionId)).get()?.end ?? null;
+      if (lastLapEnd !== null && lastLapEnd > (row.elapsedMs as number)) throw new LapOutsideRecordingError(sessionId, lastLapEnd, row.elapsedMs as number);
+      return;
+    }
+    case "lap": {
+      const sessionId = row.sessionId as Id;
+      const elapsedMs = db.select({ elapsedMs: recording.elapsedMs }).from(recording).where(eq(recording.sessionId, sessionId)).get()?.elapsedMs ?? null;
+      const endOffsetMs = row.endOffsetMs as number;
+      if (elapsedMs === null || endOffsetMs > elapsedMs) throw new LapOutsideRecordingError(sessionId, endOffsetMs, elapsedMs);
+      return;
+    }
     case "sport_preference":
     case "gear":
     case "exercise":
@@ -180,6 +214,8 @@ function validateSportValues(db: ObnixeDatabase, table: JournaledTable, row: Row
     case "check_in":
     case "pain_report":
     case "zone_tracking":
+    case "privacy_zone":
+    case "segment":
       return;
     default: {
       const unreachable: never = table;
@@ -231,7 +267,9 @@ function indexDependents(): Map<JournaledTable, Dependent[]> {
   const index = new Map<JournaledTable, Dependent[]>();
   for (const candidate of Object.values(schema)) {
     if (!is(candidate, SQLiteTable)) continue;
+    const derived = !journaledNames.has(getTableName(candidate));
     for (const foreignKey of getTableConfig(candidate).foreignKeys) {
+      if (derived && foreignKey.onDelete === "cascade") continue;
       const reference = foreignKey.reference();
       const targetName = getTableName(reference.foreignTable);
       if (!journaledNames.has(targetName)) continue;
