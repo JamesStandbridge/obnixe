@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { StyleSheet, View } from "react-native";
+import Animated from "react-native-reanimated";
 import { router } from "expo-router";
 import { ZodError } from "zod";
 import {
@@ -44,15 +45,17 @@ import type { Draft } from "@/features/training/workout/liveWorkout";
 import { cancelRestAlert } from "@/features/training/workout/restAlert";
 import { ControlButton, LinkButton } from "@/ui/Button";
 import { PainMark, Tag } from "@/ui/Controls";
-import { SportIcon } from "@/ui/icons/SportIcon";
+import { SportScene } from "@/ui/illustrations/SportScene";
 import { IconButton, MenuItem, painLevelLabels } from "@/ui/Inputs";
 import { Row, Screen, Section } from "@/ui/Layout";
+import { reveal } from "@/ui/motion";
 import { Sheet } from "@/ui/Overlays";
+import { BevelView } from "@/ui/Shapes";
 import { StatRow } from "@/ui/Stats";
 import { useSnackbar } from "@/ui/SnackbarHost";
 import { Text } from "@/ui/Text";
 import { useTheme } from "@/ui/theme";
-import { fonts, radii } from "@/ui/tokens";
+import { bevels, fonts } from "@/ui/tokens";
 import { goBack } from "@/ui/navigation";
 
 interface DetailData {
@@ -320,20 +323,22 @@ function Detail({ data }: DetailProps) {
         </View>
 
         <View style={styles.hero}>
-          <View style={styles.heroHead}>
-            <SportIcon sport={session.sport} variant="badge" label={sport.label} />
-            <View style={styles.heroMeta}>
-              <Text variant="eyebrow" style={{ color: colors.sport[session.sport] }}>
-                {sport.label}
-              </Text>
-              <Text variant="small" tone="secondary" numberOfLines={1}>
-                {capitalize(formatLongDate(session.localDate))} · {timeRange(session)}
-              </Text>
-            </View>
-          </View>
-          <Text style={styles.title} accessibilityRole="header">
-            {title}
-          </Text>
+          <Animated.View entering={reveal(0)}>
+            <BevelView fill={colors.sport[session.sport]} cut={bevels.card} style={styles.heroBand}>
+              <View style={styles.heroMeta}>
+                <Text variant="eyebrow" style={{ color: colors.sportInk }}>
+                  {sport.label}
+                </Text>
+                <Text style={[styles.title, { color: colors.sportInk }]} accessibilityRole="header">
+                  {title}
+                </Text>
+                <Text variant="small" style={[styles.heroDate, { color: colors.sportInk }]} numberOfLines={1}>
+                  {capitalize(formatLongDate(session.localDate))} · {timeRange(session)}
+                </Text>
+              </View>
+              <SportScene sport={session.sport} size={124} onBand />
+            </BevelView>
+          </Animated.View>
           {tags.length === 0 ? null : (
             <View style={styles.tags}>
               {tags.map((tag) => (
@@ -341,10 +346,10 @@ function Detail({ data }: DetailProps) {
               ))}
             </View>
           )}
-          <View style={[styles.stats, { backgroundColor: colors.surface }]}>
+          <BevelView fill={colors.surface} cut={bevels.tile} style={styles.stats}>
             <StatRow stats={stats.primary} size="large" />
             {stats.secondary.length === 0 ? null : <StatRow stats={stats.secondary} style={[styles.secondaryStats, { borderTopColor: colors.line }]} />}
-          </View>
+          </BevelView>
           {completed ? null : <ControlButton label="Reprendre la séance" onPress={resume} style={styles.resume} />}
         </View>
 
@@ -491,11 +496,12 @@ const styles = StyleSheet.create({
   appbar: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 44 },
   appbarContext: { flex: 1, fontFamily: fonts.text600, fontSize: 15 },
   hero: { marginTop: 14, gap: 8 },
-  heroHead: { flexDirection: "row", alignItems: "center", gap: 12 },
+  heroBand: { flexDirection: "row", alignItems: "center", minHeight: 140, paddingLeft: 16, paddingVertical: 12 },
   heroMeta: { flex: 1, minWidth: 0, gap: 5 },
-  title: { marginTop: 4, fontFamily: fonts.text700, fontSize: 30, lineHeight: 32, letterSpacing: -0.6 },
+  heroDate: { fontFamily: fonts.text600, opacity: 0.8 },
+  title: { fontFamily: fonts.brand800, fontSize: 26, lineHeight: 29, letterSpacing: -0.5 },
   tags: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
-  stats: { marginTop: 8, borderRadius: radii.panel, paddingHorizontal: 14, paddingVertical: 14 },
+  stats: { marginTop: 8, paddingHorizontal: 14, paddingVertical: 14 },
   secondaryStats: { marginTop: 12, paddingTop: 12, borderTopWidth: 1 },
   resume: { marginTop: 4 },
   sectionLink: { marginVertical: -12, marginRight: -10 },

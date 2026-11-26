@@ -573,7 +573,7 @@ const styles = StyleSheet.create({
   appbar: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 44 },
   appbarContext: { flex: 1 },
   head: { marginTop: 14, gap: 6 },
-  headTitle: { fontFamily: fonts.text700, fontSize: 30, lineHeight: 33, letterSpacing: -0.6 },
+  headTitle: { fontFamily: fonts.brand800, fontSize: 30, lineHeight: 33, letterSpacing: -0.7 },
   historyLink: { marginTop: 20, borderTopWidth: 1, minHeight: 56, paddingVertical: 10, flexDirection: "row", alignItems: "center", gap: 12 },
   forget: { borderTopWidth: 1, minHeight: 56, paddingVertical: 10, flexDirection: "row", alignItems: "center" },
   rowMain: { flex: 1, minWidth: 0, gap: 3 },

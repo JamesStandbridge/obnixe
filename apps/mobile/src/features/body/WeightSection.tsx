@@ -13,13 +13,15 @@ import { PadSheet } from "@/ui/PadSheet";
 import type { PadResult } from "@/ui/PadSheet";
 import { WeightChart } from "@/features/body/WeightChart";
 import { LinkButton } from "@/ui/Button";
+import { EmptyScene } from "@/ui/illustrations/scenes";
 import { Section, Row } from "@/ui/Layout";
+import { BevelView } from "@/ui/Shapes";
 import { StatRow } from "@/ui/Stats";
 import type { StatValue } from "@/ui/Stats";
 import { Text } from "@/ui/Text";
 import { StepButton } from "@/ui/Controls";
 import { useTheme } from "@/ui/theme";
-import { fonts, radii } from "@/ui/tokens";
+import { bevels, fonts, radii } from "@/ui/tokens";
 
 interface WeightSectionProps {
   readonly weighIns: readonly WeighIn[];
@@ -103,7 +105,12 @@ export function WeightSection({ weighIns, massUnit, children }: WeightSectionPro
   return (
     <>
       <View style={styles.weight}>
-        <View style={[styles.instrument, { backgroundColor: colors.surface }]}>
+        <BevelView fill={colors.surface} cut={bevels.card} style={styles.instrument}>
+          {proposed ? (
+            <View style={styles.art}>
+              <EmptyScene kind="body" size={96} />
+            </View>
+          ) : null}
           <View style={styles.instrumentHead}>
             <Text variant="eyebrow" tone="secondary">
               Poids
@@ -137,7 +144,7 @@ export function WeightSection({ weighIns, massUnit, children }: WeightSectionPro
               />
             </View>
           ) : null}
-        </View>
+        </BevelView>
         <View style={styles.stepper}>
           <StepButton label="−" accessibilityLabel={massUnit === "kg" ? "Retirer 100 g" : "Retirer 0,1 lb"} disabled={shown <= min} onPress={() => step(-1)} />
           <Pressable
@@ -231,7 +238,8 @@ export function WeightSection({ weighIns, massUnit, children }: WeightSectionPro
 
 const styles = StyleSheet.create({
   weight: { marginTop: 18, gap: 10 },
-  instrument: { borderRadius: radii.panel, padding: 16, paddingBottom: 14 },
+  instrument: { padding: 16, paddingBottom: 14 },
+  art: { position: "absolute", top: 8, right: 8 },
   instrumentHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
   figure: { flexDirection: "row", alignItems: "baseline", alignSelf: "flex-start", gap: 6, minHeight: 44, marginTop: 6 },
   weightValue: { fontFamily: fonts.figure800, fontSize: 76, lineHeight: 78, letterSpacing: -1.6 },
@@ -240,7 +248,7 @@ const styles = StyleSheet.create({
   chart: { marginTop: 14, paddingTop: 12, borderTopWidth: 1 },
   stepper: { flexDirection: "row", alignItems: "stretch", gap: 6 },
   save: { flex: 1, minHeight: 56, borderRadius: radii.control, alignItems: "center", justifyContent: "center", paddingHorizontal: 12 },
-  saveLabel: { fontFamily: fonts.text700, fontSize: 16 },
+  saveLabel: { fontFamily: fonts.brand700, fontSize: 16 },
   days: { flexDirection: "row", borderTopWidth: 1, borderBottomWidth: 1 },
   day: { flex: 1, minHeight: 56, paddingTop: 10, alignItems: "center", gap: 5 },
   dayInitial: { fontFamily: fonts.text700, fontSize: 12, lineHeight: 12 },

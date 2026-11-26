@@ -39,6 +39,7 @@ import type { RemoteAccessState } from "@/features/remote/access";
 import { RemoteLink, remoteLinkLabel } from "@/features/remote/components";
 import { useToggleChange } from "@/features/agent/useToggleChange";
 import { LinkButton } from "@/ui/Button";
+import { EmptyScene } from "@/ui/illustrations/scenes";
 import { Section, Screen } from "@/ui/Layout";
 import { useSnackbar } from "@/ui/SnackbarHost";
 import { Text } from "@/ui/Text";
@@ -337,6 +338,11 @@ export default function Agent() {
       <Screen bottomInset={120}>
         <AgentAppBar onBack={() => goBack("/")} />
         {view.kind === "pairing" ? (
+          <View style={styles.art}>
+            <EmptyScene kind="agent" size={168} />
+          </View>
+        ) : null}
+        {view.kind === "pairing" ? (
           <Pairing view={view} settings={settings} manual={manual} onToggleManual={() => setManual((open) => !open)} onEditHost={() => setEditingHost(true)} />
         ) : null}
         {view.kind === "joining" ? <Joining view={view} settings={settings} onEditHost={() => setEditingHost(true)} /> : null}
@@ -379,6 +385,7 @@ export default function Agent() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  art: { marginTop: 8, alignItems: "center" },
   summary: { marginTop: 8, lineHeight: 23 },
   empty: { paddingVertical: 14 },
   rescan: { alignSelf: "flex-start", marginLeft: -10 },

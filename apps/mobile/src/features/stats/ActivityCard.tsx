@@ -1,14 +1,17 @@
 import { Pressable, StyleSheet, View } from "react-native";
+import Animated from "react-native-reanimated";
 import { climbBreakdown, gramsToMass, indicatorOver, parseGrade } from "@obnixe/core";
 import type { SessionSummary, StrengthDigest, StrengthDigestExercise } from "@obnixe/core";
 import { efforts, sports } from "@obnixe/schema";
 import type { Effort, FieldValues, MassUnit, SportDefinition } from "@obnixe/schema";
 import { SportIcon } from "@/ui/icons/SportIcon";
+import { usePressScale } from "@/ui/motion";
+import { BevelView } from "@/ui/Shapes";
 import { StatRow } from "@/ui/Stats";
 import type { StatValue } from "@/ui/Stats";
 import { Text } from "@/ui/Text";
 import { useTheme } from "@/ui/theme";
-import { fonts, radii, wash } from "@/ui/tokens";
+import { bevels, fonts, radii, wash } from "@/ui/tokens";
 import { formatTimeAt } from "@/format/dates";
 import { formatClock } from "@/format/durations";
 import { capitalize, plural, sessionTitle, zoneLabel } from "@/format/labels";
@@ -253,54 +256,57 @@ interface ActivityCardProps {
 
 export function ActivityCard({ summary, massUnit }: ActivityCardProps) {
   const { colors } = useTheme();
+  const press = usePressScale(0.98);
   const tone = colors.sport[summary.sport];
   const archetype = sports[summary.sport].archetype;
   const stats = cardStats(summary, massUnit);
   const flags = sessionFlagParts(summary);
   const date = archetype !== "continuous" && summary.effort !== null ? `${cardDate(summary)} · ${effortLabel(summary.effort)}` : cardDate(summary);
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={cardLabel(summary, stats)}
-      onPress={() => openSession(summary.id)}
-      style={({ pressed }) => [styles.card, { backgroundColor: pressed ? colors.surface2 : colors.surface }]}
-    >
-      <View style={styles.head}>
-        <SportIcon sport={summary.sport} variant="badge" />
-        <View style={styles.headText}>
-          <Text variant="bodyStrong" numberOfLines={1}>
-            {sessionTitle(summary)}
-          </Text>
-          <Text variant="caption" tone="secondary" numberOfLines={1}>
-            {date}
-          </Text>
-        </View>
-      </View>
-      {stats.length === 0 ? null : <StatRow stats={stats} />}
-      {archetype === "strength" && summary.strength !== null ? <StrengthSignature digest={summary.strength} unit={massUnit} tone={tone} /> : null}
-      {archetype === "itemized" && summary.items.length > 0 ? <ClimbSignature items={summary.items} tone={tone} /> : null}
-      {archetype === "continuous" && summary.effort !== null ? <EffortMeter effort={summary.effort} tone={tone} /> : null}
-      {flags.length === 0 ? null : <DetailLine parts={flags} />}
-    </Pressable>
+    <Animated.View style={press.style}>
+      <Pressable accessibilityRole="button" accessibilityLabel={cardLabel(summary, stats)} onPress={() => openSession(summary.id)} onPressIn={press.onPressIn} onPressOut={press.onPressOut}>
+        {({ pressed }) => (
+          <BevelView fill={pressed ? colors.surface2 : colors.surface} cut={bevels.tile} style={styles.card}>
+            <View style={styles.head}>
+              <SportIcon sport={summary.sport} variant="badge" />
+              <View style={styles.headText}>
+                <Text style={styles.title} numberOfLines={1}>
+                  {sessionTitle(summary)}
+                </Text>
+                <Text variant="caption" tone="secondary" numberOfLines={1}>
+                  {date}
+                </Text>
+              </View>
+            </View>
+            {stats.length === 0 ? null : <StatRow stats={stats} />}
+            {archetype === "strength" && summary.strength !== null ? <StrengthSignature digest={summary.strength} unit={massUnit} tone={tone} /> : null}
+            {archetype === "itemized" && summary.items.length > 0 ? <ClimbSignature items={summary.items} tone={tone} /> : null}
+            {archetype === "continuous" && summary.effort !== null ? <EffortMeter effort={summary.effort} tone={tone} /> : null}
+            {flags.length === 0 ? null : <DetailLine parts={flags} />}
+          </BevelView>
+        )}
+      </Pressable>
+    </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
-  card: { borderRadius: radii.panel, padding: 14, gap: 14 },
+  card: { padding: 14, gap: 14 },
   head: { flexDirection: "row", alignItems: "center", gap: 12 },
   headText: { flex: 1, minWidth: 0, gap: 2 },
+  title: { fontFamily: fonts.brand700, fontSize: 17, lineHeight: 21 },
   exercises: { gap: 8 },
   exercise: { gap: 4 },
   exerciseLine: { flexDirection: "row", alignItems: "baseline", gap: 12 },
   exerciseName: { flex: 1, minWidth: 0 },
   exerciseFigure: { fontFamily: fonts.figure700, fontSize: 15, lineHeight: 18 },
-  track: { height: 3, borderRadius: 1.5, overflow: "hidden" },
-  fill: { height: 3, borderRadius: 1.5 },
+  track: { height: 4, borderRadius: 1, overflow: "hidden", transform: [{ skewX: "-24deg" }] },
+  fill: { height: 4 },
   chips: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 4 },
   chip: { minWidth: 34, height: 24, paddingHorizontal: 6, borderRadius: radii.tag, alignItems: "center", justifyContent: "center" },
   chipLabel: { fontFamily: fonts.figure700, fontSize: 14, lineHeight: 16 },
   chipMore: { marginLeft: 4 },
   effort: { flexDirection: "row", alignItems: "center", gap: 10 },
   effortSegments: { flex: 1, flexDirection: "row", gap: 3 },
-  effortSegment: { flex: 1, height: 4, borderRadius: 1 },
+  effortSegment: { flex: 1, height: 5, borderRadius: 1, transform: [{ skewX: "-24deg" }] },
 });

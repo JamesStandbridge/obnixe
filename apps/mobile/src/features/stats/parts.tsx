@@ -115,23 +115,18 @@ export function FilterChips<T extends string>({ label, options, value, onChange 
     >
       {options.map((option) => {
         const selected = option.value === value;
+        const fill = option.sport === undefined ? colors.text : colors.sport[option.sport];
+        const ink = option.sport === undefined ? colors.bg : colors.sportInk;
         return (
           <Pressable
             key={option.value}
             accessibilityRole="radio"
             aria-checked={selected}
             onPress={() => onChange(option.value)}
-            style={({ pressed }) => [
-              styles.chip,
-              {
-                borderColor: selected ? colors.text : colors.controlBorder,
-                borderWidth: selected ? 2 : layout.borderControl,
-                backgroundColor: selected || pressed ? colors.surface : "transparent",
-              },
-            ]}
+            style={({ pressed }) => [styles.chip, { backgroundColor: selected ? fill : pressed ? colors.surfacePress : colors.surface }]}
           >
-            {option.sport === undefined ? null : <SmallSportIcon sport={option.sport} color={colors.sport[option.sport]} size={16} />}
-            <Text variant="label" tone={selected ? "primary" : "secondary"} style={selected ? styles.chipSelected : undefined}>
+            {option.sport === undefined ? null : <SmallSportIcon sport={option.sport} color={selected ? ink : colors.sport[option.sport]} size={16} />}
+            <Text variant="label" tone={selected ? "primary" : "secondary"} style={selected ? [styles.chipSelected, { color: ink }] : undefined}>
               {option.label}
             </Text>
           </Pressable>
@@ -184,5 +179,5 @@ const styles = StyleSheet.create({
   chipsScroll: { marginHorizontal: -layout.gutter, flexGrow: 0 },
   chips: { paddingHorizontal: layout.gutter, gap: 6 },
   chip: { minHeight: 48, paddingHorizontal: 16, borderRadius: radii.control, flexDirection: "row", gap: 6, alignItems: "center", justifyContent: "center" },
-  chipSelected: { fontFamily: fonts.text700 },
+  chipSelected: { fontFamily: fonts.brand700 },
 });

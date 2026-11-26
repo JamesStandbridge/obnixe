@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
+import Animated from "react-native-reanimated";
 import { router } from "expo-router";
 import { useLiveQuery } from "drizzle-orm/expo-sqlite";
 import { initialSportMutations } from "@obnixe/core";
@@ -12,10 +13,12 @@ import { updateSettings } from "@/data/settings";
 import { PrimaryButton } from "@/ui/Button";
 import { Segmented } from "@/ui/Controls";
 import { SportIcon } from "@/ui/icons/SportIcon";
+import { BrandHero } from "@/ui/illustrations/BrandHero";
 import { Screen, Section } from "@/ui/Layout";
+import { reveal } from "@/ui/motion";
 import { Text } from "@/ui/Text";
 import { useTheme } from "@/ui/theme";
-import { fonts, layout, radii } from "@/ui/tokens";
+import { fonts, radii } from "@/ui/tokens";
 
 const defaultSports: ReadonlySet<SportKey> = new Set<SportKey>(["strength", "run", "climb", "hike", "swim"]);
 
@@ -56,14 +59,18 @@ export default function Welcome() {
           OBNI<Text style={[styles.wordmark, { color: colors.mark }]}>X</Text>E
         </Text>
 
-        <View style={styles.intro}>
+        <Animated.View entering={reveal(0)} style={styles.hero}>
+          <BrandHero size={220} />
+        </Animated.View>
+
+        <Animated.View entering={reveal(1)} style={styles.intro}>
           <Text style={styles.headline}>Ton suivi sportif, sans compte</Text>
-        </View>
+        </Animated.View>
 
         <Section title="À savoir" style={styles.facts}>
           {facts.map((fact, index) => (
             <View key={fact} style={[styles.fact, { borderBottomColor: colors.line, borderBottomWidth: index === facts.length - 1 ? 0 : 1 }]}>
-              <Text tone="tertiary" style={styles.factNumber}>
+              <Text style={[styles.factNumber, { color: colors.mark }]}>
                 {index + 1}
               </Text>
               <Text variant="bodyStrong" style={styles.factText}>
@@ -86,17 +93,10 @@ export default function Welcome() {
                       aria-checked={pressed}
                       accessibilityLabel={sports[sport].label}
                       onPress={() => toggle(sport)}
-                      style={({ pressed: touching }) => [
-                        styles.sport,
-                        {
-                          borderColor: pressed ? colors.text : colors.controlBorder,
-                          borderWidth: pressed ? 2 : layout.borderControl,
-                          backgroundColor: pressed || touching ? colors.surface : "transparent",
-                        },
-                      ]}
+                      style={({ pressed: touching }) => [styles.sport, { backgroundColor: pressed ? colors.sport[sport] : touching ? colors.surfacePress : colors.surface }]}
                     >
-                      <SportIcon sport={sport} variant="inline" color={pressed ? colors.text : colors.text2} />
-                      <Text variant="label" tone={pressed ? "primary" : "secondary"} style={pressed ? styles.sportOn : null}>
+                      <SportIcon sport={sport} variant="inline" color={pressed ? colors.sportInk : colors.sport[sport]} />
+                      <Text variant="label" tone={pressed ? "primary" : "secondary"} style={pressed ? [styles.sportOn, { color: colors.sportInk }] : null}>
                         {sports[sport].label}
                       </Text>
                     </Pressable>
@@ -131,18 +131,19 @@ export default function Welcome() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  wordmark: { marginTop: 28, fontFamily: fonts.figure800, fontSize: 34, lineHeight: 34, letterSpacing: 0.7 },
-  intro: { marginTop: 28, gap: 10 },
-  headline: { fontFamily: fonts.text700, fontSize: 34, lineHeight: 36, letterSpacing: -0.7 },
+  wordmark: { marginTop: 28, fontFamily: fonts.brand800, fontSize: 30, lineHeight: 34, letterSpacing: 1.2 },
+  hero: { marginTop: 18, alignItems: "center" },
+  intro: { marginTop: 18, gap: 10 },
+  headline: { fontFamily: fonts.brand800, fontSize: 36, lineHeight: 39, letterSpacing: -0.9 },
   facts: { marginTop: 8 },
   fact: { flexDirection: "row", alignItems: "flex-start", gap: 12, minHeight: 56, paddingVertical: 10 },
-  factNumber: { width: 28, fontFamily: fonts.figure700, fontSize: 15, lineHeight: 22 },
+  factNumber: { width: 28, fontFamily: fonts.figure800, fontSize: 17, lineHeight: 22 },
   factText: { flex: 1, lineHeight: 22 },
   sports: { marginTop: 10, gap: 6 },
   sportRow: { flexDirection: "row", gap: 6 },
   sportSpacer: { flex: 1 },
   sport: { flex: 1, minHeight: 52, paddingHorizontal: 12, borderRadius: radii.control, flexDirection: "row", alignItems: "center", gap: 10 },
-  sportOn: { fontFamily: fonts.text700 },
+  sportOn: { fontFamily: fonts.brand700 },
   theme: { marginTop: 10 },
   stack: { gap: 4 },
   restore: { minHeight: 44, borderRadius: radii.control, alignItems: "center", justifyContent: "center" },

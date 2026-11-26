@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { StyleSheet, View } from "react-native";
+import Svg, { Path } from "react-native-svg";
+import Constants from "expo-constants";
 import { router } from "expo-router";
 import { useLiveQuery } from "drizzle-orm/expo-sqlite";
 import { enabledSports, weekdaysOf } from "@obnixe/core";
@@ -19,8 +21,12 @@ import { SportsSheet } from "@/features/data/SportsSheet";
 import { TrashSheet, useTrash } from "@/features/data/TrashSheet";
 import { ZonesSheet, useTrackedZones } from "@/features/data/ZonesSheet";
 import { Segmented } from "@/ui/Controls";
+import { LogoMark } from "@/ui/illustrations/scenes";
 import { AppBar, Row, Screen, Section } from "@/ui/Layout";
+import { bevelPath } from "@/ui/Shapes";
 import { Text } from "@/ui/Text";
+import { useTheme } from "@/ui/theme";
+import { fonts } from "@/ui/tokens";
 
 type OpenSheet = "sports" | "zones" | "unit" | "reminders" | "trash" | "aside" | null;
 
@@ -44,7 +50,10 @@ function useStorageBytes(): number | null {
   return bytes;
 }
 
+const version = Constants.expoConfig?.version ?? "";
+
 export default function Settings() {
+  const { colors } = useTheme();
   const [sheet, setSheet] = useState<OpenSheet>(null);
   const { data: settingsRows } = useLiveQuery(db().select().from(settings));
   const { data: preferences } = useLiveQuery(db().select().from(sportPreference));
@@ -131,6 +140,17 @@ export default function Settings() {
             last
           />
         </Section>
+
+        <View style={styles.signature} accessible accessibilityLabel={`Obnixe ${version}`}>
+          <Svg width={28} height={28} viewBox="0 0 1024 1024">
+            <Path d={bevelPath(1024, 1024, 220, 160, "topRight")} fill={colors.brand} />
+            <LogoMark ink={colors.brandInk} accent={colors.brandDeep} />
+          </Svg>
+          <Text style={styles.signatureName}>Obnixe</Text>
+          <Text variant="caption" tone="tertiary">
+            {version}
+          </Text>
+        </View>
       </Screen>
 
       <SportsSheet open={sheet === "sports"} onClose={close} />
@@ -147,4 +167,6 @@ const styles = StyleSheet.create({
   theme: { marginTop: 10 },
   unit: { flexDirection: "row", alignItems: "center", gap: 12 },
   chevronSpace: { width: 16 },
+  signature: { marginTop: 40, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
+  signatureName: { fontFamily: fonts.brand800, fontSize: 16, letterSpacing: 0.4 },
 });

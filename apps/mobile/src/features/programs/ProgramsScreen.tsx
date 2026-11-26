@@ -22,6 +22,7 @@ import { Choices, IconButton, Panel } from "@/ui/Inputs";
 import { AppBar, Screen, Section } from "@/ui/Layout";
 import { Sheet } from "@/ui/Overlays";
 import { Icon } from "@/ui/icons/Icon";
+import { EmptyScene } from "@/ui/illustrations/scenes";
 import { Text } from "@/ui/Text";
 import { useTheme } from "@/ui/theme";
 import { fonts } from "@/ui/tokens";
@@ -258,6 +259,9 @@ interface EmptyActiveProps {
 function EmptyActive({ hasOthers }: EmptyActiveProps) {
   return (
     <View style={styles.active}>
+      <View style={styles.emptyArt}>
+        <EmptyScene kind="program" size={168} />
+      </View>
       <Text variant="eyebrow" tone="secondary">
         Aucun programme actif
       </Text>
@@ -308,7 +312,8 @@ const styles = StyleSheet.create({
   appbarLink: { marginRight: -10 },
   active: { marginTop: 18, gap: 6 },
   activeHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", minHeight: 24, marginBottom: -10, marginTop: -10 },
-  activeName: { fontFamily: fonts.text700, fontSize: 30, lineHeight: 32, letterSpacing: -0.6 },
+  activeName: { fontFamily: fonts.brand800, fontSize: 30, lineHeight: 33, letterSpacing: -0.7 },
+  emptyArt: { alignItems: "center", marginBottom: 8 },
   actions: { marginTop: 8, flexDirection: "row", alignItems: "center", gap: 8 },
   action: { flex: 1 },
   moreVersions: { alignSelf: "flex-start", marginLeft: -10, marginTop: 4 },

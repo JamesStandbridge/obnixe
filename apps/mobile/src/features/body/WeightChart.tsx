@@ -5,9 +5,10 @@ import { daysBetween } from "@obnixe/core";
 import type { WeightPoint } from "@obnixe/core";
 import type { LocalDate } from "@obnixe/schema";
 import { shortDate } from "@/format/dates";
+import { DrawIn } from "@/ui/DrawIn";
 import { Text } from "@/ui/Text";
 import { useTheme } from "@/ui/theme";
-import { fonts } from "@/ui/tokens";
+import { fonts, wash } from "@/ui/tokens";
 
 interface WeightChartProps {
   readonly points: readonly WeightPoint[];
@@ -42,16 +43,19 @@ export function WeightChart({ points, start, end, formatValue, accessibilityLabe
       <View style={{ height }} onLayout={(event) => setWidth(event.nativeEvent.layout.width)}>
         {width === 0 || last === undefined ? null : (
           <>
-            <Svg width={width} height={height}>
-              <Line x1={0} x2={plotWidth} y1={y(max)} y2={y(max)} stroke={colors.controlBorder} strokeWidth={1} strokeDasharray="2 4" />
-              {flat ? null : <Line x1={0} x2={plotWidth} y1={y(min)} y2={y(min)} stroke={colors.controlBorder} strokeWidth={1} strokeDasharray="2 4" />}
-              <Path d={path} fill="none" stroke={colors.mark} strokeWidth={1.75} strokeLinejoin="round" strokeLinecap="round" />
-              {coordinates.slice(0, -1).map((point) => (
-                <Circle key={`${point.x}-${point.y}`} cx={point.x} cy={point.y} r={1.6} fill={colors.mark} />
-              ))}
-              <Circle cx={last.x} cy={last.y} r={5.5} fill={colors.bg} />
-              <Circle cx={last.x} cy={last.y} r={3.75} fill={colors.mark} />
-            </Svg>
+            <DrawIn drawKey={`${start}|${end}|${points.length}`} height={height}>
+              <Svg width={width} height={height}>
+                <Line x1={0} x2={plotWidth} y1={y(max)} y2={y(max)} stroke={colors.controlBorder} strokeWidth={1} strokeDasharray="2 4" />
+                {flat ? null : <Line x1={0} x2={plotWidth} y1={y(min)} y2={y(min)} stroke={colors.controlBorder} strokeWidth={1} strokeDasharray="2 4" />}
+                <Path d={`${path}L${last.x.toFixed(1)},${height}L${(coordinates[0]?.x ?? 0).toFixed(1)},${height}Z`} fill={wash(colors.mark, 0.12)} />
+                <Path d={path} fill="none" stroke={colors.mark} strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
+                {coordinates.slice(0, -1).map((point) => (
+                  <Circle key={`${point.x}-${point.y}`} cx={point.x} cy={point.y} r={2} fill={colors.mark} />
+                ))}
+                <Circle cx={last.x} cy={last.y} r={6} fill={colors.bg} />
+                <Circle cx={last.x} cy={last.y} r={4.25} fill={colors.mark} />
+              </Svg>
+            </DrawIn>
             <Text style={[styles.guide, { top: y(max) - 8 }]} tone="secondary">
               {formatValue(max)}
             </Text>

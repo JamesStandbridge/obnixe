@@ -31,7 +31,7 @@ import { SportIcon } from "@/ui/icons/SportIcon";
 import { Row, Screen, Section } from "@/ui/Layout";
 import { Text } from "@/ui/Text";
 import { useTheme } from "@/ui/theme";
-import { fonts, radii } from "@/ui/tokens";
+import { fonts, radii, wash } from "@/ui/tokens";
 import { dayMonth, formatDuration, formatKilograms, levelWords, longDate, monthTitle, sessionsCount, sleepLabel, weekdayLetters } from "@/features/stats/format";
 import { capitalize, plural, zoneLabel } from "@/format/labels";
 import { sportFilterOptions } from "@/features/stats/JournalScreen";
@@ -217,7 +217,7 @@ function DayCell({ day, filter, selected, onPress }: DayCellProps) {
   const pain = dayPain(day, filter);
   const empty = all.length === 0;
   const blank = day.isFuture || day.beforeFirstUse;
-  const ink = selected ? colors.bg : colors.text;
+  const lead = all[0]?.sport;
   const parts = [longDate(day.date)];
   if (!empty) parts.push(all.map((item) => sportLabel(item.sport)).join(", "));
   if (empty && day.checkIn !== null) parts.push("check-in seul");
@@ -234,9 +234,9 @@ function DayCell({ day, filter, selected, onPress }: DayCellProps) {
       onPress={onPress}
       style={[
         styles.cell,
-        { backgroundColor: empty ? "transparent" : colors.surface },
+        { backgroundColor: lead === undefined ? "transparent" : wash(colors.sport[lead], 0.2) },
         empty && !blank && { borderWidth: 1, borderColor: colors.line },
-        day.isToday && { borderWidth: 2, borderColor: colors.text },
+        day.isToday && { borderWidth: 2, borderColor: colors.brand },
         selected && { backgroundColor: colors.text, borderWidth: 0 },
       ]}
     >
@@ -252,7 +252,7 @@ function DayCell({ day, filter, selected, onPress }: DayCellProps) {
       {day.planned ? <View style={[styles.plannedMark, { borderColor: colors.controlBorder }]} /> : null}
       <View style={[styles.icons, !empty && visible.length === 0 && styles.dimmed]}>
         {all.slice(0, 2).map((item) => (
-          <SmallSportIcon key={item.id} sport={item.sport} color={ink} size={18} />
+          <SmallSportIcon key={item.id} sport={item.sport} color={selected ? colors.bg : colors.sport[item.sport]} size={18} />
         ))}
         {all.length > 2 ? <Text style={[styles.more, { color: selected ? colors.bg : colors.text2 }]}>{`+${all.length - 2}`}</Text> : null}
       </View>
@@ -265,7 +265,7 @@ function Legend() {
   return (
     <View style={styles.legend}>
       <View style={styles.legendItem}>
-        <View style={[styles.legendCell, { backgroundColor: colors.surface }]} />
+        <View style={[styles.legendCell, { backgroundColor: wash(colors.sport.strength, 0.2) }]} />
         <Text variant="caption" tone="secondary" style={styles.legendText}>
           séance
         </Text>
@@ -397,7 +397,7 @@ function DayDetail({ day, filter, today, next, weighIn, sessions }: DayDetailPro
 const styles = StyleSheet.create({
   filters: { marginTop: 12 },
   month: { marginTop: 18, flexDirection: "row", alignItems: "center", gap: 4 },
-  monthTitle: { flex: 1, fontFamily: fonts.figure800, fontSize: 30, lineHeight: 32, letterSpacing: -0.3 },
+  monthTitle: { flex: 1, fontFamily: fonts.brand800, fontSize: 28, lineHeight: 32, letterSpacing: -0.5 },
   nav: { width: 44, height: 44, borderRadius: radii.control, alignItems: "center", justifyContent: "center" },
   navEdge: { marginRight: -12 },
   disabled: { opacity: 0.4 },

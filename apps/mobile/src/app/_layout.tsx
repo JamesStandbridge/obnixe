@@ -18,6 +18,7 @@ import { DatabaseGate } from "@/data/DatabaseGate";
 import { useAppLaunch } from "@/features/data/launch";
 import { RemoteAccessHost } from "@/features/remote/RemoteAccessHost";
 import { configureRestAlerts } from "@/features/training/workout/restAlert";
+import { BrandIntro } from "@/ui/illustrations/BrandIntro";
 import { SnackbarHost } from "@/ui/SnackbarHost";
 import { StartupError } from "@/ui/StartupError";
 import { ThemeProvider, useTheme } from "@/ui/theme";
@@ -48,6 +49,7 @@ function Navigator() {
         </Stack>
         <RemoteAccessHost />
       </SnackbarHost>
+      <BrandIntro />
     </>
   );
 }

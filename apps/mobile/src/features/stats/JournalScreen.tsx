@@ -6,7 +6,9 @@ import type { RegularityWeek, SessionSummary } from "@obnixe/core";
 import { exerciseNameKey, sports } from "@obnixe/schema";
 import type { LocalDate, SportKey } from "@obnixe/schema";
 import { db } from "@/data/database";
+import { EmptyScene } from "@/ui/illustrations/scenes";
 import { IconButton, TextField } from "@/ui/Inputs";
+import { Slash } from "@/ui/Shapes";
 import { Text } from "@/ui/Text";
 import { useTheme } from "@/ui/theme";
 import { fonts, layout } from "@/ui/tokens";
@@ -84,7 +86,10 @@ function WeekHeader({ week, current }: WeekHeaderProps) {
   return (
     <View style={styles.weekHead} accessible accessibilityRole="header" accessibilityLabel={`${title}, ${totals}${split === "" ? "" : `, ${split}`}`}>
       <View style={styles.weekTitleLine}>
-        <Text variant="sectionTitle">{title}</Text>
+        <View style={styles.weekTitle}>
+          <Slash color={colors.mark} width={10} height={14} />
+          <Text variant="heading">{title}</Text>
+        </View>
         <Text variant="caption" tone="secondary">
           {totals}
         </Text>
@@ -193,7 +198,12 @@ export function JournalScreen() {
       windowSize={7}
       ListEmptyComponent={
         <View style={styles.empty}>
-          <Text variant="bodyStrong">{data.sessions.length === 0 ? "Pas encore de séance" : "Aucune séance"}</Text>
+          {data.sessions.length === 0 ? (
+            <View style={styles.emptyArt}>
+              <EmptyScene kind="journal" size={176} />
+            </View>
+          ) : null}
+          <Text variant="heading">{data.sessions.length === 0 ? "Pas encore de séance" : "Aucune séance"}</Text>
           <Text variant="small" tone="secondary">
             {data.sessions.length === 0 ? "Les séances notées apparaîtront ici, semaine par semaine." : "Rien ne correspond à ce filtre."}
           </Text>
@@ -221,16 +231,18 @@ const styles = StyleSheet.create({
   weeks: { flexDirection: "row", gap: 6, alignItems: "flex-end", height: 104 },
   weekColumn: { flex: 1, alignItems: "center", gap: 6 },
   stack: { flexDirection: "column-reverse", gap: 3, width: "100%", maxWidth: 28 },
-  stackItem: { borderRadius: 2 },
+  stackItem: { borderRadius: 2, transform: [{ skewX: "-12deg" }] },
   weekAxis: { height: 2, width: "100%", maxWidth: 28, borderRadius: 1 },
   weekLabel: { fontFamily: fonts.figure600, fontSize: 12, lineHeight: 12 },
   weekLabelCurrent: { fontFamily: fonts.figure700, fontSize: 12, lineHeight: 12 },
   empty: { marginTop: 28, gap: 6 },
+  emptyArt: { alignItems: "center", marginBottom: 10 },
+  weekTitle: { flexDirection: "row", alignItems: "center", gap: 8, flexShrink: 1 },
   week: { marginTop: 28, gap: 8 },
   weekHead: { gap: 8, marginBottom: 4 },
   weekTitleLine: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between", gap: 12 },
-  weekBar: { flexDirection: "row", height: 4, gap: 2 },
-  weekBarPart: { borderRadius: 1 },
+  weekBar: { flexDirection: "row", height: 5, gap: 3 },
+  weekBarPart: { borderRadius: 1, transform: [{ skewX: "-24deg" }] },
   weekLegend: { flexDirection: "row", flexWrap: "wrap", columnGap: 14, rowGap: 4 },
   weekLegendItem: { flexDirection: "row", alignItems: "center", gap: 6 },
   weekLegendDot: { width: 8, height: 8, borderRadius: 2 },
