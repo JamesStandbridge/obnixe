@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { eq } from "drizzle-orm";
 import { unzipSync } from "fflate";
 import { beforeEach, describe, expect, it } from "vitest";
-import { session } from "@obnixe/schema";
+import { route, session } from "@obnixe/schema";
 import type { EpochMs, LocalDate } from "@obnixe/schema";
 import { fixtures } from "../../data/testFixtures.ts";
 import type { Fixtures } from "../../data/testFixtures.ts";
@@ -10,6 +10,7 @@ import { trashMutation } from "../../data/trash.ts";
 import { createTestContext } from "../../testing.ts";
 import type { TestContext } from "../../testing.ts";
 import { commit } from "../../writer.ts";
+import { activityRoute, newRoute } from "../routes.ts";
 import { untrimmed } from "../testing/run.ts";
 import { archiveFileName, ExportArchive, exportableSessions } from "./bulkExport.ts";
 import { exportActivity, exportFileName } from "./export.ts";
@@ -61,6 +62,15 @@ describe("exportable sessions (IO-005)", () => {
     if (runDate === undefined) throw new Error("No run");
     expect(exportableSessions(context.db, runDate).map((row) => row.sessionId)).toEqual([run.sessionId]);
     expect(exportableSessions(context.db, "2099-01-01" as LocalDate)).toEqual([]);
+  });
+
+  it("leaves the routes out, even one drawn from an exported activity", () => {
+    const computation = computed("venu3s-run.fit");
+    const run = imported(computation);
+    if (computation.processed === null) throw new Error("No processed track");
+    make.write([newRoute(context.env, { name: "Boucle", sport: "run", ...activityRoute(computation.processed), sourceSessionId: run.sessionId }).mutation]);
+    expect(context.db.select().from(route).all()).toHaveLength(1);
+    expect(exportableSessions(context.db, null).map((row) => row.sessionId)).toEqual([run.sessionId]);
   });
 });
 
