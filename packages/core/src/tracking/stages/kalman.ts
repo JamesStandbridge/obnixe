@@ -97,14 +97,43 @@ function solveSymmetric(matrix: Float64Array, offset: number, vector: Float64Arr
   }
 }
 
-/** Forward-pass record kept in batch mode; a restart begins a segment the smoother does not cross. */
+/**
+ * Forward-pass record for the backward pass, over the whole track in batch mode or over a sliding window for fixed-lag
+ * smoothing in stream mode; a restart begins a segment the smoother does not cross.
+ */
 export class KalmanTrace {
   private steps = new Float64Array(stepStride * 1024);
   private restarts = new Uint8Array(1024);
   private count = 0;
+  private discarded = 0;
+  private window: SmoothedTrack | null = null;
 
+  /** Steps recorded since the start, discarded ones included. */
   get length(): number {
-    return this.count;
+    return this.discarded + this.count;
+  }
+
+  /**
+   * Fixed-lag smoothing in stream mode: the backward pass over the steps from `first` (counted since the start) to the latest
+   * only, O(length - first). The returned columns are reused by the next call of the same length.
+   */
+  smoothSince(first: number): SmoothedTrack {
+    const local = first - this.discarded;
+    if (local < 0) throw new RangeError(`Step ${first} was discarded`);
+    const length = this.count - local;
+    if (this.window?.length !== length) this.window = emptyTrack(length);
+    this.smoothInto(local, this.window);
+    return this.window;
+  }
+
+  /** Lets the steps before `first` (counted since the start) go, amortized O(1). */
+  discardBefore(first: number): void {
+    const local = first - this.discarded;
+    if (local < 1024 || local * 2 < this.count) return;
+    this.steps.copyWithin(0, local * stepStride, this.count * stepStride);
+    this.restarts.copyWithin(0, local, this.count);
+    this.count -= local;
+    this.discarded += local;
   }
 
   record(t: number, filtered: Float64Array, filteredCovariance: Float64Array, predicted: Float64Array, predictedCovariance: Float64Array, restart: boolean): void {
@@ -128,22 +157,22 @@ export class KalmanTrace {
 
   /** Rauch-Tung-Striebel backward pass over the recorded steps (`GPS-031`), O(n). */
   smoothRts(): SmoothedTrack {
-    const length = this.count;
+    if (this.discarded > 0) throw new RangeError("Steps were discarded");
+    const smoothed = emptyTrack(this.count);
+    this.smoothInto(0, smoothed);
+    return smoothed;
+  }
+
+  /** Backward pass over the steps from `first` to the latest, written to `smoothed` from index 0. */
+  private smoothInto(first: number, smoothed: SmoothedTrack): void {
+    const length = this.count - first;
     const steps = this.steps;
-    const smoothed: SmoothedTrack = {
-      length,
-      t: new Float64Array(length),
-      latitude: new Float64Array(length),
-      longitude: new Float64Array(length),
-      velocityEast: new Float64Array(length),
-      velocityNorth: new Float64Array(length),
-      restart: this.restarts.slice(0, length),
-    };
+    smoothed.restart.set(this.restarts.subarray(first, this.count));
     const difference = new Float64Array(n);
     const solution = new Float64Array(n);
     const lower = new Float64Array(matrixSize);
     for (let k = length - 1; k >= 0; k -= 1) {
-      const base = k * stepStride;
+      const base = (first + k) * stepStride;
       const t = steps[base] ?? 0;
       smoothed.t[k] = t;
       let latitude = steps[base + filteredOffset] ?? 0;
@@ -177,8 +206,19 @@ export class KalmanTrace {
       smoothed.velocityEast[k] = velocityEast;
       smoothed.velocityNorth[k] = velocityNorth;
     }
-    return smoothed;
   }
+}
+
+function emptyTrack(length: number): SmoothedTrack {
+  return {
+    length,
+    t: new Float64Array(length),
+    latitude: new Float64Array(length),
+    longitude: new Float64Array(length),
+    velocityEast: new Float64Array(length),
+    velocityNorth: new Float64Array(length),
+    restart: new Uint8Array(length),
+  };
 }
 
 /** Planar position-velocity Kalman filter in a sliding east-north frame anchored on the estimate (`GPS-031` forward pass). */

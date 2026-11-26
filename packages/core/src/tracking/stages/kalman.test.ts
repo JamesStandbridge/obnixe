@@ -129,4 +129,26 @@ describe("PlanarKalman", () => {
     expect(times.length).toBeGreaterThan(2400);
     expect([...smoothed.t]).toEqual(times);
   });
+
+  it("smooths a trailing window exactly like the whole track, also after discarding its head", () => {
+    const { observations } = noisyLine(8, 3000, 5);
+    const full = new KalmanTrace();
+    const streamed = new KalmanTrace();
+    const fullFilter = new PlanarKalman(profile, full);
+    const streamedFilter = new PlanarKalman(profile, streamed);
+    for (const observation of observations) {
+      fullFilter.update(observation);
+      streamedFilter.update(observation);
+      if (streamed.length > 40) streamed.discardBefore(streamed.length - 40);
+    }
+    expect(streamed.length).toBe(full.length);
+    expect(() => streamed.smoothSince(100)).toThrow(RangeError);
+    expect(() => streamed.smoothRts()).toThrow(RangeError);
+    const first = full.length - 40;
+    const window = streamed.smoothSince(first);
+    const reference = full.smoothRts();
+    expect(window.length).toBe(40);
+    expect([...window.latitude]).toEqual([...reference.latitude.subarray(first)]);
+    expect([...window.velocityEast]).toEqual([...reference.velocityEast.subarray(first)]);
+  });
 });
