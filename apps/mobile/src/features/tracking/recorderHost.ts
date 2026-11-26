@@ -696,7 +696,7 @@ export class RecorderHost {
       sensors: { barometer: true, pedometer: active.profile.cadence === "steps", heartRateDevice: active.settings.heartRateDevice?.id ?? null },
       batchIntervalMs: 1000,
       backgroundBatchIntervalMs: active.workout === null ? 5000 : 1000,
-      notification: notificationOf(active.profile, active.state, active.live.snapshot(active.lastT), active.startedAt, null),
+      notification: notificationOf(active.profile, active.state, active.live.snapshot(active.lastT), active.startedAt, null, active.runner?.view(active.lastT) ?? null),
       replay: create ? active.replay : null,
     });
     active.started = true;
@@ -996,7 +996,8 @@ export class RecorderHost {
   private refreshNotification(active: Active): void {
     if (!active.started || !isActivePhase(active.state)) return;
     const alert = active.alert !== null && environment.now() - active.alert.at < alertNotificationMs ? active.alert.notice : null;
-    this.options.tracker?.setNotification(notificationOf(active.profile, active.state, active.live.snapshot(this.trackTime(active)), active.startedAt, alert));
+    const t = this.trackTime(active);
+    this.options.tracker?.setNotification(notificationOf(active.profile, active.state, active.live.snapshot(t), active.startedAt, alert, active.runner?.view(t) ?? null));
   }
 
   private syncTicker(): void {

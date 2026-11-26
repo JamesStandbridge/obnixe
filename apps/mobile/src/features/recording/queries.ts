@@ -1,7 +1,7 @@
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { enabledSports, resolveProfile } from "@obnixe/core";
 import { gear, programSlot, programVariant, recording, session, sports } from "@obnixe/schema";
-import type { FieldValues, Id, ProgramSlot, SportKey, SportPreference } from "@obnixe/schema";
+import type { FieldValues, Id, ProgramSlot, SportKey, SportPreference, WorkoutPlan } from "@obnixe/schema";
 import { db } from "@/data/database";
 import { slotTarget } from "@/features/recording/target";
 import type { SlotTarget } from "@/features/recording/target";
@@ -63,13 +63,15 @@ export interface SlotStart {
   /** The slot's option, such as `kind = 'long'`, for the session values. */
   readonly values: FieldValues;
   readonly target: SlotTarget | null;
+  /** The guided workout of the variant (`DEC-10`). */
+  readonly workout: WorkoutPlan | null;
 }
 
 export function slotStartOf(slotId: Id, variantId: Id | null): SlotStart | null {
   const slot = db().select().from(programSlot).where(eq(programSlot.id, slotId)).get();
   if (slot === undefined) return null;
-  const variant = variantId === null ? undefined : db().select({ name: programVariant.name }).from(programVariant).where(eq(programVariant.id, variantId)).get();
-  return { slot, variantId: variant === undefined ? null : variantId, variantName: variant?.name ?? null, values: slotValues(slot), target: slotTarget(slot) };
+  const variant = variantId === null ? undefined : db().select({ name: programVariant.name, workout: programVariant.workout }).from(programVariant).where(eq(programVariant.id, variantId)).get();
+  return { slot, variantId: variant === undefined ? null : variantId, variantName: variant?.name ?? null, values: slotValues(slot), target: slotTarget(slot), workout: variant?.workout ?? null };
 }
 
 export function recordingTitle(sessionId: Id): string | null {

@@ -1,7 +1,8 @@
 import { desc, eq } from "drizzle-orm";
-import { exerciseNameKey, program, programItem, programSlot, programVariant, programVersion, sports } from "@obnixe/schema";
-import type { EpochMs, ExerciseMeasure, FieldValues, Id, LocalDate, ProgramVersion } from "@obnixe/schema";
+import { exerciseNameKey, program, programItem, programSlot, programVariant, programVersion, sports, workoutPlanSchemaFor } from "@obnixe/schema";
+import type { EpochMs, ExerciseMeasure, FieldValues, Id, LocalDate, ProgramVersion, WorkoutPlan } from "@obnixe/schema";
 import type { ObnixeDatabase } from "../database.ts";
+import { resolveProfile } from "../tracking/profile.ts";
 import { commit } from "../writer.ts";
 import type { Actor, Mutation, NewRow } from "../writer.ts";
 import type { ToolInput } from "./contract.ts";
@@ -45,7 +46,8 @@ export function createExercise(db: ObnixeDatabase, env: AgentEnvironment, actor:
 }
 
 type SlotInput = ToolInput<"upsert_program">["slots"][number];
-type ItemInput = SlotInput["variants"][number]["items"][number];
+type VariantInput = SlotInput["variants"][number];
+type ItemInput = NonNullable<VariantInput["items"]>[number];
 
 interface LineageIndex {
   readonly slots: ReadonlySet<string>;
@@ -95,12 +97,28 @@ function validateItem(item: ItemInput, measure: ExerciseMeasure, where: string):
   if (item.repsMax < item.repsMin) throw new ToolInputError(`${where}: repsMax must be >= repsMin.`);
 }
 
+/** A strength variant lists exercises; a variant of a recordable sport is a guided workout that fits it (`INT-044`, `WKT-002`). */
+function variantWorkout(slot: SlotInput, variant: VariantInput, where: string): WorkoutPlan | null {
+  if (slot.sport === "strength") {
+    if (variant.workout !== undefined) throw new ToolInputError(`${where}: strength variants list exercises, not a workout.`);
+    if ((variant.items ?? []).length === 0) throw new ToolInputError(`${where}: strength variants need at least one item.`);
+    return null;
+  }
+  const profile = resolveProfile(slot.sport, slot.targetValues ?? {});
+  if (profile === null) throw new ToolInputError(`${where}: only strength slots and slots of a recordable sport have variants.`);
+  if ((variant.items ?? []).length > 0) throw new ToolInputError(`${where}: variants of ${slot.sport} carry a workout, not items.`);
+  if (variant.workout === undefined) throw new ToolInputError(`${where}: variants of ${slot.sport} need a workout.`);
+  const parsed = workoutPlanSchemaFor(profile.primary).safeParse(variant.workout);
+  if (!parsed.success) throw new ToolInputError(`${where}: ${parsed.error.issues.map((issue) => issue.message).join("; ")}.`);
+  return parsed.data;
+}
+
 export function upsertProgram(db: ObnixeDatabase, env: AgentEnvironment, actor: Actor, input: ToolInput<"upsert_program">): ToolResult {
   const existing = input.programId === undefined ? undefined : db.select().from(program).where(eq(program.id, input.programId as Id)).get();
   if (input.programId !== undefined && existing === undefined) throw new ToolInputError(`No program with id '${input.programId}'. Omit programId to create a program.`);
   const latest = existing === undefined ? undefined : db.select().from(programVersion).where(eq(programVersion.programId, existing.id)).orderBy(desc(programVersion.number)).get();
   const known = lineageIndex(db, latest);
-  const plan = planExercises(db, env, input.slots.flatMap((slot) => slot.variants.flatMap((variant) => variant.items)));
+  const plan = planExercises(db, env, input.slots.flatMap((slot) => slot.variants.flatMap((variant) => variant.items ?? [])));
 
   const programId = existing?.id ?? env.newId();
   const versionId = env.newId();
@@ -119,7 +137,6 @@ export function upsertProgram(db: ObnixeDatabase, env: AgentEnvironment, actor: 
   input.slots.forEach((slot, slotPosition) => {
     const where = `Slot ${slotPosition + 1} (${slot.name})`;
     if (slot.sport === "strength" && slot.variants.length === 0) throw new ToolInputError(`${where}: strength slots need at least one variant with exercises.`);
-    if (slot.sport !== "strength" && slot.variants.length > 0) throw new ToolInputError(`${where}: only strength slots have variants.`);
     const slotLineage = claimLineage(slot.lineageId, known.slots, "", usedSlots, "slot", env);
     const slotId = env.newId();
     const slotRow: NewRow<"program_slot"> = {
@@ -137,8 +154,9 @@ export function upsertProgram(db: ObnixeDatabase, env: AgentEnvironment, actor: 
     slot.variants.forEach((variant, variantPosition) => {
       const variantLineage = claimLineage(variant.lineageId, known.variants, slotLineage, usedVariants, "variant", env);
       const variantId = env.newId();
-      mutations.push({ kind: "insert", table: "program_variant", row: { id: variantId, slotId, lineageId: variantLineage, position: variantPosition, name: variant.name } });
-      variant.items.forEach((item, itemPosition) => {
+      const workout = variantWorkout(slot, variant, `${where}, ${variant.name}`);
+      mutations.push({ kind: "insert", table: "program_variant", row: { id: variantId, slotId, lineageId: variantLineage, position: variantPosition, name: variant.name, workout } });
+      (variant.items ?? []).forEach((item, itemPosition) => {
         const target = resolved(plan, item.exercise);
         validateItem(item, target.measure, `${where}, ${variant.name}, item ${itemPosition + 1}`);
         const itemRow: NewRow<"program_item"> = {

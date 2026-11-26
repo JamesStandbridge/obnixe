@@ -2,7 +2,8 @@ import { sports } from "@obnixe/schema";
 import type { Author, Effort, Equipment, ExerciseMeasure, Id, MassUnit } from "@obnixe/schema";
 import type { DraftIssue, DraftItem, DraftSlot, DraftVariant, ItemTarget, ProgramChange, ProgramDraft, PublishIssue, VersionAuthor } from "@obnixe/core";
 import { formatDecimal, formatQuantity, quantityUnit } from "@/features/programs/units";
-import { formatClock } from "@/format/durations";
+import { workoutText } from "@/features/workouts/format";
+import { formatClock, formatTargetDuration } from "@/format/durations";
 import { capitalize, lowerFirst, plural } from "@/format/labels";
 
 export type ExerciseName = (id: Id) => string;
@@ -11,13 +12,6 @@ const weekdaysShort = ["dim.", "lun.", "mar.", "mer.", "jeu.", "ven.", "sam."] a
 const months = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"] as const;
 const monthsShort = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."] as const;
 const dayMs = 86_400_000;
-
-export function formatTargetDuration(seconds: number): string {
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes} min`;
-  const rest = minutes % 60;
-  return rest === 0 ? `${Math.floor(minutes / 60)} h` : `${Math.floor(minutes / 60)} h ${String(rest).padStart(2, "0")}`;
-}
 
 export const effortLabels: Readonly<Record<Effort, string>> = { easy: "Facile", moderate: "Modéré", hard: "Dur", very_hard: "Très dur", max: "Max" };
 
@@ -66,7 +60,7 @@ export function formatItemDetail(item: DraftItem): string {
 
 export function slotTitle(slot: DraftSlot): string {
   const first = slot.variants[0];
-  return first === undefined ? slot.name : `${slot.name} · ${first.name}`;
+  return first === undefined || sports[slot.sport].archetype !== "strength" ? slot.name : `${slot.name} · ${first.name}`;
 }
 
 export function slotDetail(slot: DraftSlot): string {
@@ -90,6 +84,7 @@ export function slotDetail(slot: DraftSlot): string {
     if (field.type === "quantity" && typeof value === "number") parts.push(formatQuantity(value, quantityUnit(field.dimension, field.key, slot.sport)));
   }
   if (slot.targetEffort !== null) parts.push(`effort ${lowerFirst(effortLabels[slot.targetEffort])}`);
+  if (slot.variants.length > 0) parts.push(plural(slot.variants.length, "séance guidée", "séances guidées"));
   return parts.length === 0 ? "sans objectif" : parts.join(" · ");
 }
 
@@ -178,6 +173,10 @@ function describeSlot(slot: DraftSlot): string {
   return `${slotTitle(slot)} · ${slotDetail(slot)}`;
 }
 
+function variantText(variant: DraftVariant): string {
+  return `${variant.name} · ${variant.workout === null ? plural(variant.items.length, "exercice") : workoutText(variant.workout)}`;
+}
+
 function describeItem(item: DraftItem, name: ExerciseName): string {
   return `${name(item.exerciseId)} · ${formatPrescription(item)}`;
 }
@@ -212,13 +211,15 @@ export function describeChange(change: ProgramChange, name: ExerciseName): DiffB
         after: { label: "Après", text: change.after.map((slot) => slot.name).join(", ") },
       };
     case "variant_added":
-      return { before: null, after: { label: `Variante ajoutée · ${lowerFirst(change.slot.name)}`, text: `${change.variant.name} · ${plural(change.variant.items.length, "exercice")}` } };
+      return { before: null, after: { label: `Variante ajoutée · ${lowerFirst(change.slot.name)}`, text: variantText(change.variant) } };
     case "variant_removed":
-      return { before: { label: `Variante retirée · ${lowerFirst(change.slot.name)}`, text: `${change.variant.name} · ${plural(change.variant.items.length, "exercice")}` }, after: null };
+      return { before: { label: `Variante retirée · ${lowerFirst(change.slot.name)}`, text: variantText(change.variant) }, after: null };
     case "variant_renamed":
       return { before: { label: `Avant · ${lowerFirst(change.slot.name)}`, text: change.before.name }, after: { label: "Après", text: change.after.name } };
     case "variants_reordered":
       return { before: null, after: { label: lowerFirst(change.slot.name), text: "Ordre des variantes modifié" } };
+    case "variant_workout_changed":
+      return { before: { label: `Avant · ${slotContext(change.slot, change.after)}`, text: variantText(change.before) }, after: { label: "Après", text: variantText(change.after) } };
     case "item_added":
       return { before: null, after: { label: `Ajouté · ${slotContext(change.slot, change.variant)}`, text: describeItem(change.item, name) } };
     case "item_removed":
@@ -265,6 +266,8 @@ function summarizeChange(change: ProgramChange, name: ExerciseName): string {
       return `Variante renommée ${change.after.name}`;
     case "variants_reordered":
       return "Nouvel ordre des variantes";
+    case "variant_workout_changed":
+      return `Déroulé modifié : ${change.after.name}`;
     case "item_added":
       return `Ajout : ${lowerFirst(name(change.item.exerciseId))}`;
     case "item_removed":
@@ -336,6 +339,12 @@ export function issueMessage(issue: PublishIssue | DraftIssue, draft: ProgramDra
       return `${slotName(draft, issue.slot)} : deux variantes « ${variantName(draft, issue.slot, issue.variant)} »`;
     case "variant_empty":
       return `${slotName(draft, issue.slot)} · ${variantName(draft, issue.slot, issue.variant)} : ajoute un exercice`;
+    case "variant_workout_not_allowed":
+      return `${slotName(draft, issue.slot)} : pas de déroulé en musculation`;
+    case "variant_workout_invalid":
+      return `${slotName(draft, issue.slot)} · ${variantName(draft, issue.slot, issue.variant)} : déroulé incomplet`;
+    case "variant_items_not_allowed":
+      return `${slotName(draft, issue.slot)} : pas d'exercice dans une séance guidée`;
     case "item_invalid": {
       const exercise = itemExercise(draft, issue.slot, issue.variant, issue.item, name);
       switch (issue.problem) {

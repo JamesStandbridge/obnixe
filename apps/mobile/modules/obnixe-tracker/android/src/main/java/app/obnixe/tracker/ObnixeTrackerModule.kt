@@ -139,12 +139,25 @@ enum class JournalModeArgument(val value: String) : Enumerable {
     }
 }
 
+class ProgressSegmentRecord : Record {
+  @Field val length: Double = 0.0
+  @Field val highlighted: Boolean = false
+}
+
+class ProgressRecord : Record {
+  @Field val segments: List<ProgressSegmentRecord> = emptyList()
+  @Field val value: Double = 0.0
+
+  fun toProgress() = TrackerNotificationProgress(segments.map { TrackerProgressSegment(it.length.toInt(), it.highlighted) }, value.toInt())
+}
+
 class NotificationRecord : Record {
   @Field val title: String = ""
   @Field val text: String = ""
   @Field val timerBaseAt: Double? = null
+  @Field val progress: ProgressRecord? = null
 
-  fun toContent() = TrackerNotificationContent(title, text, timerBaseAt?.toLong())
+  fun toContent() = TrackerNotificationContent(title, text, timerBaseAt?.toLong(), progress?.toProgress())
 }
 
 class SensorsRecord : Record {

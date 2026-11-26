@@ -1,6 +1,6 @@
 import { moveByLineage, removeByLineage, updateItems, updateSlot, updateVariant, upsertByLineage } from "@obnixe/core";
 import type { DraftItem, DraftSlot, DraftVariant, ProgramDraft } from "@obnixe/core";
-import type { Id } from "@obnixe/schema";
+import type { Id, WorkoutPlan } from "@obnixe/schema";
 
 export type SlotPatch = Partial<Omit<DraftSlot, "lineageId" | "variants">>;
 
@@ -15,6 +15,7 @@ export type DraftAction =
   | { readonly type: "add_variant"; readonly slotId: Id; readonly variant: DraftVariant }
   | { readonly type: "rename_variant"; readonly slotId: Id; readonly variantId: Id; readonly name: string }
   | { readonly type: "remove_variant"; readonly slotId: Id; readonly variantId: Id }
+  | { readonly type: "set_workout"; readonly slotId: Id; readonly variantId: Id; readonly workout: WorkoutPlan }
   | { readonly type: "save_item"; readonly slotId: Id; readonly variantId: Id; readonly item: DraftItem }
   | { readonly type: "move_item"; readonly slotId: Id; readonly variantId: Id; readonly itemId: Id; readonly offset: number }
   | { readonly type: "remove_item"; readonly slotId: Id; readonly variantId: Id; readonly itemId: Id };
@@ -41,6 +42,8 @@ export function draftReducer(draft: ProgramDraft, action: DraftAction): ProgramD
       return updateVariant(draft, action.slotId, action.variantId, (variant) => ({ ...variant, name: action.name }));
     case "remove_variant":
       return updateSlot(draft, action.slotId, (slot) => ({ ...slot, variants: removeByLineage(slot.variants, action.variantId) }));
+    case "set_workout":
+      return updateVariant(draft, action.slotId, action.variantId, (variant) => ({ ...variant, workout: action.workout }));
     case "save_item":
       return updateItems(draft, action.slotId, action.variantId, (items) => upsertByLineage(items, action.item));
     case "move_item":

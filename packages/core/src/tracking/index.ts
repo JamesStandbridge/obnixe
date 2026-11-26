@@ -53,5 +53,6 @@ export * from "./version.ts";
 export * from "./weather.ts";
 export * from "./weatherQueue.ts";
 export * from "./workout.ts";
+export * from "./workouts.ts";
 export * from "./zoneProposal.ts";
 export * from "./zones.ts";

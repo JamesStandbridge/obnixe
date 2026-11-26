@@ -89,6 +89,12 @@ export interface WorkoutView {
   readonly done: readonly WorkoutStepSpan[];
 }
 
+/** Chronometer time a step's target was judged, and inside its strict span (`WKT-007`). */
+export interface WorkoutTargetTally {
+  readonly judgedMs: number;
+  readonly insideMs: number;
+}
+
 export interface WorkoutRunnerOptions {
   /** Null without a maximum heart rate: heart-rate zone targets are then not watched. */
   readonly heartRateZones: readonly HeartRateZoneBounds[] | null;
@@ -135,14 +141,22 @@ export class WorkoutRunner {
   private odometer: Odometer[] = [];
   private heart: HeartReading[] = [];
   private reading: WorkoutTargetReading | null = null;
+  private readonly tallies: { judgedMs: number; insideMs: number }[];
+  private judgedAt: { readonly t: number; readonly inside: boolean } | null = null;
 
   constructor(plan: WorkoutPlan, options: WorkoutRunnerOptions) {
     this.steps = unfoldWorkout(plan);
     this.zones = options.heartRateZones;
+    this.tallies = this.steps.map(() => ({ judgedMs: 0, insideMs: 0 }));
   }
 
   get started(): boolean {
     return this.origin !== null;
+  }
+
+  /** The judged time of each step's target, by rank. */
+  get targetTallies(): readonly WorkoutTargetTally[] {
+    return this.tallies;
   }
 
   /** Every step is done. */
@@ -170,6 +184,7 @@ export class WorkoutRunner {
       case "stop":
         this.pausedSince ??= mark.t;
         this.watch.reset();
+        this.judgedAt = null;
         break;
       case "lap":
         if (this.finished) this.manualLaps.push(mark.t);
@@ -288,6 +303,7 @@ export class WorkoutRunner {
     this.stepStartDistanceMm = distanceMm;
     this.watch.reset();
     this.reading = null;
+    this.judgedAt = null;
     return [{ kind: "workout_step", step: this.steps[this.index] ?? null }];
   }
 
@@ -306,12 +322,14 @@ export class WorkoutRunner {
     if (step === undefined || step.target.kind === "none" || this.pausedSince !== null) {
       this.reading = null;
       this.watch.reset();
+      this.judgedAt = null;
       return [];
     }
     const bounds = this.boundsOf(step.target);
     const value = this.valueOf(step.target);
     const position = bounds === null || value === null ? null : positionIn(value, bounds, this.toleranceOf(step.target, bounds));
     this.reading = { bounds, value, position };
+    this.tally(step.index, t, position);
     const settling = step.intent === "work" && this.timerAt(t) - this.stepStartTimerMs < workoutTargetTiming.workGraceMs;
     if (position === null || settling) {
       this.watch.reset();
@@ -319,6 +337,16 @@ export class WorkoutRunner {
     }
     const status = this.watch.update(t, position);
     return status === null ? [] : [{ kind: "workout_target", step, ...status }];
+  }
+
+  /** Each stretch between two judgements counts as the earlier one found it. */
+  private tally(index: number, t: number, position: RangePosition | null): void {
+    const tally = this.tallies[index];
+    if (tally !== undefined && this.judgedAt !== null && t > this.judgedAt.t) {
+      tally.judgedMs += t - this.judgedAt.t;
+      if (this.judgedAt.inside) tally.insideMs += t - this.judgedAt.t;
+    }
+    this.judgedAt = position === null ? null : { t, inside: position === "inside" };
   }
 
   private boundsOf(target: Exclude<WorkoutTarget, { readonly kind: "none" }>): SpanBounds | null {
@@ -392,8 +420,17 @@ function remainingOf(duration: WorkoutDuration, elapsedMs: number, distanceMm: n
  * canonical order of `trackFeed`, so the stored bounds are exactly those a later replay finds.
  */
 export function workoutLapBounds(track: Track, profile: ResolvedProfile, plan: WorkoutPlan): readonly LapBounds[] {
+  return replayWorkout(track, profile, plan, { heartRateZones: null }).lapBounds(activityWindow(track.samples, track.marks, { startMs: 0, endMs: null }));
+}
+
+/** The judged time of each step's target over the whole track (`WKT-007`), by rank. */
+export function workoutTargetTallies(track: Track, profile: ResolvedProfile, plan: WorkoutPlan, options: WorkoutRunnerOptions): readonly WorkoutTargetTally[] {
+  return replayWorkout(track, profile, plan, options).targetTallies;
+}
+
+function replayWorkout(track: Track, profile: ResolvedProfile, plan: WorkoutPlan, options: WorkoutRunnerOptions): WorkoutRunner {
   const tracker = new LiveTracker(profile, null);
-  const runner = new WorkoutRunner(plan, { heartRateZones: null });
+  const runner = new WorkoutRunner(plan, options);
   for (const item of trackFeed(track)) {
     switch (item.kind) {
       case "mark":
@@ -410,7 +447,7 @@ export function workoutLapBounds(track: Track, profile: ResolvedProfile, plan: W
       }
     }
   }
-  return runner.lapBounds(activityWindow(track.samples, track.marks, { startMs: 0, endMs: null }));
+  return runner;
 }
 
 /** The laps a recording saves: the steps of its guided workout (`WKT-007`), else its manual and automatic laps. */

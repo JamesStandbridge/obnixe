@@ -94,10 +94,10 @@ export function SplitsSection({ activity }: ActivityProps) {
   );
 }
 
-/** Laps when there are more than one (`SUM-001`). */
+/** Laps when there are more than one (`SUM-001`); the steps of a guided workout show in their own table (`WKT-007`). */
 export function LapsSection({ activity }: ActivityProps) {
   const { processed, profile } = activity;
-  if (processed.laps.length < 2) return null;
+  if (processed.laps.length < 2 || activity.saved.recording.workout !== null) return null;
   return (
     <Section title="Tours">
       {processed.laps.map((lap, index) => {

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { efforts, equipments, exerciseCuesMaxLength, exerciseMeasures, loadModes, painLevels, painPhases, sensations, sleepBuckets, sportKeys, zoneKeys } from "@obnixe/schema";
+import { efforts, equipments, exerciseCuesMaxLength, exerciseMeasures, loadModes, painLevels, painPhases, sensations, sleepBuckets, sportKeys, workoutPlanSchema, zoneKeys } from "@obnixe/schema";
 import type { AgentCallKind, LocalDate, SportKey } from "@obnixe/schema";
 import { daysBetween } from "../dates.ts";
 import { hasPermission } from "./environment.ts";
@@ -84,10 +84,15 @@ const programItemInput = z
   })
   .describe("Give either repsMin and repsMax (repsMax >= repsMin) or durationMinSeconds and durationMaxSeconds, never both.");
 
+const workoutInput = workoutPlanSchema.describe(
+  "Guided workout of an endurance variant (INT-044), run step by step on the phone: { version: 1, nodes }. A node is a step { type: 'step', intent: warmup | work | recovery | rest | cooldown, duration, target, label: short French text or null } or a repeat { type: 'repeat', count: 1..50, steps: [steps only] }. duration: { kind: 'time', ms: 5000..21600000 } | { kind: 'distance', mm: 50000..100000000 } | { kind: 'open' } (ended by the user). target: { kind: 'none' } | { kind: 'pace', fastestSecondsPerKm, slowestSecondsPerKm } (pace sports such as run, trail, walk, hike) | { kind: 'speed', minMmS, maxMmS } (speed sports such as bike) | { kind: 'heart_rate_zone', zone: 1..5 } | { kind: 'heart_rate', minBpm, maxBpm }. At most 200 steps once repeats are unfolded.",
+);
+
 const programVariantInput = z.object({
   lineageId: lineageId.optional().describe("Keep the lineageId returned by get_program for an existing variant. Omit for a new variant."),
-  name: shortText.max(60).describe("Variant name in French, e.g. 'Salle' or 'Maison'."),
-  items: z.array(programItemInput).min(1).max(30),
+  name: shortText.max(60).describe("Variant name in French, e.g. 'Salle', 'Maison' or '6 × 1 km'."),
+  items: z.array(programItemInput).max(30).optional().describe("Exercise prescriptions of a strength variant, at least one."),
+  workout: workoutInput.optional().describe("Guided workout of a variant of a recordable sport; strength variants have none."),
 });
 
 const programSlotInput = z.object({
@@ -100,7 +105,7 @@ const programSlotInput = z.object({
   variants: z
     .array(programVariantInput)
     .max(4)
-    .describe("Strength slots need at least one variant with exercises; other sports take an empty list."),
+    .describe("Strength slots need at least one variant with exercises. Slots of recordable sports may list guided workouts as variants (one workout each, no items); other sports take an empty list."),
 });
 
 const strengthSetInput = z
@@ -206,7 +211,7 @@ export const toolContracts = {
     name: "get_program",
     title: "Program",
     description:
-      "Return a program with its latest version tree: slots (sessions of the rotation) with sport, targets and variants, each variant with its exercise prescriptions. Every slot, variant and item carries a lineageId to reuse in upsert_program. Set includeHistory to get every version with its summary, reason and author.",
+      "Return a program with its latest version tree: slots (sessions of the rotation) with sport, targets and variants, each variant with its exercise prescriptions or its guided workout. Every slot, variant and item carries a lineageId to reuse in upsert_program. Set includeHistory to get every version with its summary, reason and author.",
     kind: "read",
     permissions: [],
     input: z.object({ programId: z.string().min(1), includeHistory: z.boolean().optional() }),

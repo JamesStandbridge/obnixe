@@ -1,6 +1,7 @@
-import { sports, targetValuesSchema } from "@obnixe/schema";
+import { sports, targetValuesSchema, workoutPlanSchemaFor } from "@obnixe/schema";
 import type { Exercise, Id } from "@obnixe/schema";
-import type { DraftItem, DraftSlot, ProgramDraft } from "./draft.ts";
+import { resolveProfile } from "../tracking/profile.ts";
+import type { DraftItem, DraftSlot, DraftVariant, ProgramDraft } from "./draft.ts";
 
 export type ExerciseRef = Pick<Exercise, "id" | "name" | "measure" | "archivedAt" | "mergedIntoId">;
 
@@ -29,6 +30,9 @@ export type DraftIssue =
   | { readonly kind: "variant_name_missing"; readonly slot: Id; readonly variant: Id }
   | { readonly kind: "variant_name_duplicate"; readonly slot: Id; readonly variant: Id }
   | { readonly kind: "variant_empty"; readonly slot: Id; readonly variant: Id }
+  | { readonly kind: "variant_workout_not_allowed"; readonly slot: Id; readonly variant: Id }
+  | { readonly kind: "variant_workout_invalid"; readonly slot: Id; readonly variant: Id }
+  | { readonly kind: "variant_items_not_allowed"; readonly slot: Id; readonly variant: Id }
   | { readonly kind: "item_invalid"; readonly slot: Id; readonly variant: Id; readonly item: Id; readonly problem: ItemProblem };
 
 export type DraftValidation = { readonly valid: true } | { readonly valid: false; readonly issues: readonly [DraftIssue, ...DraftIssue[]] };
@@ -56,7 +60,7 @@ export function validateDraft(draft: ProgramDraft, exercises: ReadonlyMap<Id, Ex
       if (name === "") issues.push({ kind: "variant_name_missing", slot: slot.lineageId, variant: variant.lineageId });
       else if (names.has(name)) issues.push({ kind: "variant_name_duplicate", slot: slot.lineageId, variant: variant.lineageId });
       names.add(name);
-      if (variant.items.length === 0) issues.push({ kind: "variant_empty", slot: slot.lineageId, variant: variant.lineageId });
+      issues.push(...variantIssues(slot, variant));
       for (const item of variant.items) {
         claim(item.lineageId);
         const problem = itemProblem(item, exercises.get(item.exerciseId));
@@ -74,7 +78,7 @@ function slotIssues(slot: DraftSlot): DraftIssue[] {
   const sport = sports[slot.sport];
   if (sport.archetype === "strength") {
     if (slot.variants.length === 0) issues.push({ kind: "variants_missing", slot: slot.lineageId });
-  } else if (slot.variants.length > 0) {
+  } else if (slot.variants.length > 0 && resolveProfile(slot.sport, slot.targetValues) === null) {
     issues.push({ kind: "variants_not_allowed", slot: slot.lineageId });
   }
   if (slot.targetDurationSeconds !== null && !between(slot.targetDurationSeconds, programLimits.targetDurationSeconds)) {
@@ -85,6 +89,22 @@ function slotIssues(slot: DraftSlot): DraftIssue[] {
     const fields = [...new Set(parsed.error.issues.map((issue) => String(issue.path[0] ?? "")))];
     issues.push({ kind: "target_values_invalid", slot: slot.lineageId, fields });
   }
+  return issues;
+}
+
+/** A strength variant lists exercises; a variant of a recordable sport is a guided workout that fits it (`WKT-002`). */
+function variantIssues(slot: DraftSlot, variant: DraftVariant): DraftIssue[] {
+  const ids = { slot: slot.lineageId, variant: variant.lineageId };
+  if (sports[slot.sport].archetype === "strength") {
+    const issues: DraftIssue[] = [];
+    if (variant.items.length === 0) issues.push({ kind: "variant_empty", ...ids });
+    if (variant.workout !== null) issues.push({ kind: "variant_workout_not_allowed", ...ids });
+    return issues;
+  }
+  const issues: DraftIssue[] = [];
+  if (variant.items.length > 0) issues.push({ kind: "variant_items_not_allowed", ...ids });
+  const profile = resolveProfile(slot.sport, slot.targetValues);
+  if (profile !== null && (variant.workout === null || !workoutPlanSchemaFor(profile.primary).safeParse(variant.workout).success)) issues.push({ kind: "variant_workout_invalid", ...ids });
   return issues;
 }
 

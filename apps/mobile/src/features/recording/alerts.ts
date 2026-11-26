@@ -1,8 +1,9 @@
 import { heartRateZones } from "@obnixe/core";
 import type { AlertGoal, RangeStatus, RecordingAlertEvent, ResolvedProfile, RouteRejoin, WorkoutStepRun } from "@obnixe/core";
-import type { HeartRateRange, PaceRange, WorkoutDuration, WorkoutIntent, WorkoutTarget } from "@obnixe/schema";
+import type { HeartRateRange, PaceRange, WorkoutTarget } from "@obnixe/schema";
 import { lapFigures } from "@/features/recording/metrics";
 import { targetLabel } from "@/features/recording/target";
+import { intentLabels, paceRangeText, workoutDurationText, workoutTargetText } from "@/features/workouts/format";
 import { formatClock, formatLongClock } from "@/format/durations";
 import { formatInteger, formatNumber } from "@/format/numbers";
 
@@ -84,19 +85,6 @@ export function vibrationPattern(alert: AlertPulses, os: "ios" | "android"): num
   return pattern;
 }
 
-function paceSpan(range: PaceRange): string {
-  switch (range.kind) {
-    case "pace":
-      return `${formatClock(range.fastestSecondsPerKm)} – ${formatClock(range.slowestSecondsPerKm)} /km`;
-    case "speed":
-      return `${formatNumber(range.minMmS * 0.0036)} – ${formatNumber(range.maxMmS * 0.0036)} km/h`;
-    default: {
-      const unreachable: never = range;
-      throw new Error(`Unhandled pace range ${JSON.stringify(unreachable)}`);
-    }
-  }
-}
-
 export function heartRateSpan(range: HeartRateRange): string {
   return range.lowest === range.highest ? `Z${range.lowest}` : `Z${range.lowest} – Z${range.highest}`;
 }
@@ -144,51 +132,12 @@ function segmentFinishDetail(elapsedMs: number, bestElapsedMs: number | null): s
   return elapsedMs < bestElapsedMs ? `Meilleur passage, ${gap}` : `${gap} sur le meilleur passage`;
 }
 
-const intentLabels: Readonly<Record<WorkoutIntent, string>> = {
-  warmup: "Échauffement",
-  work: "Travail",
-  recovery: "Récupération",
-  rest: "Repos",
-  cooldown: "Retour au calme",
-};
-
-function durationLabel(duration: WorkoutDuration): string {
-  switch (duration.kind) {
-    case "time":
-      return formatLongClock(duration.ms / 1000);
-    case "distance":
-      return duration.mm < 1_000_000 ? `${formatNumber(duration.mm / 1000, 0)} m` : `${formatNumber(duration.mm / 1_000_000, 2)} km`;
-    case "open":
-      return "Jusqu'à l'étape suivante";
-    default: {
-      const unreachable: never = duration;
-      throw new Error(`Unhandled workout duration ${JSON.stringify(unreachable)}`);
-    }
-  }
-}
-
-function workoutTargetSpan(target: Exclude<WorkoutTarget, { readonly kind: "none" }>): string {
-  switch (target.kind) {
-    case "pace":
-    case "speed":
-      return paceSpan(target);
-    case "heart_rate_zone":
-      return `Z${target.zone}`;
-    case "heart_rate":
-      return `${target.minBpm} – ${target.maxBpm} bpm`;
-    default: {
-      const unreachable: never = target;
-      throw new Error(`Unhandled workout target ${JSON.stringify(unreachable)}`);
-    }
-  }
-}
-
 function stepNotice(step: WorkoutStepRun | null): AlertNotice {
   if (step === null) return { title: "Séance terminée", detail: "Toutes les étapes sont faites", tone: "mark" };
   const parts = [
     ...(step.repetition === null ? [] : [`Répétition ${step.repetition.number}/${step.repetition.count}`]),
-    durationLabel(step.duration),
-    ...(step.target.kind === "none" ? [] : [workoutTargetSpan(step.target)]),
+    workoutDurationText(step.duration),
+    ...(step.target.kind === "none" ? [] : [workoutTargetText(step.target)]),
   ];
   return { title: step.label ?? intentLabels[step.intent], detail: parts.join(" · "), tone: "mark" };
 }
@@ -196,7 +145,7 @@ function stepNotice(step: WorkoutStepRun | null): AlertNotice {
 function workoutTargetNotice(target: WorkoutTarget, status: RangeStatus["status"]): AlertNotice {
   if (target.kind === "none") throw new Error("A step without a target raised a target alert");
   const title = target.kind === "pace" || target.kind === "speed" ? paceTitle(target, status) : heartRateTitle(status);
-  return { title, detail: `Cible ${workoutTargetSpan(target)}`, tone: status === "back" ? "mark" : "warn" };
+  return { title, detail: `Cible ${workoutTargetText(target)}`, tone: status === "back" ? "mark" : "warn" };
 }
 
 const compassPoints = ["au nord", "au nord-est", "à l'est", "au sud-est", "au sud", "au sud-ouest", "à l'ouest", "au nord-ouest"] as const;
@@ -230,7 +179,7 @@ export function alertNotice(event: RecordingAlertEvent, profile: Pick<ResolvedPr
     case "goal":
       return { title: "Objectif atteint", detail: goalDetail(event.goal), tone: "mark" };
     case "pace_range":
-      return { title: paceTitle(event.range, event.status), detail: `Cible ${paceSpan(event.range)}`, tone: event.status === "back" ? "mark" : "warn" };
+      return { title: paceTitle(event.range, event.status), detail: `Cible ${paceRangeText(event.range)}`, tone: event.status === "back" ? "mark" : "warn" };
     case "heart_rate_range":
       return { title: heartRateTitle(event.status), detail: `Cible ${heartRateSpan(event.range)}`, tone: event.status === "back" ? "mark" : "warn" };
     case "segment_entered":

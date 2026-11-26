@@ -21,7 +21,8 @@ import { buildTruth, clearSky, move, simulate } from "./testing/scenarios.ts";
 import type { Truth } from "./testing/scenarios.ts";
 import { toSampleColumns } from "./types.ts";
 import type { Sample, TrackerMark } from "./types.ts";
-import { recordingLapSource, unfoldWorkout, workoutLapBounds, WorkoutRunner } from "./workout.ts";
+import { recordingLapSource, unfoldWorkout, workoutLapBounds, WorkoutRunner, workoutTargetTallies } from "./workout.ts";
+import { lastWorkoutOf, recentSpeedOf, workoutEstimate, workoutReport } from "./workouts.ts";
 import { heartRateZones } from "./zones.ts";
 
 const none: WorkoutTarget = { kind: "none" };
@@ -104,6 +105,23 @@ describe("unfoldWorkout", () => {
     expect(steps[0]?.repetition).toBeNull();
     expect(steps[3]?.repetition).toEqual({ number: 2, count: 3 });
     expect(steps[7]?.repetition).toBeNull();
+  });
+});
+
+describe("workoutEstimate (WKT-001)", () => {
+  const tenK = plan(
+    step("warmup", meters(2000)),
+    repeat(6, [step("work", meters(1000), { kind: "pace", fastestSecondsPerKm: 240, slowestSecondsPerKm: 250 }), step("recovery", seconds(120))]),
+    step("cooldown", meters(2000)),
+  );
+
+  it("times distance steps at the middle of their pace target and the others at the recent speed", () => {
+    expect(workoutEstimate(tenK, 3000)).toEqual({ durationMs: Math.round((4000 / 3) * 1000 + 6 * 245_000 + 720_000), distanceMm: 10_000_000 + 720 * 3000, complete: true });
+  });
+
+  it("leaves out what no speed tells without a recent speed, and open steps", () => {
+    expect(workoutEstimate(tenK, null)).toEqual({ durationMs: 6 * 245_000 + 720_000, distanceMm: 10_000_000, complete: false });
+    expect(workoutEstimate(plan(step("work", seconds(600), { kind: "speed", minMmS: 8000, maxMmS: 10_000 }), step("cooldown", open)), null)).toEqual({ durationMs: 600_000, distanceMm: 5_400_000, complete: false });
   });
 });
 
@@ -334,6 +352,23 @@ describe("guided recording replay (WKT-003, WKT-006, WKT-007)", () => {
     expect(Math.abs((processed.laps[0]?.distanceMm ?? 0) - 1_000_000)).toBeLessThan(20_000);
   });
 
+  it("reports each step with its time in the target and summarizes the work repetitions (WKT-007)", () => {
+    const processed = processTrack(run.track, profile, { laps: recordingLapSource(run.track, profile, null, intervalsWorkout), trim: untrimmed });
+    const tallies = workoutTargetTallies(run.track, profile, intervalsWorkout, { heartRateZones: null });
+    expect(tallies).toHaveLength(12);
+    expect(tallies[0]).toEqual({ judgedMs: 0, insideMs: 0 });
+    const report = workoutReport(intervalsWorkout, processed.laps, tallies);
+    expect(report.rows.map((row) => row.step.index)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+    expect(report.rows.filter((row) => row.step.intent !== "work").every((row) => row.inTargetPermille === null)).toBe(true);
+    const work = report.rows.filter((row) => row.step.intent === "work");
+    expect(work.every((row) => (tallies[row.step.index]?.judgedMs ?? 0) > 60_000 && (row.inTargetPermille ?? 0) > 400)).toBe(true);
+    expect(work.reduce((sum, row) => sum + (row.inTargetPermille ?? 0), 0) / work.length).toBeGreaterThan(650);
+    expect(report.work?.count).toBe(5);
+    expect(Math.abs((report.work?.distanceMm ?? 0) - 2_000_000)).toBeLessThan(30_000);
+    expect(report.work?.fastestMmS).toBeGreaterThanOrEqual(report.work?.slowestMmS ?? Number.POSITIVE_INFINITY);
+    expect(workoutReport(plan(step("work", seconds(60))), processed.laps.slice(0, 1), tallies.slice(0, 1)).work).toBeNull();
+  });
+
   it("signals the end of a 400 m repetition at 3:00 /km less than 8 m after its bound with one batch per second", () => {
     const tracker = new LiveTracker(profile, null);
     const runner = new WorkoutRunner(intervalsWorkout, { heartRateZones: null });
@@ -417,6 +452,11 @@ describe("guided recordings in the journal (WKT-007, WKT-009)", () => {
     const processed = processTrack(track, started.profile, { laps: recordingLapSource(track, started.profile, null, row()?.workout ?? null), trim: untrimmed });
     const bytes = encodeTrack(track);
     make.write(planRecordingSave(context.db, context.env, { sessionId: started.sessionId, track, processed, stored: { file: `tracks/${started.recordingId}.otrk`, sha256: trackDigest(bytes), bytes: bytes.length }, pains: [] }));
+    expect(lastWorkoutOf(context.db, "run")).toEqual(intervalsWorkout);
+    expect(lastWorkoutOf(context.db, "bike")).toBeNull();
+    const saved = row();
+    expect(recentSpeedOf(context.db, "run")).toBeCloseTo(((saved?.distanceMm ?? 0) / (saved?.movingMs ?? 1)) * 1000, 6);
+    expect(recentSpeedOf(context.db, "bike")).toBeNull();
     const laps = context.db.select().from(lap).where(eq(lap.sessionId, started.sessionId)).all();
     expect(laps.map((stored) => stored.workoutStep)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
     expect(laps.every((stored) => stored.trigger === "workout")).toBe(true);

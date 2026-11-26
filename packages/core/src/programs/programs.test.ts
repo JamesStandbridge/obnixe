@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { exercise as exerciseTable, program } from "@obnixe/schema";
-import type { Exercise, Id, LocalDate, ZoneKey } from "@obnixe/schema";
+import type { Exercise, Id, LocalDate, WorkoutPlan, ZoneKey } from "@obnixe/schema";
 import { nextSlot } from "../rotation.ts";
 import { createTestContext } from "../testing.ts";
 import type { TestContext } from "../testing.ts";
 import { revert } from "../undo.ts";
 import { commit } from "../writer.ts";
 import type { Mutation } from "../writer.ts";
-import { diffDrafts } from "./diff.ts";
+import { changedItemLineages, diffDrafts } from "./diff.ts";
 import type { ProgramChange } from "./diff.ts";
 import { draftFromTree, emptyDraft, withFreshLineages } from "./draft.ts";
 import type { DraftItem, DraftSlot, ProgramDraft } from "./draft.ts";
@@ -48,7 +48,7 @@ function item(exerciseId: Id, min = 8, max = 12): DraftItem {
 }
 
 function strengthSlot(name: string, items: readonly DraftItem[]): DraftSlot {
-  return { lineageId: newId(), sport: "strength", name, targetDurationSeconds: null, targetEffort: null, targetValues: {}, variants: [{ lineageId: newId(), name: "Salle", items }] };
+  return { lineageId: newId(), sport: "strength", name, targetDurationSeconds: null, targetEffort: null, targetValues: {}, variants: [{ lineageId: newId(), name: "Salle", items, workout: null }] };
 }
 
 function runSlot(): DraftSlot {
@@ -259,7 +259,7 @@ describe("diffDrafts", () => {
     let after: ProgramDraft = { ...before, name: "Base printemps", sessionsPerWeek: 5 };
     after = updateItems(after, slotB.lineageId, variantB, () => [replacement]);
     after = updateItems(after, slotA.lineageId, variantA, (items) => moveByLineage(items, items[1]?.lineageId as Id, -1).map((entry, index) => (index === 0 ? { ...entry, targetRir: 1 } : entry)));
-    after = updateSlot(after, slotB.lineageId, (slot) => ({ ...slot, variants: [...slot.variants, { lineageId: newId(), name: "Sans matériel", items: [item(fixture.row)] }] }));
+    after = updateSlot(after, slotB.lineageId, (slot) => ({ ...slot, variants: [...slot.variants, { lineageId: newId(), name: "Sans matériel", items: [item(fixture.row)], workout: null }] }));
     after = { ...after, slots: [...removeByLineage(after.slots, at(before.slots, 2).lineageId), runSlot()] };
     const changes = diffDrafts(before, after);
     expect(kinds(changes)).toEqual(["frequency_changed", "item_changed", "item_replaced", "items_reordered", "program_renamed", "slot_added", "slot_removed", "variant_added"]);
@@ -289,6 +289,68 @@ describe("diffDrafts", () => {
     const copy = withFreshLineages(draft, newId);
     expect(copy.slots.map((slot) => slot.lineageId)).not.toEqual(draft.slots.map((slot) => slot.lineageId));
     expect(kinds(diffDrafts(draft, copy))).toEqual(["slot_added", "slot_added", "slot_added", "slot_removed", "slot_removed", "slot_removed"]);
+  });
+});
+
+describe("guided variants (DEC-10, WKT-001)", () => {
+  const intervals: WorkoutPlan = {
+    version: 1,
+    nodes: [
+      { type: "step", intent: "warmup", duration: { kind: "distance", mm: 2_000_000 }, target: { kind: "none" }, label: null },
+      {
+        type: "repeat",
+        count: 6,
+        steps: [
+          { type: "step", intent: "work", duration: { kind: "distance", mm: 1_000_000 }, target: { kind: "pace", fastestSecondsPerKm: 240, slowestSecondsPerKm: 250 }, label: null },
+          { type: "step", intent: "recovery", duration: { kind: "time", ms: 120_000 }, target: { kind: "none" }, label: null },
+        ],
+      },
+      { type: "step", intent: "cooldown", duration: { kind: "distance", mm: 2_000_000 }, target: { kind: "none" }, label: null },
+    ],
+  };
+
+  function guidedRun(workout: WorkoutPlan | null): DraftSlot {
+    return { ...runSlot(), variants: [{ lineageId: newId(), name: "Piste", items: [], workout }] };
+  }
+
+  it("publishes an endurance variant with its workout and reads it back", () => {
+    const draft: ProgramDraft = { name: "Prépa 10 km", sessionsPerWeek: 3, slots: [guidedRun(intervals)] };
+    const plan = planned(planCreateProgram({ draft, status: "active", copiedFromId: null, summary: null, reason: null, exercises: exerciseRefs(exercises()) }, newId));
+    write(plan.mutations);
+    expect(publishedDraft(plan.programId).draft).toEqual(draft);
+  });
+
+  it("refuses a variant without a valid workout, items on a guided variant, a workout on a strength one and guided variants of a sport without track", () => {
+    const squat = createExercise("Squat barre");
+    const speed: WorkoutPlan = { version: 1, nodes: [{ type: "step", intent: "work", duration: { kind: "time", ms: 60_000 }, target: { kind: "speed", minMmS: 8000, maxMmS: 9000 }, label: null }] };
+    const strength = strengthSlot("Séance A", [item(squat)]);
+    const draft: ProgramDraft = {
+      name: "Prépa",
+      sessionsPerWeek: 3,
+      slots: [
+        guidedRun(null),
+        guidedRun(speed),
+        { ...guidedRun(intervals), variants: [{ lineageId: newId(), name: "Piste", items: [item(squat)], workout: intervals }] },
+        { ...strength, variants: strength.variants.map((variant) => ({ ...variant, workout: intervals })) },
+        { ...guidedRun(intervals), sport: "bike", name: "Home trainer", targetValues: { kind: "indoor" } },
+      ],
+    };
+    const result = validateDraft(draft, exerciseRefs(exercises()));
+    expect(result.valid).toBe(false);
+    if (result.valid) return;
+    expect(result.issues.map((issue) => issue.kind).sort()).toEqual(["variant_items_not_allowed", "variant_workout_invalid", "variant_workout_invalid", "variant_workout_not_allowed", "variants_not_allowed"]);
+  });
+
+  it("reports a changed workout on a kept variant", () => {
+    const draft: ProgramDraft = { name: "Prépa 10 km", sessionsPerWeek: 3, slots: [guidedRun(intervals)] };
+    const slot = at(draft.slots, 0);
+    const variant = slot.variants[0];
+    if (variant === undefined) throw new Error("No variant");
+    const shorter: WorkoutPlan = { ...intervals, nodes: intervals.nodes.slice(0, 2) };
+    const after = updateSlot(draft, slot.lineageId, (entry) => ({ ...entry, variants: [{ ...variant, workout: shorter }] }));
+    const changes = diffDrafts(draft, after);
+    expect(kinds(changes)).toEqual(["variant_workout_changed"]);
+    expect(changedItemLineages(changes).size).toBe(0);
   });
 });
 
