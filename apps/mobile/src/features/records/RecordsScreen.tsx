@@ -3,13 +3,14 @@ import { Pressable, StyleSheet, View } from "react-native";
 import type { LayoutChangeEvent } from "react-native";
 import Svg, { Circle, Path } from "react-native-svg";
 import { router } from "expo-router";
-import { activityRecords, dateParts, effortBoards, effortScore, sportsWithActivities } from "@obnixe/core";
-import type { ActivityRecord, ActivityRecordKind, EffortBoard, EffortEntry } from "@obnixe/core";
+import { activityRecords, dateParts, effortBoards, effortScore, segmentFamilyOf, segmentSummaries, sportsWithActivities } from "@obnixe/core";
+import type { ActivityRecord, ActivityRecordKind, EffortBoard, EffortEntry, SegmentSummary } from "@obnixe/core";
 import { sportKeys, sports } from "@obnixe/schema";
 import type { Id, LocalDate, SportKey } from "@obnixe/schema";
 import { db } from "@/data/database";
 import { BackButton } from "@/features/data/parts";
 import { distanceText, effortFigure, effortTitle, elapsedText, speedFigure } from "@/features/recordings/format";
+import { segmentMeasureText } from "@/features/segments/format";
 import { useLiveValue, useLocalNow } from "@/features/stats/live";
 import { FilterChips } from "@/features/stats/parts";
 import type { ChipOption } from "@/features/stats/parts";
@@ -82,22 +83,32 @@ function activityRecordValue(record: ActivityRecord): string {
 interface RecordsData {
   readonly boards: readonly EffortBoard[];
   readonly records: readonly ActivityRecord[];
+  readonly segments: readonly SegmentSummary[];
   readonly sports: ReadonlySet<SportKey>;
+}
+
+function segmentsOf(sport: SportKey): readonly SegmentSummary[] {
+  const family = segmentFamilyOf(sport);
+  return family === null ? [] : segmentSummaries(db(), family);
+}
+
+function passagesText(count: number): string {
+  return count === 0 ? "aucun passage" : `${formatInteger(count)} ${count > 1 ? "passages" : "passage"}`;
 }
 
 interface RecordsScreenProps {
   readonly initialSport: SportKey | null;
 }
 
-/** `PR-005`: best efforts and activity records per sport, read from the derived rows (`PR-003`). */
+/** `PR-005`: best efforts, activity records and segments per sport, read from the derived rows (`PR-003`, `SEG-003`). */
 export function RecordsScreen({ initialSport }: RecordsScreenProps) {
   const { today } = useLocalNow();
   const year = dateParts(today).year;
   const rebuild = useDerivedRebuildState();
   const [sport, setSport] = useState<SportKey>(initialSport !== null && recordSports.includes(initialSport) ? initialSport : (recordSports[0] ?? "run"));
   const data = useLiveValue<RecordsData>(
-    () => ({ boards: effortBoards(db(), sport, year), records: activityRecords(db(), sport), sports: sportsWithActivities(db()) }),
-    ["best_effort", "session", "recording"],
+    () => ({ boards: effortBoards(db(), sport, year), records: activityRecords(db(), sport), segments: segmentsOf(sport), sports: sportsWithActivities(db()) }),
+    ["best_effort", "session", "recording", "segment", "segment_effort"],
     [sport, year],
   );
   const options: readonly ChipOption<SportKey>[] = recordSports
@@ -144,6 +155,20 @@ export function RecordsScreen({ initialSport }: RecordsScreenProps) {
           ))
         )}
       </Section>
+      {data.segments.length === 0 ? null : (
+        <Section title="Segments">
+          {data.segments.map((summary, index) => (
+            <Row
+              key={summary.segment.id}
+              title={summary.segment.name}
+              detail={`${segmentMeasureText(summary.segment)} · ${passagesText(summary.count)}`}
+              {...(summary.best === null ? {} : { value: elapsedText(summary.best.elapsedMs), valueDetail: "meilleur" })}
+              onPress={() => router.push({ pathname: "/segment/[id]", params: { id: summary.segment.id } })}
+              last={index === data.segments.length - 1}
+            />
+          ))}
+        </Section>
+      )}
     </Screen>
   );
 }

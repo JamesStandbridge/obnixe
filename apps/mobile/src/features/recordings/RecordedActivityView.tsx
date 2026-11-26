@@ -2,8 +2,8 @@ import { useState } from "react";
 import type { ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
 import { router } from "expo-router";
-import { activityWeather, detailPrivacyMask, maskKey, measuredRecordingOf, NotMeasuredError, sessionEffortRanks, trackingAlgorithmVersion } from "@obnixe/core";
-import type { ActivityWeather, EffortRank, PrivacyMask, SessionRecording } from "@obnixe/core";
+import { activityWeather, detailPrivacyMask, maskKey, measuredRecordingOf, NotMeasuredError, sessionEffortRanks, sessionSegmentEfforts, trackingAlgorithmVersion } from "@obnixe/core";
+import type { ActivityWeather, EffortRank, PrivacyMask, SessionRecording, SessionSegmentEffort } from "@obnixe/core";
 import { gear } from "@obnixe/schema";
 import type { BestEffortKey, Gear, Id, MetricKey } from "@obnixe/schema";
 import { eq } from "drizzle-orm";
@@ -14,6 +14,8 @@ import { ActivityMap } from "@/features/recordings/ActivityMap";
 import { summaryFigures } from "@/features/recordings/format";
 import { EffortsSection, EnergySection, LapsSection, QualitySection, SplitsSection, WeatherSection, ZonesSection } from "@/features/recordings/RecordingSections";
 import type { RecordedActivity, RecordedActivityState, TrackUnavailable } from "@/features/recordings/useRecordedActivity";
+import { canDrawSegment } from "@/features/segments/SegmentSheet";
+import { SegmentsSection } from "@/features/segments/SegmentsSection";
 import { LinkButton } from "@/ui/Button";
 import { Row, Section } from "@/ui/Layout";
 import { BevelView } from "@/ui/Shapes";
@@ -30,6 +32,7 @@ export interface RecordedData {
   /** Changes with the session, the recording or the in-app mask: the track is measured again only then. */
   readonly revision: string;
   readonly ranks: ReadonlyMap<BestEffortKey, EffortRank>;
+  readonly segments: readonly SessionSegmentEffort[];
   readonly gear: Gear | null;
   readonly weather: ActivityWeather;
 }
@@ -49,14 +52,14 @@ export function loadRecorded(sessionId: Id): RecordedData | null {
     mask,
     revision: `${saved.session.updatedAt}|${saved.recording.updatedAt}|${mask === null ? "" : maskKey(mask)}`,
     ranks: sessionEffortRanks(db(), sessionId),
+    segments: sessionSegmentEfforts(db(), sessionId),
     gear: gearId === null ? null : (db().select().from(gear).where(eq(gear.id, gearId)).get() ?? null),
     weather: activityWeather(db(), sessionId),
   };
 }
 
 /**
- * The parts of `SUM-001` after the summary, in order. `segments` (PR 13) is drawn by its own section once it exists; guided
- * steps (`WKT-007`) belong to guided sessions.
+ * The parts of `SUM-001` after the summary, in order. Guided steps (`WKT-007`) belong to guided sessions.
  */
 type LeadingSection = "map" | "summary" | "charts" | "splits" | "laps" | "efforts" | "segments" | "zones" | "energy" | "weather" | "gear";
 
@@ -93,11 +96,13 @@ interface RecordedLeadingProps {
   /** The stored summary, drawn while the track is read or when it cannot be. */
   readonly fallback: ReactNode;
   readonly rebuilding: boolean;
+  readonly searchingSegments: boolean;
   readonly onRecompute: () => void;
   readonly onGear: () => void;
+  readonly onCreateSegment: () => void;
 }
 
-export function RecordedLeading({ state, recorded, fallback, rebuilding, onRecompute, onGear }: RecordedLeadingProps) {
+export function RecordedLeading({ state, recorded, fallback, rebuilding, searchingSegments, onRecompute, onGear, onCreateSegment }: RecordedLeadingProps) {
   const { colors } = useTheme();
   switch (state.status) {
     case "loading":
@@ -120,7 +125,17 @@ export function RecordedLeading({ state, recorded, fallback, rebuilding, onRecom
         </>
       );
     case "ready":
-      return <ActivityBody activity={state.activity} recorded={recorded} rebuilding={rebuilding} onRecompute={onRecompute} onGear={onGear} />;
+      return (
+        <ActivityBody
+          activity={state.activity}
+          recorded={recorded}
+          rebuilding={rebuilding}
+          searchingSegments={searchingSegments}
+          onRecompute={onRecompute}
+          onGear={onGear}
+          onCreateSegment={onCreateSegment}
+        />
+      );
     default: {
       const unreachable: never = state;
       return unreachable;
@@ -132,11 +147,13 @@ interface ActivityBodyProps {
   readonly activity: RecordedActivity;
   readonly recorded: RecordedData;
   readonly rebuilding: boolean;
+  readonly searchingSegments: boolean;
   readonly onRecompute: () => void;
   readonly onGear: () => void;
+  readonly onCreateSegment: () => void;
 }
 
-function ActivityBody({ activity, recorded, rebuilding, onRecompute, onGear }: ActivityBodyProps) {
+function ActivityBody({ activity, recorded, rebuilding, searchingSegments, onRecompute, onGear, onCreateSegment }: ActivityBodyProps) {
   const { colors } = useTheme();
   const [cursor, setCursor] = useState<number | null>(null);
   const { recording, session } = activity.saved;
@@ -199,10 +216,18 @@ function ActivityBody({ activity, recorded, rebuilding, onRecompute, onGear }: A
             <Row title={gearLabel(session.sport)} detail={recorded.gear?.name ?? "Aucun"} trailing={<LinkButton label="Changer" onPress={onGear} style={styles.rowLink} />} last />
           </Section>
         );
+      case "segments":
+        return (
+          <SegmentsSection
+            key={section}
+            efforts={recorded.segments}
+            profile={activity.profile}
+            searching={searchingSegments}
+            onCreate={canDrawSegment(activity) ? onCreateSegment : null}
+          />
+        );
       case "weather":
         return <WeatherSection key={section} weather={recorded.weather} session={session} />;
-      case "segments":
-        return null;
       default: {
         const unreachable: never = section;
         return unreachable;

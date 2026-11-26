@@ -10,11 +10,13 @@ import {
   deleteSetMutations,
   DependentRowsError,
   gearUsage,
+  InvalidSegmentError,
   InvalidSetError,
   InvalidTrimError,
   loadSessionReport,
   localDateOf,
   newGear,
+  newSegment,
   nextSlot,
   planRecompute,
   planSportChange,
@@ -24,7 +26,7 @@ import {
   sessionHistory,
   trackingAlgorithmVersion,
 } from "@obnixe/core";
-import type { HistoryEntry, PainAnchor, RecordingRewrite, SessionReport, SportChange, TrackTrim } from "@obnixe/core";
+import type { HistoryEntry, PainAnchor, RecordingRewrite, SegmentDraft, SegmentPlan, SessionReport, SportChange, TrackTrim } from "@obnixe/core";
 import { sports } from "@obnixe/schema";
 import type { Id, PainPhase, ProgramSlot, Session } from "@obnixe/schema";
 import { db, environment } from "@/data/database";
@@ -38,6 +40,7 @@ import { SportSheet } from "@/features/recordings/SportSheet";
 import { TrimSheet } from "@/features/recordings/TrimSheet";
 import { useRecordedActivity } from "@/features/recordings/useRecordedActivity";
 import type { RecordedActivityState } from "@/features/recordings/useRecordedActivity";
+import { canDrawSegment, SegmentSheet } from "@/features/segments/SegmentSheet";
 import { useDerivedRebuildState } from "@/features/tracking/recorder";
 import { effortLabels, formatDay, formatLongDate, formatMass, formatTime, sensationPhrases } from "@/features/training/format";
 import { capitalize, lowerFirst, sessionTitle, zoneLabel } from "@/format/labels";
@@ -225,6 +228,7 @@ function Detail({ data, recorded }: DetailProps) {
   const [trimming, setTrimming] = useState(false);
   const [changingSport, setChangingSport] = useState(false);
   const [choosingGear, setChoosingGear] = useState(false);
+  const [drawingSegment, setDrawingSegment] = useState(false);
   const rebuild = useDerivedRebuildState();
   const title = sessionTitle(titleSource(report));
   const sport = sports[session.sport];
@@ -379,6 +383,22 @@ function Detail({ data, recorded }: DetailProps) {
     rewrite(() => planRecompute(db(), environment, session.id, activity.track), `Recalcul : ${title}`, "Activité recalculée");
   };
 
+  const createSegment = (draft: SegmentDraft): void => {
+    setDrawingSegment(false);
+    if (activity === null) return;
+    let plan: SegmentPlan;
+    try {
+      plan = newSegment(environment, activity.processed.series, activity.processed.summary.ascentMm !== null, draft);
+    } catch (error) {
+      if (error instanceof InvalidSegmentError) {
+        notify({ text: "Segment impossible", ...placement });
+        return;
+      }
+      throw error;
+    }
+    undoableWrite({ summary: `Segment créé : ${draft.name.trim()}`, mutations: [plan.mutation], message: "Segment créé · recherche des passages", ...placement });
+  };
+
   const chooseGear = (gearId: Id | null): void => {
     setChoosingGear(false);
     if (gearId === session.gearId) return;
@@ -452,8 +472,10 @@ function Detail({ data, recorded }: DetailProps) {
               recorded={recorded.data}
               fallback={heroBlock}
               rebuilding={rebuild.running}
+              searchingSegments={rebuild.segments > 0}
               onRecompute={recompute}
               onGear={() => setChoosingGear(true)}
+              onCreateSegment={() => setDrawingSegment(true)}
             />
           )}
           {completed || recorded !== null ? null : <ControlButton label="Reprendre la séance" onPress={resume} style={styles.resume} />}
@@ -587,6 +609,16 @@ function Detail({ data, recorded }: DetailProps) {
                   setChangingSport(true);
                 }}
               />
+              {canDrawSegment(activity) ? (
+                <MenuItem
+                  label="Créer un segment"
+                  detail="une portion à comparer d'une sortie à l'autre"
+                  onPress={() => {
+                    setMore(false);
+                    setDrawingSegment(true);
+                  }}
+                />
+              ) : null}
               {activity.saved.recording.algorithmVersion < trackingAlgorithmVersion ? <MenuItem label="Recalculer avec la dernière version" onPress={recompute} /> : null}
             </>
           )}
@@ -626,6 +658,7 @@ function Detail({ data, recorded }: DetailProps) {
         <>
           <TrimSheet open={trimming} activity={activity} onClose={() => setTrimming(false)} onSave={trim} />
           <SportSheet open={changingSport} session={session} onClose={() => setChangingSport(false)} onSave={changeSport} />
+          <SegmentSheet open={drawingSegment} activity={activity} onClose={() => setDrawingSegment(false)} onSave={createSegment} />
         </>
       )}
       {recorded === null ? null : (

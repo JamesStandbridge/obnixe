@@ -4,22 +4,27 @@ import {
   activePrivacyMask,
   commit,
   computeImport,
+  decodeTrack,
   encodeJournalBatch,
   encodeJournalHeader,
   encodeTrack,
+  locate,
+  newSegment,
   planImport,
   planRecordingSave,
   planRecordingStart,
   processTrack,
+  profileOfSession,
   readActivityFile,
   recordingStartMutations,
   staleDerivationCount,
+  staleSegments,
   trackDigest,
   trashMutation,
   zoneProposalFor,
 } from "@obnixe/core";
 import type { Fix, JournalRecord, Mutation } from "@obnixe/core";
-import { bestEffort, recording, recordingDerivation, session, settings } from "@obnixe/schema";
+import { bestEffort, recording, recordingDerivation, segmentEffort, session, settings } from "@obnixe/schema";
 import type { EpochMs, Id } from "@obnixe/schema";
 import { DerivedRebuild } from "@/features/tracking/derivedRebuild";
 import { journalTrackOf } from "@/features/tracking/journalFeed";
@@ -145,7 +150,7 @@ describe("derived rows", () => {
       throw error;
     });
     await rebuild.request();
-    expect(rebuild.getState()).toEqual({ pending: 0, running: false });
+    expect(rebuild.getState()).toEqual({ pending: 0, segments: 0, running: false });
     expect(db().select().from(bestEffort).where(eq(bestEffort.sessionId, run.sessionId)).all().map((row) => row.effort)).toContain("run:distance:400");
     const plain = recordingRow(run.sessionId)?.previewPolyline;
     write("Zone", [{ kind: "insert", table: "privacy_zone", row: { id: environment.newId(), label: "Maison", ...home, radiusMeters: 200, maskScalePermille: 1000, deletedAt: null } }]);
@@ -153,6 +158,29 @@ describe("derived rows", () => {
     await rebuild.request();
     expect(staleDerivationCount(db(), activePrivacyMask(db()))).toBe(0);
     expect(recordingRow(run.sessionId)?.previewPolyline).not.toBe(plain);
+  });
+
+  it("searches a new segment over every recording that may pass it (SEG-003)", async () => {
+    const first = await recorded(200, true);
+    const second = await recorded(200, true);
+    const rebuild = new DerivedRebuild(writer, (error) => {
+      throw error;
+    });
+    await rebuild.request();
+    const live = db().select({ session, recording }).from(recording).innerJoin(session, eq(session.id, recording.sessionId)).where(eq(recording.sessionId, first.sessionId)).get();
+    const processed = processTrack(decodeTrack(readTrackFile(live?.recording.trackFile ?? "") ?? new Uint8Array()), profileOfSession(live?.session ?? { id: first.sessionId, sport: "run", values: {} }), {
+      laps: { kind: "recorded", autoLap: null },
+      trim: { startMs: 0, endMs: null },
+    });
+    const range = { from: locate(processed.series.distance, 100), to: locate(processed.series.distance, 400) };
+    const plan = newSegment(environment, processed.series, false, { name: "Avenue", sport: "run", sessionId: first.sessionId, range });
+    write("Segment créé", [plan.mutation]);
+    expect(staleSegments(db())).toHaveLength(1);
+    await rebuild.request();
+    expect(rebuild.getState()).toEqual({ pending: 0, segments: 0, running: false });
+    expect(staleSegments(db())).toEqual([]);
+    const efforts = db().select().from(segmentEffort).where(eq(segmentEffort.segmentId, plan.segmentId)).all();
+    expect(efforts.map((effort) => effort.sessionId).sort()).toEqual([first.sessionId, second.sessionId].sort());
   });
 
   it("skips a recording whose track is gone instead of looping", async () => {

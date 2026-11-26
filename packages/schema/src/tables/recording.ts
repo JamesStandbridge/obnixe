@@ -178,11 +178,19 @@ export const segment = sqliteTable(
     bbox: text("bbox", { mode: "json" }).$type<BoundingBoxE7>().notNull(),
     south: integer("south").notNull(),
     north: integer("north").notNull(),
-    sourceSessionId: ref("source_session_id").references(() => session.id),
+    sourceSessionId: ref("source_session_id").references(() => session.id, { onDelete: "set null" }),
     ...trashable(),
   },
   (t) => [index("segment_bbox").on(t.family, t.south, t.north), check("segment_distance", sql`${t.distanceMm} >= 100000`)],
 );
+
+/** The geometry of a segment its `segment_effort` rows were last searched for over the whole history (`SEG-003`), outside the journal. */
+export const segmentDerivation = sqliteTable("segment_derivation", {
+  segmentId: ref("segment_id")
+    .primaryKey()
+    .references(() => segment.id, { onDelete: "cascade" }),
+  shapeKey: text("shape_key").notNull(),
+});
 
 export const segmentEffort = sqliteTable(
   "segment_effort",

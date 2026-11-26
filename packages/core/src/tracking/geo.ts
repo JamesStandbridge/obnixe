@@ -65,6 +65,23 @@ export function displace(latitude: number, longitude: number, east: number, nort
   return { latitude: nextLatitude, longitude: nextLongitude > 180 ? nextLongitude - 360 : nextLongitude < -180 ? nextLongitude + 360 : nextLongitude };
 }
 
+/** The box grown by `meters` on every side, clamped to the valid coordinates. */
+export function expandBoundingBox(box: BoundingBoxE7, meters: number): BoundingBoxE7 {
+  const extreme = Math.max(Math.abs(box.south), Math.abs(box.north)) / 1e7;
+  const latitudeMargin = (meters / (meridianRadius(extreme) * radiansPerDegree)) * 1e7;
+  const longitudeMargin = (meters / (Math.max(parallelRadius(Math.min(extreme, 89)), 1) * radiansPerDegree)) * 1e7;
+  return {
+    south: Math.max(-900_000_000, Math.floor(box.south - latitudeMargin)),
+    west: Math.max(-1_800_000_000, Math.floor(box.west - longitudeMargin)),
+    north: Math.min(900_000_000, Math.ceil(box.north + latitudeMargin)),
+    east: Math.min(1_800_000_000, Math.ceil(box.east + longitudeMargin)),
+  };
+}
+
+export function boxesOverlap(left: BoundingBoxE7, right: BoundingBoxE7): boolean {
+  return left.south <= right.north && right.south <= left.north && left.west <= right.east && right.west <= left.east;
+}
+
 /** Accumulates the extent of a track; tracks crossing the antimeridian get the full longitude span. */
 export class BoundingBoxBuilder {
   private south = Number.POSITIVE_INFINITY;
