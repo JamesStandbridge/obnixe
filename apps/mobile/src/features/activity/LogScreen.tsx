@@ -12,6 +12,7 @@ import {
   evaluateIndicators,
   gearUsage,
   isFreeSport,
+  isWorn,
   lastSessionSuggestion,
   localDateOf,
   localTimeOf,
@@ -34,6 +35,7 @@ import type { SportChoice } from "@/features/activity/components";
 import { formatDayMonth, formatRelativeDay, lastPainLabel, weekdayName } from "@/features/activity/format";
 import { deviceTimeZone } from "@/format/dates";
 import { formatLongClock } from "@/format/durations";
+import { useGearWearNotice, writeGearWear } from "@/features/activity/gearWear";
 import { CatalogueSheet, ChoiceSheet, GearSheet, TextSheet, WhenSheet, ZonePickerSheet, whenLabel } from "@/features/activity/LogSheets";
 import type { WhenValue } from "@/features/activity/LogSheets";
 import { PadSheet } from "@/ui/PadSheet";
@@ -141,6 +143,7 @@ export function LogScreen() {
   const params = useLocalSearchParams<{ sport?: string; slotId?: string; variantId?: string }>();
   const router = useRouter();
   const notify = useSnackbar();
+  const gearWearNotice = useGearWearNotice();
   const massUnit = useMassUnit();
   const { colors } = useTheme();
   const requested = single(params.sport);
@@ -324,6 +327,7 @@ export function LogScreen() {
         pains: zonePains,
       });
       write(`Nouvelle activité : ${definition.label}`, plan.mutations);
+      gearWearNotice(plan.sessionId);
       router.replace({ pathname: "/session/[id]/review", params: { id: plan.sessionId, attach: "1" } });
     } catch (error) {
       if (error instanceof FutureSessionError) {
@@ -518,7 +522,7 @@ export function LogScreen() {
           {definition.usesGear ? (
             <DetailRow
               title={gearLabel(sport)}
-              value={selectedGear === undefined ? null : `${selectedGear.gear.name} · ${formatKilometers(selectedGear.meters)}`}
+              value={selectedGear === undefined ? null : `${selectedGear.gear.name} · ${formatKilometers(selectedGear.meters)}${isWorn(selectedGear) ? " · usure atteinte" : ""}`}
               onPress={() => setSheet({ kind: "gear" })}
             />
           ) : null}
@@ -626,6 +630,9 @@ export function LogScreen() {
           setSheet({ kind: "none" });
         }}
         onCreate={createGear}
+        onSetWear={(item, wearMeters) => {
+          if (writeGearWear(item, wearMeters)) setGearVersion((version) => version + 1);
+        }}
         onClose={() => setSheet({ kind: "none" })}
       />
       <TextSheet

@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Redirect, useFocusEffect, useRouter } from "expo-router";
 import { impactAsync, ImpactFeedbackStyle } from "expo-haptics";
 import { useLiveQuery } from "drizzle-orm/expo-sqlite";
-import { distanceToRouteStart, finishOpenSessionMutations, gearUsage, newGear, openSession, primaryChoice, recordingSettingsMutation, recordingSettingsOf, resolveProfile, signalLevelAccuracy } from "@obnixe/core";
+import { distanceToRouteStart, finishOpenSessionMutations, gearUsage, isWorn, newGear, openSession, primaryChoice, recordingSettingsMutation, recordingSettingsOf, resolveProfile, signalLevelAccuracy } from "@obnixe/core";
 import type { LiveSignal, ResolvedProfile } from "@obnixe/core";
 import { sportPreference, sports } from "@obnixe/schema";
 import type { FieldValues, Id, Readout, SportKey } from "@obnixe/schema";
@@ -17,6 +17,7 @@ import { BottomPanel, Chips, DetailRow, SportStrip, SwitchRow, bottomPanelHeight
 import type { SportChoice } from "@/features/activity/components";
 import { CatalogueSheet, GearSheet } from "@/features/activity/LogSheets";
 import { formatKilometers, gearLabel } from "@/features/activity/presentation";
+import { writeGearWear } from "@/features/activity/gearWear";
 import type { GeoPoint } from "@/features/maps/tiles";
 import { signalWord, SignalBars } from "@/features/recording/LiveParts";
 import { HeartRateCard } from "@/features/recording/HeartRateParts";
@@ -444,7 +445,7 @@ function Preparation({ sport: requested, kind: requestedKind, slotId, variantId,
               {definition.usesGear ? (
                 <DetailRow
                   title={gearLabel(sport)}
-                  value={selectedGear === undefined ? null : `${selectedGear.gear.name} · ${formatKilometers(selectedGear.meters)}`}
+                  value={selectedGear === undefined ? null : `${selectedGear.gear.name} · ${formatKilometers(selectedGear.meters)}${isWorn(selectedGear) ? " · usure atteinte" : ""}`}
                   onPress={() => setSheet({ kind: "gear" })}
                 />
               ) : null}
@@ -502,6 +503,9 @@ function Preparation({ sport: requested, kind: requestedKind, slotId, variantId,
           setSheet({ kind: "none" });
         }}
         onCreate={createGear}
+        onSetWear={(item, wearMeters) => {
+          if (writeGearWear(item, wearMeters)) setGearVersion((version) => version + 1);
+        }}
         onClose={() => setSheet({ kind: "none" })}
       />
       <RouteSheet
