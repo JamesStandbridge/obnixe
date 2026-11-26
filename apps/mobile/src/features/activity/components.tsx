@@ -273,9 +273,14 @@ export function Chips<T extends string>({ label, options, selected, multiple, co
               disabled && styles.disabled,
             ]}
           >
-            <Text variant="label" tone={on ? "primary" : "secondary"} style={on ? styles.chipOn : undefined} numberOfLines={2}>
-              {option.label}
-            </Text>
+            <View>
+              <Text variant="label" style={[styles.chipLabel, styles.chipOn, styles.chipSizer]} aria-hidden>
+                {option.label}
+              </Text>
+              <Text variant="label" tone={on ? "primary" : "secondary"} style={[styles.chipLabel, styles.chipShown, on && styles.chipOn]}>
+                {option.label}
+              </Text>
+            </View>
           </Pressable>
         );
       })}
@@ -356,9 +361,12 @@ const styles = StyleSheet.create({
   grades: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 12 },
   grade: { width: "23.5%", flexGrow: 1, height: 52, borderRadius: radii.control, alignItems: "center", justifyContent: "center" },
   gradeLabel: { fontFamily: fonts.figure700, fontSize: 20, lineHeight: 22 },
-  chips: { flexDirection: "row", gap: 6 },
-  chip: { flex: 1, minHeight: 48, paddingVertical: 6, paddingHorizontal: 6, borderRadius: radii.control, alignItems: "center", justifyContent: "center" },
+  chips: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  chip: { flexGrow: 1, minHeight: 48, paddingVertical: 6, paddingHorizontal: 12, borderRadius: radii.control, alignItems: "center", justifyContent: "center" },
   chipCompact: { minHeight: 44 },
+  chipLabel: { textAlign: "center" },
+  chipSizer: { opacity: 0 },
+  chipShown: { position: "absolute", left: 0, right: 0 },
   chipOn: { fontFamily: fonts.text700 },
   disabled: { opacity: 0.4 },
   strip: { marginHorizontal: -layout.gutter, flexGrow: 0 },
