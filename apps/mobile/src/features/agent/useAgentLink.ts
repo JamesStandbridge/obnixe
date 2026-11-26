@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState } from "react-native";
+import { addDatabaseChangeListener } from "expo-sqlite";
 import { closeDanglingConnections } from "@obnixe/core";
 import type { PairingInvite } from "@obnixe/core";
 import type { ConnectionEndReason } from "@obnixe/schema";
@@ -48,8 +49,12 @@ export function useAgentLink(host: string | null, onNotice: (notice: LinkNotice)
       if (state === "background") link.suspend();
       if (state === "active") link.resume();
     });
+    const permissions = addDatabaseChangeListener(({ tableName }) => {
+      if (tableName === "settings") link.announceTools();
+    });
     return () => {
       subscription.remove();
+      permissions.remove();
       link.dispose("screen_closed");
     };
   }, []);

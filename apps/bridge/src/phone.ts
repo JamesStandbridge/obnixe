@@ -52,6 +52,7 @@ import type {
   RandomBytes,
   RejectionReason,
   SessionKeys,
+  SessionOpenResult,
   ToolOutcome,
 } from "@obnixe/core/agent/wire";
 import type { PhoneHosts } from "./listen.ts";
@@ -191,6 +192,8 @@ export interface EndpointStatus {
   readonly client: string;
 }
 
+export type ToolsListener = (tools: readonly string[]) => void;
+
 export const notConnectedMessage =
   "The Obnixe phone is not connected. Ask the user to open the Agent screen of the Obnixe app (Aujourd'hui, Connecter un agent): a phone paired before reconnects by itself, otherwise ask them to run `obnixe-bridge pair` in a terminal and scan the QR code it shows with Scanner le QR code, then retry.";
 
@@ -204,6 +207,7 @@ export class PhoneEndpoint {
   private readonly bridgeId: string;
   private readonly pendings = new Map<PeerSocket, Pending>();
   private readonly listeners = new Map<string, Server>();
+  private readonly toolsListeners = new Set<ToolsListener>();
   private port = 0;
   private announced: readonly string[] = [];
   private invitation: Invitation | null = null;
@@ -328,6 +332,15 @@ export class PhoneEndpoint {
 
   markUnavailable(reason: string): void {
     this.unavailable = reason;
+  }
+
+  /** Calls `listener` with the tools the phone exposes each time it opens a session or announces a change of permissions. */
+  watchTools(listener: ToolsListener): void {
+    this.toolsListeners.add(listener);
+  }
+
+  private exposeTools(tools: readonly string[]): void {
+    for (const listener of this.toolsListeners) listener(tools);
   }
 
   setClient(client: string): void {
@@ -706,10 +719,20 @@ export class PhoneEndpoint {
     if (frame.type !== "sealed") throw new ProtocolError(`Unexpected ${frame.type} in session`);
     const message = parsePhoneMessage(active.channel.open(frame));
     if ("method" in message) {
-      this.options.log(`The phone ended the connection (${message.params.reason}).`);
-      this.drop(active, "phone closed the session");
-      active.socket.close(1000, "closed");
-      return;
+      switch (message.method) {
+        case "session.tools":
+          if (active.open) this.exposeTools(message.params.tools);
+          return;
+        case "session.close":
+          this.options.log(`The phone ended the connection (${message.params.reason}).`);
+          this.drop(active, "phone closed the session");
+          active.socket.close(1000, "closed");
+          return;
+        default: {
+          const unreachable: never = message;
+          throw new ProtocolError(`Unhandled phone message ${JSON.stringify(unreachable)}`);
+        }
+      }
     }
     const waiter = active.waiters.get(message.id);
     if (waiter === undefined) return;
@@ -755,8 +778,9 @@ export class PhoneEndpoint {
       socket.close(1000, "refused");
       return { kind: "failed", message: reply.message };
     }
+    let opened: SessionOpenResult;
     try {
-      parseSessionOpenResult(reply.result);
+      opened = parseSessionOpenResult(reply.result);
     } catch (error) {
       if (!(error instanceof ProtocolError)) throw error;
       this.drop(active, "invalid session.open answer");
@@ -764,6 +788,7 @@ export class PhoneEndpoint {
       return { kind: "failed", message: error.message };
     }
     active.open = true;
+    this.exposeTools(opened.tools);
     return { kind: "paired", device: active.device, client: this.client };
   }
 

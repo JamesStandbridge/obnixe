@@ -2,8 +2,10 @@ import { z } from "zod";
 import { efforts, equipments, exerciseCuesMaxLength, exerciseMeasures, loadModes, painLevels, painPhases, sensations, sleepBuckets, sportKeys, zoneKeys } from "@obnixe/schema";
 import type { AgentCallKind, LocalDate, SportKey } from "@obnixe/schema";
 import { daysBetween } from "../dates.ts";
+import { hasPermission } from "./environment.ts";
+import type { AgentPermissions } from "./environment.ts";
 
-export type AgentPermission = "body" | "photos" | "write";
+export type AgentPermission = "body" | "photos" | "write" | "location";
 
 export interface ToolContract {
   readonly name: string;
@@ -139,10 +141,31 @@ export const toolContracts = {
     name: "get_history",
     title: "Training history",
     description:
-      "Return the sessions of a date range (max 366 days), newest first: id (for update_session, update_strength_session and delete_session), sport, status, start time, duration in seconds, catalog values, effort, sensation, enjoyment, notes, program slot, strength exercises with their loadMode and baseGrams and every set (loadGrams as entered, totalLoadGrams the resulting total external load in grams, reps, durationSeconds, rir), itemized entries (e.g. climbing problems) and pain reports.",
+      "Return the sessions of a date range (max 366 days), newest first: id (for update_session, update_strength_session, delete_session, get_activity and get_activity_track), sport, status, start time, duration in seconds, catalog values, effort, sensation, enjoyment, notes, program slot, strength exercises with their loadMode and baseGrams and every set (loadGrams as entered, totalLoadGrams the resulting total external load in grams, reps, durationSeconds, rir), itemized entries (e.g. climbing problems) and pain reports. Activities recorded with the phone's GPS or imported from a watch carry 'recording', null otherwise: source, elapsed and moving seconds, distance, ascent, descent and altitude range in meters, average pace in seconds per km (running, trail and walking) and average and max speed in km/h, cadence in steps per minute, heart rate average and max, estimated energy in kcal with its method, weather hours, laps (trigger and offsets in seconds since the start), best efforts with whether each one was a personal record when set ('current' when still unbeaten, 'former' when beaten since), whether a GPS track is stored and GPS quality. It never contains a position. Splits, lap metrics, grade-adjusted pace and time in heart-rate zones come from get_activity.",
     kind: "read",
     permissions: [],
     input: z.object({ ...range, sport: z.enum(sportKeys).optional().describe("Only this sport.") }).refine(rangeRule.check, rangeRule.params),
+  },
+  get_activity: {
+    name: "get_activity",
+    title: "Recorded activity",
+    description:
+      "Analyse one recorded activity from its stored track, without any position: the 'recording' summary of get_history plus splits (every 1 km on foot, 5 km by bike), laps with their metrics, grade-adjusted pace for running and trail, VAM in meters per hour, time in heart-rate zones and data quality. Each split and lap gives distance and elevation in meters, elapsed and moving seconds, pace in seconds per km or speed in km/h, cadence and heart rate average and max. Heart-rate zones 1 to 5 cover 50-60, 60-70, 70-80, 80-90 and 90-100 % of the maximum heart rate set in the app, or estimated from the birth year (208 - 0.7 x age); they are null without heart rate or without either setting.",
+    kind: "read",
+    permissions: [],
+    input: z.object({ sessionId: z.string().min(1).describe("Id of a session from get_history whose 'recording' has a track.") }),
+  },
+  get_activity_track: {
+    name: "get_activity_track",
+    title: "Activity track",
+    description:
+      "Return the GPS track of one recorded activity, simplified to at most maxPoints points with Largest Triangle Three Buckets on speed and altitude, so peaks, lows and the fastest and slowest moments are kept. The user's privacy zones and hidden track ends are always removed: 'segments' lists the visible stretches in order, a new one starting after each hidden part, and 'masked' tells whether anything was removed. Each point is an array whose values follow 'fields': elapsedSeconds since the start, latitude and longitude in degrees, cumulative distanceMeters, altitudeMeters, paceSecondsPerKm (running, trail and walking) or speedKmh (hiking and cycling), heartRate in beats per minute; null when unknown. Distances and times keep the values of the full track. Requires the user's 'Lire les traces' permission.",
+    kind: "read",
+    permissions: ["location"],
+    input: z.object({
+      sessionId: z.string().min(1).describe("Id of a session from get_history whose 'recording' has a track."),
+      maxPoints: z.int().min(10).max(1000).optional().describe("Most points returned, 1000 by default."),
+    }),
   },
   get_exercise_progress: {
     name: "get_exercise_progress",
@@ -363,7 +386,7 @@ export const toolContracts = {
     name: "update_session",
     title: "Correct a session",
     description:
-      "Correct a completed session of any sport: start time, duration, title, note, effort, sensation, enjoyment and, for sports other than strength, the catalog values and itemized entries. Only the fields you send change; send null to clear title, note, effort, sensation or enjoyment. 'values' replaces all session values and 'items' replaces all entries, so send complete objects (start from get_history). Strength exercises and sets are corrected with update_strength_session. Sessions still open on the phone cannot be edited. The user can undo it from the phone.",
+      "Correct a completed session of any sport: start time, duration, title, note, effort, sensation, enjoyment and, for sports other than strength, the catalog values and itemized entries. Only the fields you send change; send null to clear title, note, effort, sensation or enjoyment. 'values' replaces all session values and 'items' replaces all entries, so send complete objects (start from get_history). On a recorded activity (with 'recording' in get_history) distance, elevation_gain and heart_rate_avg come from the track and must be sent unchanged, and startedAt and durationSeconds cannot change; its other values (such as the kind of outing), title, note, effort, sensation and enjoyment can. Strength exercises and sets are corrected with update_strength_session. Sessions still open on the phone cannot be edited. The user can undo it from the phone.",
     kind: "write",
     permissions: ["write"],
     input: z.object({
@@ -455,4 +478,12 @@ export const destructiveTools: ReadonlySet<ToolName> = new Set<ToolName>(["updat
 
 export function isToolName(name: string): name is ToolName {
   return Object.hasOwn(toolContracts, name);
+}
+
+/** Tools that leave the exposed list while their permission is off, instead of answering with a permission error (`INT-041`). */
+const hiddenWithout: ReadonlySet<AgentPermission> = new Set<AgentPermission>(["location"]);
+
+/** The tools an agent sees with these permissions, in contract order. */
+export function exposedToolNames(permissions: AgentPermissions): readonly ToolName[] {
+  return toolNames.filter((name) => toolContracts[name].permissions.every((permission: AgentPermission) => !hiddenWithout.has(permission) || hasPermission(permissions, permission)));
 }

@@ -128,7 +128,9 @@ const toolOutcomeSchema = z.object({ text: z.string(), isError: z.boolean() });
 
 export type ToolOutcome = z.infer<typeof toolOutcomeSchema>;
 
-const sessionOpenResultSchema = z.object({ connectionId: z.string() });
+const exposedToolsSchema = z.array(z.string()).max(200);
+
+const sessionOpenResultSchema = z.object({ connectionId: z.string(), tools: exposedToolsSchema });
 export type SessionOpenResult = z.infer<typeof sessionOpenResultSchema>;
 
 const bridgeMessageSchema = z.discriminatedUnion("method", [
@@ -146,9 +148,10 @@ const phoneMessageSchema = z.union([
   z.object({ jsonrpc: jsonRpc, id: z.int(), result: z.unknown() }),
   z.object({ jsonrpc: jsonRpc, id: z.int(), error: z.object({ code: z.int(), message: z.string() }) }),
   z.object({ jsonrpc: jsonRpc, method: z.literal("session.close"), params: z.object({ reason: z.enum(connectionEndReasons) }) }),
+  z.object({ jsonrpc: jsonRpc, method: z.literal("session.tools"), params: z.object({ tools: exposedToolsSchema }) }),
 ]);
 
-/** Sealed messages sent by the phone: responses to bridge requests and the closing notice. */
+/** Sealed messages sent by the phone: responses to bridge requests, the closing notice and the tools now exposed. */
 export type PhoneMessage = z.infer<typeof phoneMessageSchema>;
 
 export const rpcErrorCodes = { methodNotFound: -32601, internal: -32603, notOpen: -32000 } as const;

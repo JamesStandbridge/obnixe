@@ -105,6 +105,8 @@ export interface PhoneSessionHandlers {
   readonly onOpen: (peer: ConnectionPeer) => Id;
   readonly onClient: (connectionId: Id, client: string) => void;
   readonly onCall: (connectionId: Id, tool: string, args: Readonly<Record<string, unknown>>) => ToolOutcome;
+  /** Names of the tools the agent may see now, sent when the session opens and by `announceTools`. */
+  readonly exposedTools: () => readonly string[];
   readonly onRejected: (reason: RejectionReason) => void;
   readonly onPaired: (pairing: LearnedPairing) => void;
   readonly onHosts: (hosts: readonly string[]) => void;
@@ -168,6 +170,7 @@ export class PhoneSession {
   private readonly options: PhoneSessionOptions;
   private state: SessionState = { kind: "challenge" };
   private opened: Id | null = null;
+  private announced: readonly string[] | null = null;
   private learned: DerivedPairing | null = null;
   private unacknowledged: PhoneRevocation | null = null;
   private proofSent = false;
@@ -257,6 +260,17 @@ export class PhoneSession {
     this.state = { kind: "closed" };
     this.options.socket.close();
     this.options.handlers.onStatus("closed");
+  }
+
+  /** Tells the bridge which tools are exposed after a permission changed, so its agent sees the new list (`INT-041`). */
+  announceTools(): void {
+    const state = this.state;
+    const previous = this.announced;
+    if (state.kind !== "open" || previous === null) return;
+    const tools = this.options.handlers.exposedTools();
+    if (tools.length === previous.length && tools.every((tool, index) => tool === previous[index])) return;
+    this.announced = tools;
+    this.reply(state, { jsonrpc: "2.0", method: "session.tools", params: { tools: [...tools] } });
   }
 
   markClosed(): void {
@@ -391,7 +405,8 @@ export class PhoneSession {
         this.learned = null;
         if (learned !== null) this.options.handlers.onPaired({ ...learned, bridgeName: message.params.host, hosts: message.params.hosts });
         else this.options.handlers.onHosts(message.params.hosts);
-        this.reply(state, { jsonrpc: "2.0", id: message.id, result: { connectionId: this.opened } });
+        this.announced = this.options.handlers.exposedTools();
+        this.reply(state, { jsonrpc: "2.0", id: message.id, result: { connectionId: this.opened, tools: [...this.announced] } });
         this.options.handlers.onStatus("open");
         return;
       }

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { heartbeatTimeoutMs, pairingCodeTtlMs, parsePhonePairing, parsePhoneRevocation } from "@obnixe/core";
+import { exposedToolNames, heartbeatTimeoutMs, pairingCodeTtlMs, parsePhonePairing, parsePhoneRevocation, readPermissions } from "@obnixe/core";
 import { generateRelayRoom, pairingRelayRoom, toBase64 } from "@obnixe/core";
 import type { Frame, PairingInvite, PhonePairing } from "@obnixe/core";
 import { agentConnection } from "@obnixe/schema";
@@ -129,7 +129,7 @@ describe("code pairing", () => {
     const [connection] = connections();
     expect(connection).toMatchObject({ client: "Cursor", host: "MacBook Pro", endedAt: null });
     expect(recorded.link.view).toMatchObject({ kind: "connected", connectionId: connection?.id });
-    expect(bridge.latest.messages).toEqual([{ jsonrpc: "2.0", id: 1, result: { connectionId: connection?.id } }]);
+    expect(bridge.latest.messages).toEqual([{ jsonrpc: "2.0", id: 1, result: { connectionId: connection?.id, tools: exposedToolNames(readPermissions(db())) } }]);
   });
 
   it("rotates the code when it expires", async () => {

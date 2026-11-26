@@ -58,6 +58,7 @@ async function connectPhone(identity: RemoteIdentity, mode: PhoneMode = "answer"
     vault: { key: new Uint8Array(32).fill(9), loadGrants: () => parseRemoteGrants(stored), saveGrants: (grants) => (stored = JSON.stringify(grants)) },
     randomBytes,
     timeZone: () => "Europe/Paris",
+    readTrack: () => null,
     listener: { onAuthorizations: (next) => (pending = next), onGrants: () => undefined },
   });
   server.setBaseUrl(remotePhoneOrigin(identity.id));

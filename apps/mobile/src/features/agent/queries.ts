@@ -33,24 +33,31 @@ export interface AgentSettings {
   readonly canReadBody: boolean;
   readonly canWrite: boolean;
   readonly canReadPhotos: boolean;
+  readonly canReadLocation: boolean;
   readonly bridgeHost: string | null;
 }
 
-const noSettings: AgentSettings = { canReadBody: false, canWrite: false, canReadPhotos: false, bridgeHost: null };
+const noSettings: AgentSettings = { canReadBody: false, canWrite: false, canReadPhotos: false, canReadLocation: false, bridgeHost: null };
 
 export function useAgentSettings(): AgentSettings {
   return useLiveRead(
     ["settings"],
     () =>
       db()
-        .select({ canReadBody: settings.agentCanReadBody, canWrite: settings.agentCanWrite, canReadPhotos: settings.agentCanReadPhotos, bridgeHost: settings.bridgeHost })
+        .select({
+          canReadBody: settings.agentCanReadBody,
+          canWrite: settings.agentCanWrite,
+          canReadPhotos: settings.agentCanReadPhotos,
+          canReadLocation: settings.agentCanReadLocation,
+          bridgeHost: settings.bridgeHost,
+        })
         .from(settings)
         .get() ?? noSettings,
     [],
   );
 }
 
-export type PermissionKey = "agentCanReadBody" | "agentCanWrite" | "agentCanReadPhotos";
+export type PermissionKey = "agentCanReadBody" | "agentCanWrite" | "agentCanReadPhotos" | "agentCanReadLocation";
 
 export function setPermission(key: PermissionKey, value: boolean): void {
   const patch: Partial<Record<PermissionKey, boolean>> = { [key]: value };

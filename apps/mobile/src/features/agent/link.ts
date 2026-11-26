@@ -5,11 +5,13 @@ import {
   ProtocolError,
   closeConnection,
   defaultRelayUrl,
+  exposedToolNames,
   generatePairingCode,
   openConnection,
   pairingCodeTtlMs,
   pairingRelayRoom,
   phoneRevocation,
+  readPermissions,
   renameConnectionClient,
   runAgentTool,
 } from "@obnixe/core";
@@ -21,6 +23,7 @@ import { dialRelay } from "@/features/agent/relay";
 import type { RelayDial } from "@/features/agent/relay";
 import { openDirectSocket } from "@/features/agent/socket";
 import type { LinkSocket } from "@/features/agent/socket";
+import { readTrackFile } from "@/features/agent/trackFiles";
 import {
   deleteForgottenNotice,
   deletePairing,
@@ -212,6 +215,11 @@ export class AgentLink {
     this.hangUp();
     this.setView({ ...this.current, network: this.candidates().length === 0 ? "idle" : "dialing", host });
     this.dial();
+  }
+
+  /** Tells the connected bridge the tools exposed after a change of permissions. */
+  announceTools(): void {
+    this.session?.announceTools();
   }
 
   end(reason: ConnectionEndReason): void {
@@ -440,7 +448,8 @@ export class AgentLink {
         onStatus: (status) => this.onStatus(session, status),
         onOpen: (peer) => openConnection(db(), environment, peer),
         onClient: (connectionId, client) => renameConnectionClient(db(), connectionId, client),
-        onCall: (connectionId, tool, args) => runAgentTool(db(), environment, { connectionId, tool, arguments: args, timeZone: deviceTimeZone() }),
+        onCall: (connectionId, tool, args) => runAgentTool(db(), environment, { connectionId, tool, arguments: args, timeZone: deviceTimeZone(), readTrack: readTrackFile }),
+        exposedTools: () => exposedToolNames(readPermissions(db())),
         onRejected: (reason) => this.onRejected(reason),
         onPaired: (pairing) => this.onPaired(pairing),
         onHosts: (hosts) => this.onHosts(hosts),

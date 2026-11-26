@@ -2,8 +2,10 @@ import { z } from "zod";
 import type { EpochMs } from "@obnixe/schema";
 import type { Environment, ObnixeDatabase } from "../../database.ts";
 import { clientLabel } from "../clients.ts";
-import { closeConnection, isConnectionOpen, openConnection } from "../connection.ts";
+import { closeConnection, isConnectionOpen, openConnection, readPermissions } from "../connection.ts";
+import { exposedToolNames } from "../contract.ts";
 import { runAgentTool } from "../dispatch.ts";
+import type { TrackReader } from "../environment.ts";
 import type { RandomBytes } from "../protocol.ts";
 import { emptyResponse, htmlResponse, jsonResponse, parseForm, parseTarget } from "./http.ts";
 import type { RemoteRequest, RemoteResponse } from "./http.ts";
@@ -74,6 +76,7 @@ export interface RemoteServerOptions {
   readonly vault: RemoteVault;
   readonly randomBytes: RandomBytes;
   readonly timeZone: () => string;
+  readonly readTrack: TrackReader;
   readonly listener: RemoteServerListener;
 }
 
@@ -383,7 +386,10 @@ export class RemoteServer {
     if (grant === undefined || grant.accessExpiresAt <= now || !isConnectionOpen(db, grant.connectionId)) {
       return api(jsonResponse(401, { error: "invalid_token" }, { "www-authenticate": `${challenge}, error="invalid_token"` }));
     }
-    const answer = answerMcpBody(request.body, (tool, args) => runAgentTool(db, env, { connectionId: grant.connectionId, tool, arguments: args, timeZone: this.options.timeZone() }));
+    const answer = answerMcpBody(request.body, {
+      runTool: (tool, args) => runAgentTool(db, env, { connectionId: grant.connectionId, tool, arguments: args, timeZone: this.options.timeZone(), readTrack: this.options.readTrack }),
+      exposedTools: () => exposedToolNames(readPermissions(db)),
+    });
     switch (answer.kind) {
       case "accepted":
         return api(emptyResponse(202));
