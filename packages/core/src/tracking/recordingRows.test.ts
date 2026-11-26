@@ -83,7 +83,7 @@ describe("recording rows", () => {
   });
 
   it("refuses a live recording on a sport or an option without a profile (DAT-002)", () => {
-    const swim = outing("swim");
+    const swim = outing("swim", { water: "pool" });
     make.write([{ kind: "insert", table: "session", row: swim }]);
     expect(() => make.write([{ kind: "insert", table: "recording", row: newRecording(swim.id) }])).toThrow(UnrecordableSportError);
     const indoor = outing("bike", { kind: "indoor" });
@@ -92,7 +92,7 @@ describe("recording rows", () => {
   });
 
   it("lets an import attach a track to a sport without a profile", () => {
-    const swim = outing("swim", { water: "open_water" });
+    const swim = outing("swim", { water: "pool" });
     make.write([
       { kind: "insert", table: "session", row: swim },
       { kind: "insert", table: "recording", row: newRecording(swim.id, { source: "import", importFormat: "fit", externalId: "garmin:1234", cadenceSource: "file", heartRateSource: "file", elevationSource: "file" }) },

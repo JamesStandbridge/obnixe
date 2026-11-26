@@ -90,6 +90,11 @@ describe("sports", () => {
       ["bike", false],
       ["trail", false],
       ["walk", false],
+      ["ski_touring", false],
+      ["nordic_ski", false],
+      ["alpine_ski", false],
+      ["paddle", false],
+      ["inline_skate", false],
       ["yoga", false],
     ]);
   });

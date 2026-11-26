@@ -1,5 +1,6 @@
-import type { WorkoutEstimate, WorkoutStepRun } from "@obnixe/core";
+import type { ResolvedProfile, WorkoutEstimate, WorkoutStepRun } from "@obnixe/core";
 import type { PaceRange, WorkoutDuration, WorkoutIntent, WorkoutNode, WorkoutPlan, WorkoutStep, WorkoutTarget } from "@obnixe/schema";
+import { paceUnit } from "@/features/recording/metrics";
 import { formatClock, formatLongClock, formatTargetDuration } from "@/format/durations";
 import { formatNumber } from "@/format/numbers";
 
@@ -22,10 +23,18 @@ export function stepTitle(step: Pick<WorkoutStepRun, "intent" | "label">): strin
   return step.label === null ? intentLabels[step.intent] : `${intentLabels[step.intent]} · ${step.label}`;
 }
 
-export function paceRangeText(range: PaceRange): string {
+type PaceUnit = Pick<ResolvedProfile, "pacePerMeters">;
+
+/** Guided workouts set their paces per km whatever the sport. */
+const workoutPaceUnit: PaceUnit = { pacePerMeters: 1000 };
+
+/** A span of seconds per km read in the profile's pace unit, `/100 m` for an open-water swim (`SPT-009`). */
+export function paceRangeText(range: PaceRange, unit: PaceUnit): string {
   switch (range.kind) {
-    case "pace":
-      return `${formatClock(range.fastestSecondsPerKm)} – ${formatClock(range.slowestSecondsPerKm)} /km`;
+    case "pace": {
+      const scale = unit.pacePerMeters / 1000;
+      return `${formatClock(Math.round(range.fastestSecondsPerKm * scale))} – ${formatClock(Math.round(range.slowestSecondsPerKm * scale))} ${paceUnit(unit)}`;
+    }
     case "speed":
       return `${formatNumber(range.minMmS * 0.0036)} – ${formatNumber(range.maxMmS * 0.0036)} km/h`;
     default: {
@@ -59,7 +68,7 @@ export function workoutTargetText(target: StepTarget): string {
   switch (target.kind) {
     case "pace":
     case "speed":
-      return paceRangeText(target);
+      return paceRangeText(target, workoutPaceUnit);
     case "heart_rate_zone":
       return `Z${target.zone}`;
     case "heart_rate":

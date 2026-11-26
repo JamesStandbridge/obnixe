@@ -77,8 +77,13 @@ export function emphasisOf(sport: SportKey | null): MapEmphasis {
     case "strength":
     case "swim":
     case "yoga":
+    case "ski_touring":
+    case "nordic_ski":
+    case "alpine_ski":
+    case "paddle":
       return "foot";
     case "bike":
+    case "inline_skate":
       return "bike";
     default: {
       const unreachable: never = sport;

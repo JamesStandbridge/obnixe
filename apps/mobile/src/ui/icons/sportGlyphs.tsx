@@ -114,6 +114,18 @@ export const sportGlyphs = {
       </>
     ),
   },
+  skate: {
+    viewBox: "0 0 24 24",
+    render: (color: string, mark: string) => (
+      <>
+      <Circle cx="13" cy="3.5" r="2.5" fill={color} />
+      <Path d="M12.5 7l-1.5 5.5M8 10l3.5-2.5 4 2M6 15.5l5-3 2.5 3.5M5 17.5h7.5" fill="none" stroke={color} strokeWidth={2} strokeLinecap="square" strokeLinejoin="round" />
+      <Circle cx="6" cy="20.5" r="1.5" fill={color} />
+      <Circle cx="11" cy="20.5" r="1.5" fill={color} />
+      <Rect x="16" y="14" width="4" height="4" fill={mark} />
+      </>
+    ),
+  },
   swim: {
     viewBox: "0 0 24 24",
     render: (color: string, mark: string) => (

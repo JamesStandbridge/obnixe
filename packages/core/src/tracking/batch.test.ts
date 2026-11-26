@@ -100,7 +100,7 @@ describe("processTrack (GPS-001, GPS-002)", () => {
     expect(processed.bestEfforts.find((effort) => effort.effort === "run:distance:5000")?.elapsedMs).toBeLessThan(1_520_000);
     expect(processed.details.gradeAdjustedDistanceMm).not.toBeNull();
     const energy = estimateEnergy(
-      { sport: "run", values: {}, startedAt: trackOf([]).startedAt, elapsed: processed.elapsed, moving: processed.moving, distanceMm: processed.summary.distanceMm, path: processed.series, heartRate: null },
+      { sport: "run", values: {}, startedAt: trackOf([]).startedAt, elapsed: processed.elapsed, moving: processed.moving, distanceMm: processed.summary.distanceMm, path: processed.series, heartRate: null, descents: null },
       { massGrams: 70_000, birthYear: 1990, sex: "male" },
     );
     expect(energy?.method).toBe("mechanical");
@@ -143,9 +143,10 @@ describe("session values (SPT-003)", () => {
       values: { kind: "easy", distance: 10_001, elevation_gain: 120, heart_rate_avg: 151 },
       pausedSeconds: 600,
     });
-    expect(sessionValuesFromRecording({ elevation_gain: 3, heart_rate_avg: 99 }, { ...recording, ascentMm: null, heartRateAvg: null }, { metrics: ["distance"] })).toEqual({
+    expect(sessionValuesFromRecording({ elevation_gain: 3, heart_rate_avg: 99 }, { ...recording, ascentMm: null, heartRateAvg: null }, { metrics: ["distance"], recordedValues: {} })).toEqual({
       values: { distance: 10_001 },
       pausedSeconds: 600,
     });
+    expect(sessionValuesFromRecording({ water: "pool" }, recording, profileOf({ sport: "swim" })).values).toEqual({ water: "open_water", distance: 10_001, heart_rate_avg: 151 });
   });
 });

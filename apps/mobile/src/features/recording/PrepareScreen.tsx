@@ -474,7 +474,7 @@ function Preparation({ sport: requested, kind: requestedKind, slotId, variantId,
         ) : (
           <>
             <SignalCard signal={signal} />
-            <HeartRateCard sport={sport} device={settings?.heartRateDevice ?? null} />
+            {profile.metrics.includes("heart_rate") ? <HeartRateCard sport={sport} device={settings?.heartRateDevice ?? null} /> : null}
             {firstRecording ? <BatteryHint /> : null}
 
             <View style={styles.options}>

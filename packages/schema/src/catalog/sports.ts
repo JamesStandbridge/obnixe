@@ -3,7 +3,20 @@ import { valuesSchema } from "../fields.ts";
 import type { ChoiceOption, FieldDefinition, FieldValues, IndicatorDefinition } from "../fields.ts";
 import type { z } from "zod";
 import type { GradeScaleKey } from "./grades.ts";
-import { bikeProfile, hikeProfile, mountainBikeMotion, runProfile, trailProfile, walkProfile } from "./recording.ts";
+import {
+  alpineSkiProfile,
+  bikeProfile,
+  hikeProfile,
+  inlineSkateProfile,
+  mountainBikeMotion,
+  nordicSkiProfile,
+  openWaterSwimProfile,
+  paddleProfile,
+  runProfile,
+  skiTouringProfile,
+  trailProfile,
+  walkProfile,
+} from "./recording.ts";
 import type { RecordingOverrides, RecordingProfile } from "./recording.ts";
 import type { ZoneKey } from "./zones.ts";
 
@@ -145,8 +158,8 @@ export const sports = {
     painZones: ["shoulder_right", "shoulder_left", "neck"],
     usesGear: false,
     gradeScaleBy: null,
-    recording: null,
-    recordingOverrides: null,
+    recording: openWaterSwimProfile,
+    recordingOverrides: { field: "water", byOption: { pool: null } },
   },
   bike: {
     label: "Vélo",
@@ -168,6 +181,85 @@ export const sports = {
     gradeScaleBy: null,
     recording: bikeProfile,
     recordingOverrides: { field: "kind", byOption: { indoor: null, mtb: { motion: mountainBikeMotion } } },
+  },
+  ski_touring: {
+    label: "Ski de rando",
+    icon: "alpine",
+    archetype: "continuous",
+    sessionFields: [
+      kind("Type", [{ key: "touring", label: "Ski de randonnée" }, { key: "splitboard", label: "Splitboard" }, { key: "race", label: "Ski-alpinisme course" }]),
+      distance,
+      elevationGain,
+      heartRate,
+    ],
+    itemLabel: null,
+    itemFields: [],
+    indicators: [speed],
+    painZones: ["knee_right", "knee_left", "hip_right", "hip_left", "lower_back"],
+    usesGear: true,
+    gradeScaleBy: null,
+    recording: skiTouringProfile,
+    recordingOverrides: null,
+  },
+  nordic_ski: {
+    label: "Ski de fond",
+    icon: "glide",
+    archetype: "continuous",
+    sessionFields: [kind("Technique", [{ key: "classic", label: "Classique" }, { key: "skate", label: "Skating" }]), distance, elevationGain, heartRate],
+    itemLabel: null,
+    itemFields: [],
+    indicators: [pace("Allure", 1000)],
+    painZones: ["shoulder_right", "shoulder_left", "lower_back", "hip_right", "hip_left", "knee_right", "knee_left"],
+    usesGear: true,
+    gradeScaleBy: null,
+    recording: nordicSkiProfile,
+    recordingOverrides: null,
+  },
+  alpine_ski: {
+    label: "Ski alpin",
+    icon: "ski",
+    archetype: "continuous",
+    sessionFields: [kind("Glisse", [{ key: "ski", label: "Ski" }, { key: "snowboard", label: "Snowboard" }]), distance, elevationGain, heartRate],
+    itemLabel: null,
+    itemFields: [],
+    indicators: [speed],
+    painZones: ["knee_right", "knee_left", "lower_back", "wrist_right", "wrist_left"],
+    usesGear: true,
+    gradeScaleBy: null,
+    recording: alpineSkiProfile,
+    recordingOverrides: null,
+  },
+  paddle: {
+    label: "Pagaie",
+    icon: "paddle",
+    archetype: "continuous",
+    sessionFields: [
+      kind("Embarcation", [{ key: "kayak", label: "Kayak" }, { key: "canoe", label: "Canoë" }, { key: "sup", label: "Stand up paddle" }, { key: "rowing", label: "Aviron" }]),
+      distance,
+      heartRate,
+    ],
+    itemLabel: null,
+    itemFields: [],
+    indicators: [speed],
+    painZones: ["shoulder_right", "shoulder_left", "elbow_right", "elbow_left", "wrist_right", "wrist_left", "lower_back"],
+    usesGear: true,
+    gradeScaleBy: null,
+    recording: paddleProfile,
+    recordingOverrides: null,
+  },
+  inline_skate: {
+    label: "Roller",
+    icon: "skate",
+    archetype: "continuous",
+    sessionFields: [kind("Type", [{ key: "fitness", label: "Randonnée" }, { key: "speed", label: "Vitesse" }]), distance, elevationGain, heartRate],
+    itemLabel: null,
+    itemFields: [],
+    indicators: [speed],
+    painZones: ["knee_right", "knee_left", "ankle_right", "ankle_left", "hip_right", "hip_left", "lower_back"],
+    usesGear: true,
+    gradeScaleBy: null,
+    recording: inlineSkateProfile,
+    recordingOverrides: null,
   },
   climb: {
     label: "Escalade",
@@ -212,7 +304,7 @@ export const sports = {
 
 export type SportKey = keyof typeof sports;
 
-export const catalogVersion = 2;
+export const catalogVersion = 3;
 
 export function sessionValuesSchema(sport: SportDefinition): z.ZodType<FieldValues> {
   return valuesSchema(sport.sessionFields);

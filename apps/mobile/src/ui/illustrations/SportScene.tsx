@@ -168,6 +168,102 @@ const arts: Readonly<Record<SportKey, SportArt>> = {
       </G>
     ),
   },
+  ski_touring: {
+    streaks: false,
+    back: (tones) => (
+      <G>
+        <Polygon points="0,164 52,84 90,128 140,50 200,150 200,200 0,200" fill={wash(tones.main, 0.16)} />
+        <Polygon points="140,50 160,80 146,76 134,90 122,78" fill={wash(tones.ink, 0.5)} />
+        <Polygon points="0,190 200,140 200,200 0,200" fill={wash(tones.main, 0.12)} />
+      </G>
+    ),
+    rider: (tones) => (
+      <G>
+        <Polygon points={segment({ x: 136, y: 96 }, { x: 150, y: 166 }, 3.5)} fill={tones.ink} />
+        <Polygon points={segment({ x: 88, y: 100 }, { x: 76, y: 170 }, 3.5)} fill={tones.ink} />
+        <Polygon points={segment({ x: 98, y: 62 }, { x: 90, y: 98 }, 26, 22)} fill={tones.accent} />
+        <Polygon points={segment({ x: 104, y: 168 }, { x: 170, y: 152 }, 4)} fill={tones.ink} />
+        <Polygon points={segment({ x: 52, y: 172 }, { x: 118, y: 156 }, 4)} fill={tones.deep} />
+        <Figure pose={poses.hike} colors={tones} />
+      </G>
+    ),
+  },
+  nordic_ski: {
+    streaks: true,
+    back: (tones) => (
+      <G>
+        {slab(tones)}
+        <Polygon points="0,170 200,166 200,200 0,200" fill={wash(tones.main, 0.14)} />
+      </G>
+    ),
+    rider: (tones) => (
+      <G>
+        <Polygon points={segment({ x: 148, y: 92 }, { x: 160, y: 166 }, 3.5)} fill={tones.ink} />
+        <Polygon points={segment({ x: 72, y: 98 }, { x: 44, y: 160 }, 3.5)} fill={tones.ink} />
+        <Polygon points={segment({ x: 104, y: 166 }, { x: 180, y: 166 }, 4)} fill={tones.ink} />
+        <Polygon points={segment({ x: 34, y: 163 }, { x: 108, y: 163 }, 4)} fill={tones.deep} />
+        <Figure pose={poses.glide} colors={tones} />
+      </G>
+    ),
+  },
+  alpine_ski: {
+    streaks: true,
+    back: (tones) => (
+      <G>
+        <Polygon points="0,118 200,176 200,200 0,200" fill={wash(tones.main, 0.16)} />
+        <Polygon points="26,30 176,14 186,120 36,142" fill={wash(tones.main, 0.1)} />
+      </G>
+    ),
+    rider: (tones) => (
+      <G>
+        <Polygon points={segment({ x: 148, y: 102 }, { x: 164, y: 150 }, 3.5)} fill={tones.ink} />
+        <Polygon points={segment({ x: 84, y: 154 }, { x: 160, y: 162 }, 4)} fill={tones.ink} />
+        <Polygon points={segment({ x: 70, y: 158 }, { x: 146, y: 166 }, 4)} fill={tones.deep} />
+        <Figure pose={poses.ski} colors={tones} />
+      </G>
+    ),
+  },
+  paddle: {
+    streaks: true,
+    back: (tones) => <G>{slab(tones)}</G>,
+    rider: (tones) => (
+      <G>
+        <Polygon points={segment({ x: 46, y: 70 }, { x: 160, y: 92 }, 4)} fill={tones.ink} />
+        <Polygon points={segment({ x: 30, y: 66 }, { x: 50, y: 70 }, 12, 8)} fill={tones.accent} />
+        <Polygon points={segment({ x: 156, y: 91 }, { x: 176, y: 95 }, 8, 12)} fill={tones.accent} />
+        <Figure pose={poses.paddle} colors={tones} />
+      </G>
+    ),
+    front: (tones) => (
+      <G>
+        <Polygon points="14,116 186,116 164,136 36,136" fill={tones.deep} />
+        <Path d="M0 140 Q 25 130 50 140 T 100 140 T 150 140 T 200 140 V 200 H 0 Z" fill={wash(tones.main, 0.22)} />
+        <Path d="M110 156 Q 130 148 150 156 T 190 156" stroke={tones.accent} strokeWidth={3} fill="none" strokeLinecap="round" />
+      </G>
+    ),
+  },
+  inline_skate: {
+    streaks: true,
+    back: (tones) => (
+      <G>
+        {slab(tones)}
+        {shadow(tones, 100, 62)}
+      </G>
+    ),
+    rider: (tones) => (
+      <G>
+        <Polygon points={segment({ x: 122, y: 166 }, { x: 144, y: 166 }, 4)} fill={tones.ink} />
+        <Circle cx={125} cy={171} r={3.5} fill={tones.ink} />
+        <Circle cx={133} cy={171} r={3.5} fill={tones.ink} />
+        <Circle cx={141} cy={171} r={3.5} fill={tones.ink} />
+        <Polygon points={segment({ x: 58, y: 158 }, { x: 78, y: 164 }, 4)} fill={tones.deep} />
+        <Circle cx={61} cy={164} r={3.5} fill={tones.deep} />
+        <Circle cx={68} cy={166} r={3.5} fill={tones.deep} />
+        <Circle cx={75} cy={168} r={3.5} fill={tones.deep} />
+        <Figure pose={poses.glide} colors={tones} />
+      </G>
+    ),
+  },
   yoga: {
     streaks: false,
     back: (tones) => (

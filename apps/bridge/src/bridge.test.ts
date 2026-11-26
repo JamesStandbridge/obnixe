@@ -678,7 +678,7 @@ describe("relayed tool calls", () => {
 
     const sports = await client.callTool({ name: "list_sports", arguments: {} });
     expect(sports.isError).toBe(false);
-    expect(JSON.parse(textOf(sports)).catalogVersion).toBe(2);
+    expect(JSON.parse(textOf(sports)).catalogVersion).toBe(3);
 
     const activity = { sport: "run", startedAt: "2026-10-12T18:00:00+02:00", durationSeconds: 2700, values: { distance: 9200, kind: "intervals" } };
     const denied = await client.callTool({ name: "log_activity", arguments: activity });

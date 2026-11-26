@@ -91,16 +91,53 @@ export const metTable = {
   swimBreaststroke: { code: "18265", met: 5.3, activity: "Swimming breaststroke, recreational" },
   swimDrills: { code: "18292", met: 5.8, activity: "Swimming, crawl, slow speed, 30-45 yards/minute, moderate effort" },
   swimOpenWater: { code: "18300", met: 6.0, activity: "Swimming, lake, ocean, river (Taylor Codes 280, 295)" },
+  skiTouring: { code: "19090", met: 9.0, activity: "Skiing, cross country, 4.0-4.9 mph, moderate speed and effort, general" },
+  skiMountaineering: { code: "19130", met: 15.5, activity: "Skiing, cross country, hard snow, uphill, maximum, snow mountaineering" },
+  nordicSkiSlow: { code: "19080", met: 6.8, activity: "Skiing, cross country, 2.5 mph, slow or light effort, ski walking" },
+  nordicSkiModerate: { code: "19090", met: 9.0, activity: "Skiing, cross country, 4.0-4.9 mph, moderate speed and effort, general" },
+  nordicSkiBrisk: { code: "19100", met: 12.5, activity: "Skiing, cross country, 5.0-7.9 mph, brisk speed, vigorous effort" },
+  nordicSkiRacing: { code: "19110", met: 15.0, activity: "Skiing, cross country, >8.0 mph, elite skier, racing" },
+  nordicSkiSkating: { code: "19135", met: 13.3, activity: "Skiing, cross-country, skating" },
+  alpineSki: { code: "19160", met: 5.3, activity: "Skiing, downhill, alpine or snowboarding, moderate effort, general, active time only" },
+  kayak: { code: "18100", met: 5.0, activity: "Kayaking, moderate effort" },
+  canoe: { code: "18070", met: 3.5, activity: "Canoeing, rowing, for pleasure, general" },
+  standUpPaddle: { code: "18365", met: 6.0, activity: "Paddle boarding, standing" },
+  rowing: { code: "18050", met: 5.8, activity: "Canoeing, rowing, 4.0-5.9 mph, moderate effort" },
+  inlineRecreational: { code: "15591", met: 7.5, activity: "Rollerblading, in-line skating, 14.4 km/h (9.0 mph), recreational pace" },
+  inlineModerate: { code: "15592", met: 9.8, activity: "Rollerblading, in-line skating, 17.7 km/h (11.0 mph), moderate pace, exercise training" },
+  inlineFast: { code: "15593", met: 12.3, activity: "Rollerblading, in-line skating, 21.0 to 21.7 km/h (13.0 to 13.6 mph), fast pace, exercise training" },
+  inlineMaximal: { code: "15594", met: 14.0, activity: "Rollerblading, in-line skating, 24.0 km/h (15.0 mph), maximal effort" },
 } as const satisfies Record<string, MetEntry>;
 
+interface SpeedBand {
+  readonly minSpeed: number;
+  readonly entry: MetEntry;
+}
+
 /** Outdoor cycling by mean moving speed, lower bounds in m/s, fastest first. */
-const bikeSpeedBands: readonly { readonly minSpeed: number; readonly entry: MetEntry }[] = [
+const bikeSpeedBands: readonly SpeedBand[] = [
   { minSpeed: 20 * metersPerSecondPerMph, entry: metTable.bikeOver20Mph },
   { minSpeed: 16 * metersPerSecondPerMph, entry: metTable.bike16To20Mph },
   { minSpeed: 14 * metersPerSecondPerMph, entry: metTable.bike14To16Mph },
   { minSpeed: 12 * metersPerSecondPerMph, entry: metTable.bike12To14Mph },
   { minSpeed: 10 * metersPerSecondPerMph, entry: metTable.bike10To12Mph },
   { minSpeed: 0, entry: metTable.bikeUnder10Mph },
+];
+
+/** Classic cross-country skiing by mean moving speed, lower bounds in m/s, fastest first. */
+const nordicSpeedBands: readonly SpeedBand[] = [
+  { minSpeed: 8 * metersPerSecondPerMph, entry: metTable.nordicSkiRacing },
+  { minSpeed: 5 * metersPerSecondPerMph, entry: metTable.nordicSkiBrisk },
+  { minSpeed: 4 * metersPerSecondPerMph, entry: metTable.nordicSkiModerate },
+  { minSpeed: 0, entry: metTable.nordicSkiSlow },
+];
+
+/** In-line skating by mean moving speed, at the speeds the Compendium names, fastest first. */
+const inlineSpeedBands: readonly SpeedBand[] = [
+  { minSpeed: 24 / 3.6, entry: metTable.inlineMaximal },
+  { minSpeed: 21 / 3.6, entry: metTable.inlineFast },
+  { minSpeed: 17.7 / 3.6, entry: metTable.inlineModerate },
+  { minSpeed: 0, entry: metTable.inlineRecreational },
 ];
 
 function choice(values: FieldValues, key: string): string | null {
@@ -117,6 +154,30 @@ function bikeEntry(values: FieldValues, movingSpeed: number | null): MetEntry {
   if (kind === "gravel") return metTable.bikeDirtRoad;
   if (kind === "commute") return metTable.bikeCommute;
   return metTable.bikeGeneral;
+}
+
+function nordicSkiEntry(values: FieldValues, movingSpeed: number | null): MetEntry {
+  if (choice(values, "kind") === "skate") return metTable.nordicSkiSkating;
+  if (movingSpeed === null) return metTable.nordicSkiModerate;
+  return nordicSpeedBands.find((band) => movingSpeed >= band.minSpeed)?.entry ?? metTable.nordicSkiSlow;
+}
+
+function inlineSkateEntry(values: FieldValues, movingSpeed: number | null): MetEntry {
+  if (movingSpeed !== null) return inlineSpeedBands.find((band) => movingSpeed >= band.minSpeed)?.entry ?? metTable.inlineRecreational;
+  return choice(values, "kind") === "speed" ? metTable.inlineFast : metTable.inlineRecreational;
+}
+
+function paddleEntry(values: FieldValues): MetEntry {
+  switch (choice(values, "kind")) {
+    case "canoe":
+      return metTable.canoe;
+    case "sup":
+      return metTable.standUpPaddle;
+    case "rowing":
+      return metTable.rowing;
+    default:
+      return metTable.kayak;
+  }
 }
 
 /** Compendium value for a sport, its variant and, for cycling, the mean moving speed in m/s; `null` for sports never recorded. */
@@ -151,6 +212,16 @@ export function metEntryFor(sport: SportKey, values: FieldValues, movingSpeed: n
       if (kind === "breaststroke") return metTable.swimBreaststroke;
       if (kind === "drills") return metTable.swimDrills;
       return metTable.swimLaps;
+    case "ski_touring":
+      return kind === "race" ? metTable.skiMountaineering : metTable.skiTouring;
+    case "nordic_ski":
+      return nordicSkiEntry(values, movingSpeed);
+    case "alpine_ski":
+      return metTable.alpineSki;
+    case "paddle":
+      return paddleEntry(values);
+    case "inline_skate":
+      return inlineSkateEntry(values, movingSpeed);
     case "strength":
     case "climb":
     case "yoga":
@@ -183,6 +254,8 @@ export interface EnergyActivity {
   /** `null` without a track (stopwatch only, imports without positions). */
   readonly path: EnergyPath | null;
   readonly heartRate: HeartRateColumns | null;
+  /** Detected descents (`runs`), sorted; `null` without a track. Downhill skiing counts its MET over their moving time only. */
+  readonly descents: readonly TimeSpan[] | null;
 }
 
 export interface EnergyBody {
@@ -201,6 +274,11 @@ export interface EnergyEstimate {
 
 function totalMs(spans: readonly TimeSpan[]): number {
   return spans.reduce((total, span) => total + span.endMs - span.startMs, 0);
+}
+
+function movingWithin(moving: readonly TimeSpan[], spans: readonly TimeSpan[]): number {
+  const overlap = new SpanOverlap(moving);
+  return spans.reduce((total, span) => total + overlap.of(span.startMs, span.endMs), 0);
 }
 
 function restingKcal(massKg: number, durationMs: number): number {
@@ -253,6 +331,11 @@ function footCost(sport: SportKey): ((grade: number) => number) | null {
     case "strength":
     case "swim":
     case "bike":
+    case "ski_touring":
+    case "nordic_ski":
+    case "alpine_ski":
+    case "paddle":
+    case "inline_skate":
     case "climb":
     case "yoga":
       return null;
@@ -284,6 +367,7 @@ export function estimateEnergy(activity: EnergyActivity, body: EnergyBody): Ener
   const movingSpeed = movingMs > 0 && activity.distanceMm > 0 ? activity.distanceMm / movingMs : null;
   const met = metEntryFor(activity.sport, activity.values, movingSpeed);
   if (met === null) return null;
-  const kcal = (met.met * massKg * movingMs) / msPerHour + restingKcal(massKg, Math.max(elapsedMs - movingMs, 0));
+  const activeMs = activity.sport === "alpine_ski" && activity.descents !== null ? movingWithin(activity.moving, activity.descents) : movingMs;
+  const kcal = (met.met * massKg * activeMs) / msPerHour + restingKcal(massKg, Math.max(elapsedMs - activeMs, 0));
   return { kcal: Math.round(kcal), method: "met", met };
 }

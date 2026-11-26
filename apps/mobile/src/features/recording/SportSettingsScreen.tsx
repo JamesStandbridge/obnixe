@@ -12,6 +12,7 @@ import { usePhysiology } from "@/data/settings";
 import { write } from "@/data/write";
 import { BackButton, Chevron, SwitchRow } from "@/features/data/parts";
 import { heartRateSpanBpm } from "@/features/recording/alerts";
+import { paceUnit } from "@/features/recording/metrics";
 import { liveReadout, storedReadout } from "@/features/recording/readout";
 import { ReadoutEditor } from "@/features/recording/ReadoutEditor";
 import {
@@ -24,7 +25,7 @@ import {
   heartRateRangeLabel,
   kmhTenthsToMmS,
   mmSToKmhTenths,
-  paceBounds,
+  paceBoundsOf,
   paceRangeLabel,
   paceStepSeconds,
   speedBoundsKmhTenths,
@@ -80,6 +81,8 @@ function RecordingSettingsForm({ profile }: RecordingSettingsFormProps) {
   const [sheet, setSheet] = useState<OpenSheet>(null);
   const readout = liveReadout(profile, current);
   const { paceRange, heartRateRange } = current.alerts;
+  const heartRate = profile.metrics.includes("heart_rate");
+  const alerts = heartRate ? recordingAlerts : recordingAlerts.filter((alert) => alert !== "sensor");
 
   const save = (summary: string, next: RecordingSettings): void => {
     write(`${summary} : ${label.toLowerCase()}`, [recordingSettingsMutation(db(), sport, next)]);
@@ -102,18 +105,20 @@ function RecordingSettingsForm({ profile }: RecordingSettingsFormProps) {
 
         <Section title="Pendant la sortie">
           <SwitchRow title="Pause automatique" detail="Quand tu t'arrêtes" value={current.autoPause} onChange={(value) => save("Pause automatique", { ...current, autoPause: value })} />
-          <Row title="Tours automatiques" detail={autoLapLabel(current.autoLap)} trailing={<Chevron />} onPress={() => setSheet("auto_lap")} />
-          <Row
-            title="Capteur cardiaque"
-            detail={current.heartRateDevice === null ? "Aucun · montre en diffusion ou ceinture" : current.heartRateDevice.name}
-            trailing={<Chevron />}
-            onPress={() => router.push({ pathname: "/settings/heart-rate/[sport]", params: { sport } })}
-            last
-          />
+          <Row title="Tours automatiques" detail={autoLapLabel(current.autoLap)} trailing={<Chevron />} onPress={() => setSheet("auto_lap")} last={!heartRate} />
+          {heartRate ? (
+            <Row
+              title="Capteur cardiaque"
+              detail={current.heartRateDevice === null ? "Aucun · montre en diffusion ou ceinture" : current.heartRateDevice.name}
+              trailing={<Chevron />}
+              onPress={() => router.push({ pathname: "/settings/heart-rate/[sport]", params: { sport } })}
+              last
+            />
+          ) : null}
         </Section>
 
         <Section title="Alertes">
-          {recordingAlerts.map((alert) => {
+          {alerts.map((alert) => {
             const text = alertLabel(alert, profile);
             return (
               <SwitchRow
@@ -131,18 +136,26 @@ function RecordingSettingsForm({ profile }: RecordingSettingsFormProps) {
             value={current.alerts.sound}
             onChange={(value) => save("Signal sonore", { ...current, alerts: { ...current.alerts, sound: value } })}
           />
-          <Row title={profile.primary === "pace" ? "Cible d'allure" : "Cible de vitesse"} detail={paceRangeLabel(paceRange)} trailing={<Chevron />} onPress={() => setSheet("pace")} />
           <Row
-            title="Cible cardio"
-            detail={maxHeartRate === null ? "Renseigne ta FC max ou ton année de naissance" : heartRateRangeLabel(heartRateRange)}
+            title={profile.primary === "pace" ? "Cible d'allure" : "Cible de vitesse"}
+            detail={paceRangeLabel(paceRange, profile)}
             trailing={<Chevron />}
-            onPress={() => (maxHeartRate === null ? router.push("/settings/physiology") : setSheet("heart_rate"))}
-            last
+            onPress={() => setSheet("pace")}
+            last={!heartRate}
           />
+          {heartRate ? (
+            <Row
+              title="Cible cardio"
+              detail={maxHeartRate === null ? "Renseigne ta FC max ou ton année de naissance" : heartRateRangeLabel(heartRateRange)}
+              trailing={<Chevron />}
+              onPress={() => (maxHeartRate === null ? router.push("/settings/physiology") : setSheet("heart_rate"))}
+              last
+            />
+          ) : null}
         </Section>
 
         <Section title="Unités">
-          <Row title="Système métrique" detail={profile.primary === "pace" ? "Distance en km, allure en min/km, altitude en m" : "Distance en km, vitesse en km/h, altitude en m"} last />
+          <Row title="Système métrique" detail={profile.primary === "pace" ? `Distance en km, allure en min${paceUnit(profile)}, altitude en m` : "Distance en km, vitesse en km/h, altitude en m"} last />
         </Section>
       </Screen>
 
@@ -158,7 +171,7 @@ function RecordingSettingsForm({ profile }: RecordingSettingsFormProps) {
       </Sheet>
 
       <Sheet open={sheet === "pace"} title={profile.primary === "pace" ? "Cible d'allure" : "Cible de vitesse"} context="Trois vibrations courtes quand tu en sors plus de 8 s" onClose={() => setSheet(null)}>
-        <PaceRangeEditor range={paceRange ?? defaultPaceRange(profile)} active={paceRange !== null} onChange={savePaceRange} onClear={() => savePaceRange(null)} />
+        <PaceRangeEditor range={paceRange ?? defaultPaceRange(profile)} profile={profile} active={paceRange !== null} onChange={savePaceRange} onClear={() => savePaceRange(null)} />
       </Sheet>
 
       <Sheet open={sheet === "heart_rate"} title="Cible cardio" context="Zones calculées sur ta FC max" onClose={() => setSheet(null)}>
@@ -170,45 +183,51 @@ function RecordingSettingsForm({ profile }: RecordingSettingsFormProps) {
 
 interface PaceRangeEditorProps {
   readonly range: PaceRange;
+  readonly profile: Pick<ResolvedProfile, "pacePerMeters">;
   readonly active: boolean;
   readonly onChange: (range: PaceRange) => void;
   readonly onClear: () => void;
 }
 
-function PaceRangeEditor({ range, active, onChange, onClear }: PaceRangeEditorProps) {
+function PaceRangeEditor({ range, profile, active, onChange, onClear }: PaceRangeEditorProps) {
   switch (range.kind) {
-    case "pace":
+    case "pace": {
+      const scale = profile.pacePerMeters / 1000;
+      const bounds = paceBoundsOf(profile);
+      const fastest = Math.round(range.fastestSecondsPerKm * scale);
+      const slowest = Math.round(range.slowestSecondsPerKm * scale);
       return (
         <View style={styles.editor}>
           <Text variant="label" tone="secondary">
             Plus rapide
           </Text>
           <Stepper
-            value={range.fastestSecondsPerKm}
+            value={fastest}
             step={paceStepSeconds}
-            min={paceBounds.min}
-            max={range.slowestSecondsPerKm - paceStepSeconds}
-            unit="/km"
+            min={bounds.min}
+            max={slowest - paceStepSeconds}
+            unit={paceUnit(profile)}
             label="Allure la plus rapide"
             format={formatClock}
-            onChange={(value) => onChange({ ...range, fastestSecondsPerKm: value })}
+            onChange={(value) => onChange({ ...range, fastestSecondsPerKm: Math.round(value / scale) })}
           />
           <Text variant="label" tone="secondary">
             Plus lente
           </Text>
           <Stepper
-            value={range.slowestSecondsPerKm}
+            value={slowest}
             step={paceStepSeconds}
-            min={range.fastestSecondsPerKm + paceStepSeconds}
-            max={paceBounds.max}
-            unit="/km"
+            min={fastest + paceStepSeconds}
+            max={bounds.max}
+            unit={paceUnit(profile)}
             label="Allure la plus lente"
             format={formatClock}
-            onChange={(value) => onChange({ ...range, slowestSecondsPerKm: value })}
+            onChange={(value) => onChange({ ...range, slowestSecondsPerKm: Math.round(value / scale) })}
           />
           <RangeFooter active={active} onEnable={() => onChange(range)} onClear={onClear} />
         </View>
       );
+    }
     case "speed": {
       const low = mmSToKmhTenths(range.minMmS);
       const high = mmSToKmhTenths(range.maxMmS);

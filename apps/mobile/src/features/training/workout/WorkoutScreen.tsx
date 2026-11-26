@@ -49,6 +49,11 @@ function openSessionHref(session: Session): void {
     case "hike":
     case "swim":
     case "bike":
+    case "ski_touring":
+    case "nordic_ski":
+    case "alpine_ski":
+    case "paddle":
+    case "inline_skate":
     case "yoga":
       router.replace({ pathname: "/session/[id]", params: { id: session.id } });
       return;

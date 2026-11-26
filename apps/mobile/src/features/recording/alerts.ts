@@ -157,6 +157,11 @@ export function rejoinText(rejoin: Pick<RouteRejoin, "distance" | "bearing">): s
   return `à ${distance} ${point}`;
 }
 
+function splitTitle(index: number, meters: number): string {
+  if (meters === 1000) return `Kilomètre ${index}`;
+  return meters < 1000 ? `${formatNumber(index * meters, 0)} m` : `${formatNumber((index * meters) / 1000, 0)} km`;
+}
+
 function goalDetail(goal: AlertGoal): string {
   return `Objectif ${targetLabel(goal)} atteint`;
 }
@@ -169,7 +174,7 @@ export function alertNotice(event: RecordingAlertEvent, profile: Pick<ResolvedPr
     }
     case "split": {
       const figures = lapFigures({ index: event.index - 1, startMs: 0, elapsedMs: event.movingMs, movingMs: event.movingMs, distanceMm: event.meters * 1000 }, profile);
-      const title = event.meters === 1000 ? `Kilomètre ${event.index}` : `${formatNumber((event.index * event.meters) / 1000, 0)} km`;
+      const title = splitTitle(event.index, event.meters);
       return { title, detail: `${figures.duration} · ${figures.rate.value} ${figures.rate.unit}`, tone: "mark" };
     }
     case "auto_pause":
@@ -179,7 +184,7 @@ export function alertNotice(event: RecordingAlertEvent, profile: Pick<ResolvedPr
     case "goal":
       return { title: "Objectif atteint", detail: goalDetail(event.goal), tone: "mark" };
     case "pace_range":
-      return { title: paceTitle(event.range, event.status), detail: `Cible ${paceRangeText(event.range)}`, tone: event.status === "back" ? "mark" : "warn" };
+      return { title: paceTitle(event.range, event.status), detail: `Cible ${paceRangeText(event.range, profile)}`, tone: event.status === "back" ? "mark" : "warn" };
     case "heart_rate_range":
       return { title: heartRateTitle(event.status), detail: `Cible ${heartRateSpan(event.range)}`, tone: event.status === "back" ? "mark" : "warn" };
     case "segment_entered":

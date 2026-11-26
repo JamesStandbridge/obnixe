@@ -33,6 +33,7 @@ function activity(sport: SportKey, durationMs: number, overrides: Partial<Energy
     distanceMm: 0,
     path: null,
     heartRate: null,
+    descents: null,
     ...overrides,
   };
 }
@@ -118,6 +119,20 @@ describe("estimateEnergy", () => {
     expect(ride).toEqual({ kcal: 10 * 70 * 2, method: "met", met: metTable.bike14To16Mph });
   });
 
+  it("counts the alpine MET over the descents only, at rest on the lifts (CAL-002)", () => {
+    const day = activity("alpine_ski", 3 * 60 * minute, { values: { kind: "ski" }, descents: [{ startMs: 30 * minute, endMs: 60 * minute }, { startMs: 90 * minute, endMs: 120 * minute }] });
+    expect(estimateEnergy(day, body)).toEqual({ kcal: Math.round(5.3 * 70 + (70 * 120) / 60), method: "met", met: metTable.alpineSki });
+    expect(estimateEnergy({ ...day, descents: null }, body)?.kcal).toBe(Math.round(5.3 * 70 * 3));
+  });
+
+  it("estimates the new outdoor sports without a mechanical model (CAL-002)", () => {
+    const paddle = estimateEnergy(activity("paddle", 60 * minute, { values: { kind: "kayak" }, distanceMm: 8_000_000, path: steadyPath(8000, 3600) }), body);
+    expect(paddle).toEqual({ kcal: 5 * 70, method: "met", met: metTable.kayak });
+    const touring = estimateEnergy(activity("ski_touring", 60 * minute, { values: { kind: "touring" }, distanceMm: 4_000_000, path: steadyPath(4000, 3600, 0.15) }), body);
+    expect(touring?.method).toBe("met");
+    expect(touring?.met).toEqual(metTable.skiTouring);
+  });
+
   it("returns nothing for sports that are never recorded", () => {
     expect(estimateEnergy(activity("strength", 60 * minute), body)).toBeNull();
   });
@@ -136,6 +151,26 @@ describe("metEntryFor", () => {
     expect(entry("hike", {})).toBe("17080");
     expect(entry("swim", { kind: "breaststroke", water: "pool" })).toBe("18265");
     expect(entry("swim", { kind: "crawl", water: "open_water" })).toBe("18300");
+  });
+
+  it("picks the snow, water and skating entries from the variant and the speed", () => {
+    const kmh = 1 / 3.6;
+    expect(entry("ski_touring", { kind: "touring" })).toBe("19090");
+    expect(entry("ski_touring", { kind: "race" })).toBe("19130");
+    expect(entry("nordic_ski", { kind: "skate" }, 20 * kmh)).toBe("19135");
+    expect(entry("nordic_ski", { kind: "classic" })).toBe("19090");
+    expect(entry("nordic_ski", { kind: "classic" }, 5 * kmh)).toBe("19080");
+    expect(entry("nordic_ski", { kind: "classic" }, 10 * kmh)).toBe("19100");
+    expect(entry("nordic_ski", { kind: "classic" }, 14 * kmh)).toBe("19110");
+    expect(entry("alpine_ski", { kind: "snowboard" })).toBe("19160");
+    expect(entry("paddle", { kind: "canoe" })).toBe("18070");
+    expect(entry("paddle", { kind: "sup" })).toBe("18365");
+    expect(entry("paddle", { kind: "rowing" })).toBe("18050");
+    expect(entry("paddle", {})).toBe("18100");
+    expect(entry("inline_skate", { kind: "fitness" }, 15 * kmh)).toBe("15591");
+    expect(entry("inline_skate", { kind: "fitness" }, 19 * kmh)).toBe("15592");
+    expect(entry("inline_skate", { kind: "speed" }, 25 * kmh)).toBe("15594");
+    expect(entry("inline_skate", { kind: "speed" })).toBe("15593");
   });
 
   it("uses the speed bands for outdoor cycling, not for e-bikes, mountain bikes or home trainers", () => {
