@@ -4,6 +4,7 @@ import {
   LiveSegmentWatch,
   LiveTracker,
   OpenSessionExistsError,
+  RouteUnavailableError,
   activePrivacyMask,
   discardUndoMs,
   encodeTrack,
@@ -65,9 +66,12 @@ import type { EpochMs, Id, RecordingSettings, WorkoutPlan, ZoneKey } from "@obni
 import { db, environment } from "@/data/database";
 import { LiveTrack } from "@/features/maps/liveTrack";
 import type { LiveMapFeed } from "@/features/maps/liveTrack";
+import type { GeoPoint } from "@/features/maps/tiles";
 import { alertNotice } from "@/features/recording/alerts";
 import type { AlertNotice } from "@/features/recording/alerts";
 import { slotTarget } from "@/features/recording/target";
+import { followedRoute } from "@/features/routes/routeData";
+import type { FollowedRoute } from "@/features/routes/routeData";
 import { feedOf, journalTrackOf } from "@/features/tracking/journalFeed";
 import type { FeedItem } from "@/features/tracking/journalFeed";
 import { notificationOf, timerBaseOf } from "@/features/tracking/notification";
@@ -148,6 +152,8 @@ export interface RecordingView {
   readonly elevation: readonly ElevationPoint[];
   /** `WKT-004`: the course of the guided workout, null for a free recording. */
   readonly workout: WorkoutView | null;
+  /** `RTE-003`: the route followed, its progress in `live.route`. */
+  readonly route: FollowedRoute | null;
   readonly alert: LiveAlert | null;
   /** `INT-020`: the pains signalled so far, saved with the activity. */
   readonly pains: readonly ActivityPain[];
@@ -160,7 +166,7 @@ export interface RecordingView {
 
 export type RecorderView =
   | { readonly kind: "idle" }
-  | { readonly kind: "preparing"; readonly signal: LiveSignal }
+  | { readonly kind: "preparing"; readonly signal: LiveSignal; readonly position: GeoPoint | null }
   | { readonly kind: "recording"; readonly recording: RecordingView };
 
 export type RecorderFailure =
@@ -169,6 +175,8 @@ export type RecorderFailure =
   | { readonly kind: "no_recording" }
   | { readonly kind: "refused"; readonly refusal: RecorderRefusal }
   | { readonly kind: "open_session"; readonly sessionId: Id }
+  /** The route chosen is gone, of another sport, or its file cannot be read. */
+  | { readonly kind: "route_unavailable" }
   | { readonly kind: "storage_full" }
   | { readonly kind: "location_denied" }
   | { readonly kind: "failed"; readonly error: Error };
@@ -194,6 +202,7 @@ interface Active {
   readonly settings: RecordingSettings;
   readonly heartRate: readonly HeartRateZoneBounds[] | null;
   readonly workout: WorkoutPlan | null;
+  route: FollowedRoute | null;
   readonly live: LiveTracker;
   readonly map: LiveTrack;
   readonly monitor: AlertMonitor;
@@ -280,6 +289,7 @@ export class RecorderHost {
   private readonly listeners = new Set<() => void>();
   private active: Active | null = null;
   private preparing: LiveSignal | null = null;
+  private preparingPosition: GeoPoint | null = null;
   private discarded: PendingDiscard | null = null;
   private busy = false;
   private view: RecorderView = idleView;
@@ -333,6 +343,7 @@ export class RecorderHost {
     if (tracker === null) return failed({ kind: "unsupported" });
     if (this.active !== null) return failed({ kind: "busy" });
     this.preparing = { level: "none", accuracy: null };
+    this.preparingPosition = null;
     this.publish(true);
     try {
       await tracker.prepare();
@@ -365,12 +376,15 @@ export class RecorderHost {
         plan = planRecordingStart(db(), environment, start.request);
       } catch (error) {
         if (error instanceof OpenSessionExistsError) return failed({ kind: "open_session", sessionId: error.sessionId });
+        if (error instanceof RouteUnavailableError) return failed({ kind: "route_unavailable" });
         throw error;
       }
+      const route = start.request.routeId === null ? null : await followedRoute(start.request.routeId);
+      if (start.request.routeId !== null && route === null) return failed({ kind: "route_unavailable" });
       const settings: RecordingSettings = { ...plan.settings, autoPause: start.autoPause };
       this.preparing = null;
       const active = this.activate(
-        { sessionId: plan.sessionId, recordingId: plan.recordingId, profile: plan.profile, settings, workout: start.request.workout, replay: start.replay, power: start.power, startedAt: environment.now() },
+        { sessionId: plan.sessionId, recordingId: plan.recordingId, profile: plan.profile, settings, workout: start.request.workout, route, replay: start.replay, power: start.power, startedAt: environment.now() },
         goalOf(start.request.slot?.slotId ?? null),
       );
       active.plan = { ...plan, settings };
@@ -513,12 +527,16 @@ export class RecorderHost {
     const profile = profileOfSession(open.session);
     const settings: RecordingSettings = { ...recordingSettingsOf(db(), profile), autoPause: open.recording.autoPause };
     const active = this.activate(
-      { sessionId: open.session.id, recordingId: open.recording.id, profile, settings, workout: open.recording.workout, replay: null, power: "normal", startedAt: open.session.startedAt },
+      { sessionId: open.session.id, recordingId: open.recording.id, profile, settings, workout: open.recording.workout, route: null, replay: null, power: "normal", startedAt: open.session.startedAt },
       goalOf(open.session.slotId),
     );
     active.started = true;
     this.buffered = [];
     try {
+      if (open.recording.routeId !== null) {
+        active.route = await followedRoute(open.recording.routeId);
+        active.live.followRoute(active.route?.geometry ?? null);
+      }
       const bytes = await readJournalFile(active.sessionId);
       const contents = bytes === null ? null : readJournal(bytes);
       if (contents?.header !== null && contents?.header !== undefined) active.startedAt = contents.header.startedAt;
@@ -570,7 +588,7 @@ export class RecorderHost {
   }
 
   /** A guided workout replaces the automatic laps and the pace and heart-rate spans with its steps and their targets. */
-  private activate(fields: Pick<Active, "sessionId" | "recordingId" | "profile" | "settings" | "workout" | "replay" | "power" | "startedAt">, goal: AlertGoal | null): Active {
+  private activate(fields: Pick<Active, "sessionId" | "recordingId" | "profile" | "settings" | "workout" | "route" | "replay" | "power" | "startedAt">, goal: AlertGoal | null): Active {
     const physiology = readSettings(db());
     const maximum = maxHeartRateOf(physiology, fields.startedAt);
     const heartRate = maximum === null ? null : heartRateZones(maximum);
@@ -599,6 +617,7 @@ export class RecorderHost {
       restorable: null,
       saved: null,
     };
+    active.live.followRoute(fields.route?.geometry ?? null);
     this.active = active;
     return active;
   }
@@ -954,6 +973,7 @@ export class RecorderHost {
     if (this.preparing === null) return;
     const accuracy = fix.horizontalAccuracyDm === null ? null : fix.horizontalAccuracyDm / 10;
     this.preparing = { level: signalLevelOf(accuracy), accuracy };
+    this.preparingPosition = { latitude: fix.latitudeE7 / 1e7, longitude: fix.longitudeE7 / 1e7 };
     this.publish(false);
   }
 
@@ -1027,7 +1047,7 @@ export class RecorderHost {
 
   private viewOf(): RecorderView {
     const active = this.active;
-    if (active === null) return this.preparing === null ? idleView : { kind: "preparing", signal: this.preparing };
+    if (active === null) return this.preparing === null ? idleView : { kind: "preparing", signal: this.preparing, position: this.preparingPosition };
     const t = isActivePhase(active.state) ? this.trackTime(active) : active.lastT;
     const snapshot = active.live.snapshot(t);
     const heartRate = snapshot.metrics.heart_rate;
@@ -1047,6 +1067,7 @@ export class RecorderHost {
         laps: active.live.laps,
         elevation: active.live.elevationProfile,
         workout: active.runner?.view(t) ?? null,
+        route: active.route,
         alert: active.alert,
         pains: [...active.pains],
         issues: [...active.issues],

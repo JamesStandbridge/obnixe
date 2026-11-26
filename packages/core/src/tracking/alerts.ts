@@ -2,6 +2,7 @@ import type { HeartRateRange, PaceRange, RecordingAlert, RecordingAlertSettings 
 import type { LiveLap, LiveSnapshot } from "./live.ts";
 import type { LiveSegmentEvent } from "./liveSegments.ts";
 import type { RecorderAlert, RecorderPhase } from "./recorder.ts";
+import type { RouteRejoin } from "./route.ts";
 import type { WorkoutStepRun } from "./workout.ts";
 import type { HeartRateZoneBounds } from "./zones.ts";
 
@@ -17,6 +18,9 @@ export type RangeDeparture = "below" | "above";
 
 export type RangeStatus = { readonly status: RangeDeparture; readonly repeat: number } | { readonly status: "back" };
 
+/** `RTE-005`: off the route, with the way back while it is known, then back on it. */
+export type RouteAlertStatus = { readonly status: "off"; readonly repeat: number; readonly rejoin: RouteRejoin | null } | { readonly status: "back" };
+
 export type SignalChange = "lost" | "back";
 
 export type BatteryAlertLevel = "low" | "critical";
@@ -31,6 +35,7 @@ export type RecordingAlertEvent =
   | ({ readonly kind: "pace_range"; readonly range: PaceRange } & RangeStatus)
   | ({ readonly kind: "heart_rate_range"; readonly range: HeartRateRange } & RangeStatus)
   | LiveSegmentEvent
+  | ({ readonly kind: "route" } & RouteAlertStatus)
   | { readonly kind: "gps"; readonly change: SignalChange }
   | { readonly kind: "sensor"; readonly change: SignalChange }
   | { readonly kind: "battery"; readonly level: BatteryAlertLevel }
@@ -65,6 +70,8 @@ export function alertSettingOf(kind: RecordingAlertKind): RecordingAlert | null 
     case "segment_entered":
     case "segment_finished":
       return "segment";
+    case "route":
+      return "route";
     case "pace_range":
     case "heart_rate_range":
     case "workout_step":
@@ -162,6 +169,7 @@ export class AlertMonitor {
   private hadFix = false;
   private gpsLost = false;
   private sensorLost = false;
+  private routeAlerted: { firedAt: number; count: number } | null = null;
   private readonly batteryAlerted = new Set<BatteryAlertLevel>();
 
   constructor(options: AlertMonitorOptions) {
@@ -191,6 +199,7 @@ export class AlertMonitor {
     this.progress(progress, events);
     this.signal(snapshot, phase, events);
     this.ranges(snapshot, phase, events);
+    this.route(snapshot, phase, events);
     this.previous = progress;
     return this.emit(events);
   }
@@ -271,6 +280,31 @@ export class AlertMonitor {
       const status = this.heartRate.update(snapshot.t, positionIn(bpm, bounds, { low: heartRateRangeToleranceBpm, high: heartRateRangeToleranceBpm }));
       if (status !== null) events.push({ kind: "heart_rate_range", range: heartRateRange, ...status });
     }
+  }
+
+  /** Off the route as the matcher settles it, repeated like a span; a monitor created off the route does not announce it. */
+  private route(snapshot: LiveSnapshot, phase: RecorderPhase, events: RecordingAlertEvent[]): void {
+    const route = snapshot.route;
+    if (route === null || !route.offRoute) {
+      if (this.routeAlerted !== null) events.push({ kind: "route", status: "back" });
+      this.routeAlerted = null;
+      return;
+    }
+    const alerted = this.routeAlerted;
+    if (alerted === null) {
+      if (this.previous === null) {
+        this.routeAlerted = { firedAt: snapshot.t, count: rangeAlertTiming.maxAlerts };
+        return;
+      }
+      if (phase !== "recording") return;
+      this.routeAlerted = { firedAt: snapshot.t, count: 1 };
+      events.push({ kind: "route", status: "off", repeat: 0, rejoin: route.rejoin });
+      return;
+    }
+    if (phase !== "recording" || alerted.count >= rangeAlertTiming.maxAlerts || snapshot.t - alerted.firedAt < rangeAlertTiming.repeatEveryMs) return;
+    alerted.firedAt = snapshot.t;
+    alerted.count += 1;
+    events.push({ kind: "route", status: "off", repeat: alerted.count - 1, rejoin: route.rejoin });
   }
 
   private emit(events: readonly RecordingAlertEvent[]): readonly RecordingAlertEvent[] {

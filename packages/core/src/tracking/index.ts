@@ -14,6 +14,7 @@ export * from "./io/archive.ts";
 export * from "./io/bulkExport.ts";
 export * from "./io/errors.ts";
 export * from "./io/export.ts";
+export * from "./io/fileRoute.ts";
 export * from "./io/fit.ts";
 export * from "./io/garminArchive.ts";
 export * from "./io/gpx.ts";

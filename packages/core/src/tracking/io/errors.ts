@@ -4,6 +4,7 @@ export const importErrorReasons = [
   "checksum",
   "truncated",
   "not_an_activity",
+  "not_a_route",
   "several_activities",
   "no_activity_data",
   "untimed",

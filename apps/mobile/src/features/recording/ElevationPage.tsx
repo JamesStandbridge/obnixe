@@ -17,15 +17,25 @@ interface ElevationPageProps {
   readonly altitude: MetricText;
   readonly ascent: MetricText;
   readonly descent: MetricText;
+  /** `RTE-003`: with a followed route of known altitude, its whole profile with the position on it. */
+  readonly route: RouteElevation | null;
+}
+
+export interface RouteElevation {
+  readonly points: readonly ElevationPoint[];
+  /** Meters along the route. */
+  readonly progress: number;
+  readonly remainingAscent: MetricText;
 }
 
 const chartInset = 8;
 
-/** `UX-002`: the elevation profile so far, under the altitude and the climbs. */
-export function ElevationPage({ points, sport, altitude, ascent, descent }: ElevationPageProps) {
+/** `UX-002`: the elevation profile so far, or the followed route's, under the altitude and the climbs. */
+export function ElevationPage({ points, sport, altitude, ascent, descent, route }: ElevationPageProps) {
   const { colors } = useTheme();
   const [box, setBox] = useState({ width: 0, height: 0 });
-  const shape = box.width === 0 ? null : elevationShape(points, box.width, Math.max(0, box.height - chartInset * 2));
+  const shape = box.width === 0 ? null : elevationShape(route?.points ?? points, box.width, Math.max(0, box.height - chartInset * 2), route?.progress ?? null);
+  const position = shape === null ? null : (shape.marker ?? shape.last);
   const onLayout = (event: LayoutChangeEvent): void => setBox({ width: event.nativeEvent.layout.width, height: event.nativeEvent.layout.height });
   const accent = colors.sport[sport];
   return (
@@ -33,10 +43,14 @@ export function ElevationPage({ points, sport, altitude, ascent, descent }: Elev
       <View style={styles.figures}>
         <MetricTile caption="Altitude" text={altitude} size={40} minimumScale={0.8} style={styles.figure} />
         <MetricTile caption="D+" text={ascent} size={40} minimumScale={0.8} style={styles.figure} />
-        <MetricTile caption="D−" text={descent} size={40} minimumScale={0.8} style={styles.figure} />
+        {route === null ? (
+          <MetricTile caption="D−" text={descent} size={40} minimumScale={0.8} style={styles.figure} />
+        ) : (
+          <MetricTile caption="D+ restant" text={route.remainingAscent} size={40} minimumScale={0.8} style={styles.figure} />
+        )}
       </View>
       <View style={[styles.chart, { borderColor: colors.line }]} onLayout={onLayout}>
-        {shape === null ? (
+        {shape === null || position === null ? (
           <Text variant="small" tone="secondary" style={styles.empty}>
             Le profil se dessine au fil des mètres.
           </Text>
@@ -44,12 +58,12 @@ export function ElevationPage({ points, sport, altitude, ascent, descent }: Elev
           <View
             style={StyleSheet.absoluteFill}
             accessible
-            accessibilityLabel={`Profil sur ${formatNumber(shape.meters / 1000, 1)} km, de ${formatInteger(shape.lowest)} à ${formatInteger(shape.highest)} m`}
+            accessibilityLabel={`${route === null ? "Profil" : "Profil de l'itinéraire"} sur ${formatNumber(shape.meters / 1000, 1)} km, de ${formatInteger(shape.lowest)} à ${formatInteger(shape.highest)} m`}
           >
             <Svg width={box.width} height={box.height}>
               <Path d={shape.area} fill={accent} fillOpacity={0.18} transform={`translate(0 ${chartInset})`} />
               <Path d={shape.line} stroke={accent} strokeWidth={2.5} strokeLinejoin="round" fill="none" transform={`translate(0 ${chartInset})`} />
-              <Circle cx={shape.last.x} cy={shape.last.y + chartInset} r={5} fill={accent} stroke={colors.bg} strokeWidth={2} />
+              <Circle cx={position.x} cy={position.y + chartInset} r={5} fill={accent} stroke={colors.bg} strokeWidth={2} />
             </Svg>
             <Text variant="caption" tone="secondary" style={styles.highest}>
               {`${formatInteger(shape.highest)} m`}

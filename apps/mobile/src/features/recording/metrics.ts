@@ -40,6 +40,9 @@ export const metricCaptions: Readonly<Record<MetricKey, string>> = {
   energy: "Énergie",
   gps_quality: "Précision GPS",
   clock: "Heure",
+  route_remaining: "Restant",
+  route_ascent_remaining: "D+ restant",
+  route_progress: "Progression",
 };
 
 /** Full names, for choosing the metrics of the live screen. */
@@ -72,6 +75,9 @@ export const metricNames: Readonly<Record<MetricKey, string>> = {
   energy: "Énergie",
   gps_quality: "Précision GPS",
   clock: "Heure",
+  route_remaining: "Distance restante de l'itinéraire",
+  route_ascent_remaining: "D+ restant de l'itinéraire",
+  route_progress: "Progression sur l'itinéraire",
 };
 
 const missingClock = "–:––";
@@ -84,6 +90,12 @@ export function paceUnit(profile: Pick<ResolvedProfile, "pacePerMeters">): strin
 export function formatDistance(meters: number): MetricText {
   if (meters < 1000) return { value: formatInteger(Math.floor(meters)), unit: "m" };
   return { value: formatNumber(Math.floor(meters / 10) / 100, 2, 2), unit: "km" };
+}
+
+/** The distance left on a route, to the 100 m past a kilometer: « 7,4 km » (`RTE-003`). */
+export function formatRemaining(meters: number): MetricText {
+  if (meters < 1000) return { value: formatInteger(Math.round(meters / 10) * 10), unit: "m" };
+  return { value: formatNumber(meters / 1000, 1, 1), unit: "km" };
 }
 
 export function formatSpeed(metersPerSecond: number): string {
@@ -146,6 +158,12 @@ export function metricText(key: MetricKey, metrics: LiveMetrics, profile: Pick<R
       return { value: value === undefined ? missing : `±${formatInteger(value)}`, unit: "m" };
     case "clock":
       return { value: formatTimeAt(now, timeZone), unit: "" };
+    case "route_remaining":
+      return value === undefined ? { value: missing, unit: "km" } : formatRemaining(value);
+    case "route_ascent_remaining":
+      return { value: value === undefined ? missing : formatInteger(value), unit: "m" };
+    case "route_progress":
+      return { value: value === undefined ? missing : formatInteger(Math.floor(value * 100)), unit: "%" };
     default: {
       const unreachable: never = key;
       return unreachable;

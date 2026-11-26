@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Redirect, useFocusEffect, useRouter } from "expo-router";
 import { impactAsync, ImpactFeedbackStyle } from "expo-haptics";
 import { useLiveQuery } from "drizzle-orm/expo-sqlite";
-import { finishOpenSessionMutations, gearUsage, newGear, openSession, primaryChoice, recordingSettingsMutation, recordingSettingsOf, resolveProfile, signalLevelAccuracy } from "@obnixe/core";
+import { distanceToRouteStart, finishOpenSessionMutations, gearUsage, newGear, openSession, primaryChoice, recordingSettingsMutation, recordingSettingsOf, resolveProfile, signalLevelAccuracy } from "@obnixe/core";
 import type { LiveSignal, ResolvedProfile } from "@obnixe/core";
 import { sportPreference, sports } from "@obnixe/schema";
 import type { FieldValues, Id, Readout, SportKey } from "@obnixe/schema";
@@ -17,12 +17,18 @@ import { BottomPanel, Chips, DetailRow, SportStrip, SwitchRow, bottomPanelHeight
 import type { SportChoice } from "@/features/activity/components";
 import { CatalogueSheet, GearSheet } from "@/features/activity/LogSheets";
 import { formatKilometers, gearLabel } from "@/features/activity/presentation";
+import type { GeoPoint } from "@/features/maps/tiles";
 import { signalWord, SignalBars } from "@/features/recording/LiveParts";
 import { HeartRateCard } from "@/features/recording/HeartRateParts";
 import { defaultGear, hasLiveRecording, lastRecordedSport, recordableSports, slotStartOf } from "@/features/recording/queries";
 import { liveReadout, storedReadout } from "@/features/recording/readout";
 import { ReadoutEditor } from "@/features/recording/ReadoutEditor";
 import { targetLabel } from "@/features/recording/target";
+import { startDistanceText } from "@/features/routes/format";
+import { RouteOfflineHint } from "@/features/routes/RouteOfflineHint";
+import { routeById } from "@/features/routes/routeData";
+import { RouteSheet } from "@/features/routes/RouteSheet";
+import { useLiveValue } from "@/features/stats/live";
 import { BatteryHint } from "@/features/tracking/BatteryHelpScreen";
 import { ensureActivityPermission, ensureNotificationPermission, locationAccess, openSystemSettings, requestLocation } from "@/features/tracking/permissions";
 import type { LocationAccess } from "@/features/tracking/permissions";
@@ -53,6 +59,8 @@ export interface PrepareScreenProps {
   readonly kind: string | null;
   readonly slotId: Id | null;
   readonly variantId: Id | null;
+  /** `RTE-003`: the route to follow, chosen from its screen. */
+  readonly routeId: Id | null;
 }
 
 function close(router: ReturnType<typeof useRouter>): void {
@@ -91,7 +99,7 @@ export function PrepareScreen(props: PrepareScreenProps) {
     case "checking":
       return null;
     case "granted":
-      return <Preparation {...props} signal={view.kind === "preparing" ? view.signal : null} onLocationLost={recheck} />;
+      return <Preparation {...props} signal={view.kind === "preparing" ? view.signal : null} position={view.kind === "preparing" ? view.position : null} onLocationLost={recheck} />;
     case "unsupported":
       return <WebNotice />;
     case "explain":
@@ -213,12 +221,13 @@ function Notice({ scene, title, body, primary, secondary }: NoticeProps) {
 
 interface PreparationProps extends PrepareScreenProps {
   readonly signal: LiveSignal | null;
+  readonly position: GeoPoint | null;
   readonly onLocationLost: () => void;
 }
 
-type PrepareSheet = { readonly kind: "none" } | { readonly kind: "catalogue" } | { readonly kind: "gear" } | { readonly kind: "open"; readonly sessionId: Id };
+type PrepareSheet = { readonly kind: "none" } | { readonly kind: "catalogue" } | { readonly kind: "gear" } | { readonly kind: "route" } | { readonly kind: "open"; readonly sessionId: Id };
 
-function Preparation({ sport: requested, kind: requestedKind, slotId, variantId, signal, onLocationLost }: PreparationProps) {
+function Preparation({ sport: requested, kind: requestedKind, slotId, variantId, routeId: requestedRoute, signal, position, onLocationLost }: PreparationProps) {
   const { colors } = useTheme();
   const router = useRouter();
   const notify = useSnackbar();
@@ -237,6 +246,9 @@ function Preparation({ sport: requested, kind: requestedKind, slotId, variantId,
   const [gearId, setGearId] = useState<Id | null>(() => defaultGear(sport, kind));
   const [gearVersion, setGearVersion] = useState(0);
   const [sheet, setSheet] = useState<PrepareSheet>({ kind: "none" });
+  const [routeId, setRouteId] = useState<Id | null>(requestedRoute);
+  const chosenRoute = useLiveValue(() => (routeId === null ? null : routeById(routeId)), ["route"], [routeId]);
+  const followed = chosenRoute !== null && chosenRoute.deletedAt === null && chosenRoute.sport === sport ? chosenRoute : null;
   const [counting, setCounting] = useState(false);
   const [starting, setStarting] = useState(false);
   const launched = useRef(false);
@@ -309,6 +321,10 @@ function Preparation({ sport: requested, kind: requestedKind, slotId, variantId,
       case "storage_full":
         notify({ text: "Stockage plein : libère de la place pour enregistrer", aboveTabBar: false, extraOffset: bottomPanelHeight });
         return;
+      case "route_unavailable":
+        setRouteId(null);
+        notify({ text: "Itinéraire illisible ou supprimé : choisis-en un autre", aboveTabBar: false, extraOffset: bottomPanelHeight });
+        return;
       case "location_denied":
         onLocationLost();
         return;
@@ -330,7 +346,7 @@ function Preparation({ sport: requested, kind: requestedKind, slotId, variantId,
     if (profile === null) return;
     launched.current = true;
     const outcome = await recorder.start({
-      request: { sport, values, gearId, slot: slotApplies && start !== null ? { slotId: start.slot.id, variantId: start.variantId, countsInRotation: true } : null, timeZone: deviceTimeZone(), routeId: null, workout: null },
+      request: { sport, values, gearId, slot: slotApplies && start !== null ? { slotId: start.slot.id, variantId: start.variantId, countsInRotation: true } : null, timeZone: deviceTimeZone(), routeId: followed?.id ?? null, workout: null },
       autoPause: autoPauseOn,
       power: "normal",
       replay: null,
@@ -432,10 +448,16 @@ function Preparation({ sport: requested, kind: requestedKind, slotId, variantId,
                   onPress={() => setSheet({ kind: "gear" })}
                 />
               ) : null}
+              <DetailRow
+                title="Itinéraire"
+                value={followed === null ? "Aucun" : position === null ? followed.name : `${followed.name} · ${startDistanceText(distanceToRouteStart(followed, position))}`}
+                onPress={() => setSheet({ kind: "route" })}
+              />
               <SwitchRow title="Pause automatique" detail="Pour cette sortie" value={autoPauseOn} onChange={(value) => setAutoPause({ sport, value })} />
               <SwitchRow title="Décompte de 3 secondes" detail="Avant le départ" value={display.countdown} onChange={(value) => updateSettings({ countdown: value })} />
               <SwitchRow title="Garder l'écran allumé" detail="Pendant l'enregistrement" value={display.keepScreenOn} onChange={(value) => updateSettings({ keepScreenOn: value })} />
             </View>
+            {followed === null ? null : <RouteOfflineHint route={followed} />}
 
             {readout === null || settings === null ? null : (
               <ReadoutEditor profile={profile} readout={readout} customized={settings.readout !== null} onChange={saveReadout} onReset={() => saveReadout(null)} />
@@ -480,6 +502,17 @@ function Preparation({ sport: requested, kind: requestedKind, slotId, variantId,
           setSheet({ kind: "none" });
         }}
         onCreate={createGear}
+        onClose={() => setSheet({ kind: "none" })}
+      />
+      <RouteSheet
+        open={sheet.kind === "route"}
+        sport={sport}
+        sportLabel={definition.label}
+        position={position}
+        onSelect={(next) => {
+          setRouteId(next);
+          setSheet({ kind: "none" });
+        }}
         onClose={() => setSheet({ kind: "none" })}
       />
       <Sheet open={sheet.kind === "open"} title="Une séance est déjà ouverte" context="Une seule activité à la fois" onClose={() => setSheet({ kind: "none" })}>

@@ -50,3 +50,8 @@ export function regionFromPack(pack: StoredPack, progress: PackProgress): Offlin
 export function offlineBytes(regions: readonly OfflineRegion[]): number {
   return regions.reduce((total, region) => total + region.bytes, 0);
 }
+
+/** `RTE-006`: whether a region of the base map, downloaded or downloading, holds the whole extent. */
+export function coversBounds(regions: readonly OfflineRegion[], [west, south, east, north]: Bounds, mapStyle: MapStyle): boolean {
+  return regions.some(({ bounds, mapStyle: style }) => style === mapStyle && bounds[0] <= west && bounds[1] <= south && bounds[2] >= east && bounds[3] >= north);
+}

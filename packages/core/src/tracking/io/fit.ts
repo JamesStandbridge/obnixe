@@ -1,8 +1,11 @@
 import type { LapTrigger } from "@obnixe/schema";
 import { decodeUtf8, encodeUtf8, InvalidUtf8Error } from "../../data/utf8.ts";
+import type { RoutePoint } from "../routes.ts";
 import { assembleActivity } from "./activity.ts";
 import type { ExportPoint, FilePoint, FileTimerEvent, FileTotals, ImportedActivity, PoolSwim } from "./activity.ts";
 import { ImportError } from "./errors.ts";
+import { fileRoute } from "./fileRoute.ts";
+import type { FileRoute } from "./fileRoute.ts";
 import { fitSport, sportOfFit } from "./sports.ts";
 import type { FitSportPair } from "./sports.ts";
 import { contentId } from "./values.ts";
@@ -12,8 +15,9 @@ const fitEpochSeconds = 631_065_600;
 const semicircleDegrees = 180 / 2 ** 31;
 const maxSemicircleLatitude = 2 ** 30;
 
-const message = { fileId: 0, sport: 12, session: 18, lap: 19, record: 20, event: 21, deviceInfo: 23, activity: 34, length: 101, fieldDescription: 206, developerDataId: 207 } as const;
+const message = { fileId: 0, sport: 12, session: 18, lap: 19, record: 20, event: 21, deviceInfo: 23, course: 31, activity: 34, length: 101, fieldDescription: 206, developerDataId: 207 } as const;
 const fileTypeActivity = 4;
+const fileTypeCourse = 6;
 const eventTimer = 0;
 const eventKind = { session: 8, lap: 9, activity: 26 } as const;
 const eventType = { start: 0, stop: 1, stopAll: 4, stopDisable: 8, stopDisableAll: 9 } as const;
@@ -296,8 +300,11 @@ function collect(file: FitFile, global: number, fields: FieldValues, timestamp: 
   }
 }
 
+/** Receives each data message with its global message number and its timestamp, decoded or expanded. */
+type FitCollector = (global: number, fields: FieldValues, timestamp: number | null) => void;
+
 /** Decodes the data records of one FIT file of a possibly chained file, from its header at `start`; returns the next file's offset. */
-function decodeFile(bytes: Uint8Array, view: DataView, start: number, file: FitFile): number {
+function decodeFile(bytes: Uint8Array, view: DataView, start: number, collector: FitCollector): number {
   if (bytes.length - start < 12) throw new ImportError("truncated", "the FIT header is incomplete");
   const headerSize = bytes[start] ?? 0;
   if (headerSize < 12 || String.fromCharCode(...bytes.subarray(start + 8, start + 12)) !== ".FIT") throw new ImportError("unsupported_format", "not a FIT file");
@@ -363,7 +370,7 @@ function decodeFile(bytes: Uint8Array, view: DataView, start: number, file: FitF
       time = timestamp - (timestamp % 0x20) + delta + (delta >= timestamp % 0x20 ? 0 : 0x20);
     }
     timestamp = time ?? timestamp;
-    collect(file, definition.global, fields, time);
+    collector(definition.global, fields, time);
     offset += definition.size;
   }
   return dataEnd + 2;
@@ -387,7 +394,8 @@ export function readFit(bytes: Uint8Array): ImportedActivity {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const file: FitFile = { fileType: null, identity: null, device: null, creator: null, sport: null, subSport: null, sessions: [], points: [], timer: [], lapStarts: [], activeLengths: 0, obnixeIndex: null };
   let offset = 0;
-  while (offset < bytes.length) offset = decodeFile(bytes, view, offset, file);
+  const collector: FitCollector = (global, fields, timestamp) => collect(file, global, fields, timestamp);
+  while (offset < bytes.length) offset = decodeFile(bytes, view, offset, collector);
   if (file.fileType !== fileTypeActivity) throw new ImportError("not_an_activity", file.fileType === null ? "the FIT file has no file_id" : `the FIT file type is ${file.fileType}, not an activity`);
   const session = file.sessions[0];
   const sport = session?.sport ?? file.sport;
@@ -704,4 +712,43 @@ export function writeFit(document: FitDocument): Uint8Array {
   encoder.write(layouts.session, [end, 0, eventKind.session, eventType.stop, fitTime(session.startTime), sport.sport, sport.subSport, ...stretchValues(session).slice(1), 0, document.laps.length, sessionTriggerActivityEnd]);
   encoder.write(layouts.activity, [end, session.timerMs, 1, activityTypeManual, eventKind.activity, eventType.stop]);
   return encoder.finish();
+}
+
+interface FitCourse {
+  fileType: number | null;
+  name: string | null;
+  sport: number | null;
+  subSport: number | null;
+  readonly points: RoutePoint[];
+}
+
+/** Reads a FIT course file (`RTE-001`): its name, sport and the positions of its records, timed or not. */
+export function readFitCourse(bytes: Uint8Array): FileRoute {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const course: FitCourse = { fileType: null, name: null, sport: null, subSport: null, points: [] };
+  const collector: FitCollector = (global, fields) => {
+    switch (global) {
+      case message.fileId:
+        course.fileType ??= fields.number(0);
+        return;
+      case message.course:
+        course.name ??= fields.string(5);
+        course.sport ??= fields.number(4);
+        course.subSport ??= fields.number(7);
+        return;
+      case message.record: {
+        const { latitudeE7, longitudeE7 } = position(fields);
+        if (latitudeE7 === null || longitudeE7 === null) return;
+        const altitude = fields.number(78) ?? fields.number(2);
+        course.points.push({ latitudeE7, longitudeE7, altitudeMm: altitude === null ? null : Math.round(altitude * 200 - 500_000) });
+        return;
+      }
+      default:
+        return;
+    }
+  };
+  let offset = 0;
+  while (offset < bytes.length) offset = decodeFile(bytes, view, offset, collector);
+  if (course.fileType !== fileTypeCourse) throw new ImportError("not_a_route", course.fileType === null ? "the FIT file has no file_id" : `the FIT file type is ${course.fileType}, not a course`);
+  return fileRoute("fit", course.name, course.sport === null ? null : sportOfFit(course.sport, course.subSport, true), course.points);
 }

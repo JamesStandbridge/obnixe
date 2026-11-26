@@ -15,7 +15,7 @@ import { Sheet } from "@/ui/Overlays";
 import { Text } from "@/ui/Text";
 import { useTheme } from "@/ui/theme";
 
-const trashTables = ["session", "weigh_in", "measurement", "photo", "check_in", "pain_report", "privacy_zone", "segment", "backup"] as const;
+const trashTables = ["session", "weigh_in", "measurement", "photo", "check_in", "pain_report", "privacy_zone", "segment", "route", "backup"] as const;
 
 export interface TrashContents {
   readonly items: readonly TrashItem[];

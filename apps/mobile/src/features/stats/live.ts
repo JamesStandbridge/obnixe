@@ -26,6 +26,7 @@ export type WatchedTable =
   | "program_version"
   | "recording"
   | "rotation_skip"
+  | "route"
   | "segment"
   | "segment_effort"
   | "session"

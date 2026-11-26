@@ -1,9 +1,10 @@
 import { gunzipSync, unzipSync } from "fflate";
 import type { ImportedActivity } from "./activity.ts";
 import { ImportError } from "./errors.ts";
-import { readFit } from "./fit.ts";
-import { readGpx } from "./gpx.ts";
-import { readTcx } from "./tcx.ts";
+import type { FileRoute } from "./fileRoute.ts";
+import { readFit, readFitCourse } from "./fit.ts";
+import { readGpx, readGpxRoute } from "./gpx.ts";
+import { readTcx, readTcxCourse } from "./tcx.ts";
 
 /** Larger activity files are refused rather than inflated: a day at 1 Hz is far below. */
 export const maxActivityFileBytes = 64 * 1024 * 1024;
@@ -53,18 +54,27 @@ function zipEntry(bytes: Uint8Array): Uint8Array {
 /** Archive layers unpacked at most, as a gzip inside a ZIP entry. */
 const maxLayers = 2;
 
-function readContent(bytes: Uint8Array, layers: number): ImportedActivity {
-  if (layers < maxLayers && isGzip(bytes)) return readContent(gunzip(bytes), maxLayers);
-  if (layers < maxLayers && isZip(bytes)) return readContent(zipEntry(bytes), layers + 1);
-  if (isFit(bytes)) return readFit(bytes);
+interface FormatReaders<T> {
+  readonly fit: (bytes: Uint8Array) => T;
+  readonly gpx: (bytes: Uint8Array) => T;
+  readonly tcx: (bytes: Uint8Array) => T;
+}
+
+const activityReaders: FormatReaders<ImportedActivity> = { fit: readFit, gpx: readGpx, tcx: readTcx };
+const routeReaders: FormatReaders<FileRoute> = { fit: readFitCourse, gpx: readGpxRoute, tcx: readTcxCourse };
+
+function readContent<T>(bytes: Uint8Array, layers: number, readers: FormatReaders<T>): T {
+  if (layers < maxLayers && isGzip(bytes)) return readContent(gunzip(bytes), maxLayers, readers);
+  if (layers < maxLayers && isZip(bytes)) return readContent(zipEntry(bytes), layers + 1, readers);
+  if (isFit(bytes)) return readers.fit(bytes);
   const head = String.fromCharCode(...bytes.subarray(0, 2048));
   switch (xmlRoot.exec(head)?.[1]) {
     case "gpx":
-      return readGpx(bytes);
+      return readers.gpx(bytes);
     case "TrainingCenterDatabase":
-      return readTcx(bytes);
+      return readers.tcx(bytes);
     default:
-      throw new ImportError("unsupported_format", "the file is not a FIT, GPX or TCX activity");
+      throw new ImportError("unsupported_format", "the file is not a FIT, GPX or TCX file");
   }
 }
 
@@ -73,5 +83,10 @@ function readContent(bytes: Uint8Array, layers: number): ImportedActivity {
  * exactly one of them (Garmin Connect "Export original", `IO-050`). Throws `ImportError` and nothing else for a bad file.
  */
 export function readActivityFile(bytes: Uint8Array): ImportedActivity {
-  return readContent(bytes, 0);
+  return readContent(bytes, 0, activityReaders);
+}
+
+/** Reads a route file (`RTE-001`) in the same containers: a GPX track or route, a FIT course, a TCX course. */
+export function readRouteFile(bytes: Uint8Array): FileRoute {
+  return readContent(bytes, 0, routeReaders);
 }

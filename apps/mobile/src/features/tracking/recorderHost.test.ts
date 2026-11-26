@@ -1,12 +1,12 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { commit, defaultRecordingSettings, encodeJournalBatch, encodeJournalHeader, encodePolyline, readJournal, recordingSettingsMutation, revert } from "@obnixe/core";
-import type { Fix, JournalRecord, Mutation, Sample, TrackerMarkKind } from "@obnixe/core";
-import { bestEffort, lap, painReport, recording, session, settings } from "@obnixe/schema";
+import { commit, defaultRecordingSettings, encodeJournalBatch, encodeJournalHeader, encodePolyline, newRoute, readJournal, recordingSettingsMutation, revert, routePathOf } from "@obnixe/core";
+import type { Fix, JournalRecord, Mutation, RoutePoint, Sample, TrackerMarkKind } from "@obnixe/core";
+import { bestEffort, lap, painReport, recording, route, session, settings } from "@obnixe/schema";
 import type { EpochMs, Id, RecordingSettings, WorkoutPlan, WorkoutStep } from "@obnixe/schema";
 import { RecorderHost } from "@/features/tracking/recorderHost";
 import type { RecorderFeedback, RecorderView, RecordingStart, RecordingView, TrackerPort } from "@/features/tracking/recorderHost";
-import { journalUri, readTrackFile } from "@/features/tracking/trackStore";
+import { journalUri, readTrackFile, writeRouteTrack } from "@/features/tracking/trackStore";
 import { db, environment } from "../../../test/mocks/database.ts";
 import { Paths, storedFiles } from "../../../test/mocks/expoFileSystem.ts";
 import type { TrackerEvents, TrackerIssueKind, TrackerNotification, TrackerPower, TrackerStartRequest, TrackerStatus } from "../../../modules/obnixe-tracker";
@@ -190,6 +190,7 @@ function recordingOf(host: RecorderHost): RecordingView {
 
 const sessionRow = (id: Id) => db().select().from(session).where(eq(session.id, id)).get();
 const recordingRow = (id: Id) => db().select().from(recording).where(eq(recording.sessionId, id)).get();
+const routeRow = (id: Id) => db().select().from(route).where(eq(route.id, id)).get();
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"], now: Date.UTC(2026, 10, 20, 7, 0) });
@@ -628,5 +629,75 @@ describe("guided workout", () => {
     await run(65, meters);
     expect(feedback.calls.slice(before).filter((call) => call === "alert:workout_step")).toHaveLength(2);
     expect(recordingOf(host).workout?.current?.index).toBe(3);
+  });
+});
+
+describe("followed route", () => {
+  /** North from the start of the runs for `northMeters`, then east for 2 km. */
+  async function savedRoute(northMeters: number): Promise<Id> {
+    const north = Array.from({ length: northMeters / 10 + 1 }, (_, index): RoutePoint => ({ latitudeE7: 451_885_000 + Math.round((index * 10) / metersPerE7), longitudeE7: 57_245_000, altitudeMm: 250_000 }));
+    const corner = north.at(-1) ?? north[0];
+    const east = Array.from({ length: 200 }, (_, index): RoutePoint => ({ latitudeE7: corner?.latitudeE7 ?? 0, longitudeE7: 57_245_000 + Math.round(((index + 1) * 10) / (metersPerE7 * Math.cos((45.19 * Math.PI) / 180))), altitudeMm: 250_000 }));
+    const plan = newRoute(environment, { name: "Bastille", sport: "run", path: routePathOf([...north, ...east]), elevationSource: "file", sourceSessionId: null });
+    await writeRouteTrack(plan.routeId, plan.file.bytes);
+    writer.write("route", [plan.mutation]);
+    return plan.routeId;
+  }
+
+  const along = (routeId: Id): RecordingStart => ({ ...start, request: { ...start.request, routeId } });
+
+  it("shows the route and what is left of it while recording, then dates its last use (RTE-003)", async () => {
+    const routeId = await savedRoute(2000);
+    const host = newHost();
+    const outcome = await host.start(along(routeId));
+    if (!outcome.ok) throw new Error(`Start failed: ${outcome.failure.kind}`);
+    await settle();
+    expect(recordingOf(host).route).toMatchObject({ routeId, name: "Bastille" });
+    await run(60, 0);
+    const { live } = recordingOf(host);
+    expect(live.route).toMatchObject({ joined: true, offRoute: false });
+    expect(live.route?.progress).toBeGreaterThan(150);
+    expect(live.metrics.route_remaining).toBe(live.route?.remaining);
+    expect(live.metrics.route_progress).toBe(live.route?.fraction);
+    expect(recordingRow(outcome.value)?.routeId).toBe(routeId);
+    expect(db().select({ lastUsedAt: route.lastUsedAt }).from(route).where(eq(route.id, routeId)).get()?.lastUsedAt).toBe(tracker.startedAt);
+  });
+
+  it("warns once off the route and says where it is (RTE-005)", async () => {
+    const routeId = await savedRoute(150);
+    const host = newHost();
+    const outcome = await host.start(along(routeId));
+    if (!outcome.ok) throw new Error(`Start failed: ${outcome.failure.kind}`);
+    await settle();
+    await run(120, 0);
+    expect(feedback.calls).toContain("alert:route");
+    expect(recordingOf(host).live.route?.offRoute).toBe(true);
+    expect(recordingOf(host).live.route?.rejoin).not.toBeNull();
+  });
+
+  it("refuses a route gone or unreadable before anything starts", async () => {
+    const host = newHost();
+    expect(await host.start(along("gone" as Id))).toEqual({ ok: false, failure: { kind: "route_unavailable" } });
+    const routeId = await savedRoute(500);
+    const file = routeRow(routeId)?.trackFile ?? "";
+    for (const uri of [...storedFiles.keys()]) if (uri.endsWith(`/${file}`)) storedFiles.delete(uri);
+    expect(await host.start(along(routeId))).toEqual({ ok: false, failure: { kind: "route_unavailable" } });
+    expect(tracker.state.state).toBe("idle");
+    expect(db().select().from(session).all()).toEqual([]);
+  });
+
+  it("follows the route again after a restart", async () => {
+    const routeId = await savedRoute(2000);
+    const first = newHost();
+    const outcome = await first.start(along(routeId));
+    if (!outcome.ok) throw new Error(`Start failed: ${outcome.failure.kind}`);
+    await settle();
+    const meters = await run(40, 0);
+    first.dispose();
+    const host = newHost();
+    await host.recover();
+    expect(recordingOf(host).route?.routeId).toBe(routeId);
+    await run(20, meters);
+    expect(recordingOf(host).live.route?.progress).toBeGreaterThan(150);
   });
 });

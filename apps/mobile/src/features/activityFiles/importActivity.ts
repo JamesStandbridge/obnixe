@@ -55,6 +55,8 @@ export function importErrorMessage(reason: ImportErrorReason): string {
       return "Fichier incomplet : il s'arrête avant la fin";
     case "not_an_activity":
       return "Ce fichier n'est pas une activité (parcours, réglages ou autre)";
+    case "not_a_route":
+      return "Ce fichier n'est pas un itinéraire";
     case "several_activities":
       return "Ce fichier contient plusieurs activités. Importe-les une par une.";
     case "no_activity_data":

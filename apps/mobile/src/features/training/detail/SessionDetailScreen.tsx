@@ -2,6 +2,7 @@ import { useState } from "react";
 import { StyleSheet, View } from "react-native";
 import Animated from "react-native-reanimated";
 import { router } from "expo-router";
+import { CodedError } from "expo";
 import { ZodError } from "zod";
 import {
   AlreadyRevertedError,
@@ -40,6 +41,7 @@ import { SportSheet } from "@/features/recordings/SportSheet";
 import { TrimSheet } from "@/features/recordings/TrimSheet";
 import { useRecordedActivity } from "@/features/recordings/useRecordedActivity";
 import type { RecordedActivityState } from "@/features/recordings/useRecordedActivity";
+import { activityCandidate, routeSaveError, routeSaveInterrupted, writeRouteFile } from "@/features/routes/routeData";
 import { canDrawSegment, SegmentSheet } from "@/features/segments/SegmentSheet";
 import { useDerivedRebuildState } from "@/features/tracking/recorder";
 import { effortLabels, formatDay, formatLongDate, formatMass, formatTime, sensationPhrases } from "@/features/training/format";
@@ -383,6 +385,25 @@ function Detail({ data, recorded }: DetailProps) {
     rewrite(() => planRecompute(db(), environment, session.id, activity.track), `Recalcul : ${title}`, "Activité recalculée");
   };
 
+  const redoRoute = async (): Promise<void> => {
+    setMore(false);
+    if (activity === null) return;
+    const candidate = activityCandidate(activity.processed, title, session.sport);
+    if (candidate === null) {
+      notify({ text: "Sortie trop courte pour un itinéraire", ...placement });
+      return;
+    }
+    try {
+      const plan = await writeRouteFile(candidate, title, session.sport, session.id);
+      undoableWrite({ summary: `Itinéraire créé : ${title}`, mutations: [plan.mutation], message: "Itinéraire créé", ...placement });
+      router.push({ pathname: "/routes/[id]", params: { id: plan.routeId } });
+    } catch (error) {
+      const message = routeSaveError(error) ?? (error instanceof CodedError ? routeSaveInterrupted : null);
+      if (message === null) throw error;
+      notify({ text: message, ...placement });
+    }
+  };
+
   const createSegment = (draft: SegmentDraft): void => {
     setDrawingSegment(false);
     if (activity === null) return;
@@ -619,6 +640,7 @@ function Detail({ data, recorded }: DetailProps) {
                   }}
                 />
               ) : null}
+              <MenuItem label="Refaire ce parcours" detail="en faire un itinéraire à suivre" onPress={() => void redoRoute()} />
               {activity.saved.recording.algorithmVersion < trackingAlgorithmVersion ? <MenuItem label="Recalculer avec la dernière version" onPress={recompute} /> : null}
             </>
           )}

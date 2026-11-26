@@ -1,10 +1,10 @@
 import { heartRateZones } from "@obnixe/core";
-import type { AlertGoal, RangeStatus, RecordingAlertEvent, ResolvedProfile, WorkoutStepRun } from "@obnixe/core";
+import type { AlertGoal, RangeStatus, RecordingAlertEvent, ResolvedProfile, RouteRejoin, WorkoutStepRun } from "@obnixe/core";
 import type { HeartRateRange, PaceRange, WorkoutDuration, WorkoutIntent, WorkoutTarget } from "@obnixe/schema";
 import { lapFigures } from "@/features/recording/metrics";
 import { targetLabel } from "@/features/recording/target";
 import { formatClock, formatLongClock } from "@/format/durations";
-import { formatNumber } from "@/format/numbers";
+import { formatInteger, formatNumber } from "@/format/numbers";
 
 export type AlertTone = "mark" | "warn" | "stop";
 
@@ -48,6 +48,7 @@ export function alertPulses(event: RecordingAlertEvent): AlertPulses {
     case "pace_range":
     case "heart_rate_range":
     case "workout_target":
+    case "route":
       return event.status === "back" ? pulses.back : pulses.triple;
     case "auto_pause":
       return pulses.long;
@@ -198,6 +199,15 @@ function workoutTargetNotice(target: WorkoutTarget, status: RangeStatus["status"
   return { title, detail: `Cible ${workoutTargetSpan(target)}`, tone: status === "back" ? "mark" : "warn" };
 }
 
+const compassPoints = ["au nord", "au nord-est", "à l'est", "au sud-est", "au sud", "au sud-ouest", "à l'ouest", "au nord-ouest"] as const;
+
+/** `RTE-005`: where the route is from the position, « à 80 m au sud-est ». */
+export function rejoinText(rejoin: Pick<RouteRejoin, "distance" | "bearing">): string {
+  const point = compassPoints[Math.round((((rejoin.bearing % 360) + 360) % 360) / 45) % compassPoints.length] ?? compassPoints[0];
+  const distance = rejoin.distance < 1000 ? `${formatInteger(Math.round(rejoin.distance / 10) * 10)} m` : `${formatNumber(rejoin.distance / 1000, 1, 1)} km`;
+  return `à ${distance} ${point}`;
+}
+
 function goalDetail(goal: AlertGoal): string {
   return `Objectif ${targetLabel(goal)} atteint`;
 }
@@ -227,6 +237,9 @@ export function alertNotice(event: RecordingAlertEvent, profile: Pick<ResolvedPr
       return { title: `Segment ${event.name}`, detail: event.bestElapsedMs === null ? "Premier passage, chrono lancé" : `Meilleur passage ${formatLongClock(event.bestElapsedMs / 1000)}`, tone: "mark" };
     case "segment_finished":
       return { title: `${event.name} · ${formatLongClock(event.elapsedMs / 1000)}`, detail: segmentFinishDetail(event.elapsedMs, event.bestElapsedMs), tone: "mark" };
+    case "route":
+      if (event.status === "back") return { title: "De retour sur l'itinéraire", detail: "Le suivi reprend", tone: "mark" };
+      return { title: "Hors itinéraire", detail: event.rejoin === null ? "Reviens sur le tracé" : `L'itinéraire est ${rejoinText(event.rejoin)}`, tone: "warn" };
     case "workout_step":
       return stepNotice(event.step);
     case "workout_target":

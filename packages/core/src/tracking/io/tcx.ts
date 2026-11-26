@@ -1,6 +1,9 @@
 import { assembleActivity } from "./activity.ts";
+import type { RoutePoint } from "../routes.ts";
 import type { ExportPoint, FilePoint, FileTotals, ImportedActivity } from "./activity.ts";
 import { ImportError } from "./errors.ts";
+import { fileRoute } from "./fileRoute.ts";
+import type { FileRoute } from "./fileRoute.ts";
 import { sportOfTcx } from "./sports.ts";
 import type { TcxSport } from "./sports.ts";
 import { centiDegrees, contentId, parseDecimal, parseTime, positionE7 } from "./values.ts";
@@ -213,6 +216,72 @@ function lapTotals(laps: readonly LapDraft[]): FileTotals | null {
     heartRateAvg: ratedMs === 0 ? null : Math.round(rated.reduce((total, lap) => total + (lap.heartRateAvg ?? 0) * lap.timerMs, 0) / ratedMs),
     heartRateMax: maxima.length === 0 ? null : Math.max(...maxima),
   };
+}
+
+interface CoursePointDraft {
+  latitude: number | null;
+  longitude: number | null;
+  altitudeMm: number | null;
+}
+
+/** Garmin Training Center v2 course reader: the name and the trackpoints of the first `Courses/Course`. */
+class TcxCourseReader implements XmlHandler {
+  readonly points: RoutePoint[] = [];
+  name: string | null = null;
+  courses = 0;
+  private readonly path: string[] = [];
+  private content = "";
+  private point: CoursePointDraft | null = null;
+
+  open(name: string): void {
+    if (this.path.length === 0 && name !== "TrainingCenterDatabase") throw new ImportError("unsupported_format", `the root element is <${name}>, not <TrainingCenterDatabase>`);
+    const parent = this.path[this.path.length - 1];
+    this.path.push(name);
+    this.content = "";
+    if (name === "Course" && parent === "Courses") this.courses += 1;
+    if (name === "Trackpoint" && this.courses === 1 && this.path.includes("Course")) this.point = { latitude: null, longitude: null, altitudeMm: null };
+  }
+
+  text(text: string): void {
+    this.content += text;
+  }
+
+  close(name: string): void {
+    this.path.pop();
+    const parent = this.path[this.path.length - 1];
+    const point = this.point;
+    if (point === null) {
+      if (name === "Name" && parent === "Course" && this.courses === 1) this.name ??= this.content.trim() || null;
+      return;
+    }
+    switch (name) {
+      case "Trackpoint":
+        this.point = null;
+        if ((point.latitude === null) !== (point.longitude === null)) throw new ImportError("invalid_value", "a trackpoint has only one coordinate");
+        if (point.latitude === null || point.longitude === null) return;
+        this.points.push({ ...positionE7(point.latitude, point.longitude), altitudeMm: point.altitudeMm });
+        return;
+      case "LatitudeDegrees":
+        point.latitude = parseDecimal(this.content, "latitude");
+        return;
+      case "LongitudeDegrees":
+        point.longitude = parseDecimal(this.content, "longitude");
+        return;
+      case "AltitudeMeters":
+        point.altitudeMm = Math.round(parseDecimal(this.content, "altitude") * 1000);
+        return;
+      default:
+        return;
+    }
+  }
+}
+
+/** Reads a TCX course (`RTE-001`); a course names no sport. */
+export function readTcxCourse(bytes: Uint8Array): FileRoute {
+  const reader = new TcxCourseReader();
+  readXmlFile(bytes, reader);
+  if (reader.courses === 0) throw new ImportError("not_a_route", "the file holds no course");
+  return fileRoute("tcx", reader.name, null, reader.points);
 }
 
 /**

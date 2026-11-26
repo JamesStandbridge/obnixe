@@ -4,11 +4,11 @@ import { gzipSync } from "fflate";
 import { describe, expect, it } from "vitest";
 import { ImportError } from "./errors.ts";
 import type { ImportErrorReason } from "./errors.ts";
-import { fitCrc, readFit } from "./fit.ts";
-import { readGpx } from "./gpx.ts";
+import { fitCrc, readFit, readFitCourse } from "./fit.ts";
+import { readGpx, readGpxRoute } from "./gpx.ts";
 import { fitSport, fitSubSport, sportOfFit, sportOfGpxType, sportOfTcx } from "./sports.ts";
-import { readTcx } from "./tcx.ts";
-import { readActivityFile } from "./zip.ts";
+import { readTcx, readTcxCourse } from "./tcx.ts";
+import { readActivityFile, readRouteFile } from "./zip.ts";
 
 const fixtures = new URL("../../../test/fixtures/import/", import.meta.url);
 const read = (name: string): Uint8Array => new Uint8Array(readFileSync(new URL(name, fixtures)));
@@ -180,6 +180,92 @@ function fitFile(records: readonly (readonly number[])[]): Uint8Array {
   view.setUint16(12 + data.length, fitCrc(bytes, 0, 12 + data.length), true);
   return bytes;
 }
+
+const encode = (text: string): Uint8Array => new TextEncoder().encode(text);
+
+function int32LittleEndian(value: number): number[] {
+  return [value & 0xff, (value >>> 8) & 0xff, (value >>> 16) & 0xff, (value >>> 24) & 0xff];
+}
+
+describe("route readers (RTE-001)", () => {
+  it("reads an untimed GPX track with its altitudes and its name", () => {
+    const route = readGpxRoute(read("komoot-route.gpx"));
+    expect(route.format).toBe("gpx");
+    expect(route.name).toBe("Planned tour");
+    expect(route.points).toHaveLength(20);
+    expect(route.points[0]).toEqual({ latitudeE7: 458_023_100, longitudeE7: 62_319_500, altitudeMm: 447_000 });
+  });
+
+  it("reads a recorded GPX activity as a route too", () => {
+    const route = readGpxRoute(read("garmin-connect-run.gpx"));
+    expect(route.points).toHaveLength(120);
+    expect(route.sport).toEqual({ sport: "run", values: {} });
+  });
+
+  it("reads the waypoints of a GPX rte with its type, and refuses a GPX with neither", () => {
+    const gpx = `<?xml version="1.0"?><gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1"><rte><name>Boucle</name><type>cycling</type>
+      <rtept lat="45.9" lon="6.1"><ele>450</ele><name>Départ</name></rtept><rtept lat="45.91" lon="6.11"/><rtept lat="45.92" lon="6.1"><ele>480.5</ele></rtept></rte></gpx>`;
+    const route = readGpxRoute(encode(gpx));
+    expect(route.name).toBe("Boucle");
+    expect(route.sport).toEqual({ sport: "bike", values: { kind: "road" } });
+    expect(route.points).toEqual([
+      { latitudeE7: 459_000_000, longitudeE7: 61_000_000, altitudeMm: 450_000 },
+      { latitudeE7: 459_100_000, longitudeE7: 61_100_000, altitudeMm: null },
+      { latitudeE7: 459_200_000, longitudeE7: 61_000_000, altitudeMm: 480_500 },
+    ]);
+    expect(failure(() => readGpxRoute(read("malformed/no-track.gpx")))).toBe("not_a_route");
+  });
+
+  it("reads the first TCX course and refuses a TCX activity", () => {
+    const tcx = `<?xml version="1.0"?><TrainingCenterDatabase xmlns="http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2"><Courses><Course><Name>Semnoz</Name>
+      <Lap><TotalTimeSeconds>0</TotalTimeSeconds></Lap><Track>
+      <Trackpoint><Time>2026-01-01T00:00:00Z</Time><Position><LatitudeDegrees>45.8</LatitudeDegrees><LongitudeDegrees>6.1</LongitudeDegrees></Position><AltitudeMeters>500</AltitudeMeters></Trackpoint>
+      <Trackpoint><Time>2026-01-01T00:00:10Z</Time></Trackpoint>
+      <Trackpoint><Position><LatitudeDegrees>45.81</LatitudeDegrees><LongitudeDegrees>6.11</LongitudeDegrees></Position></Trackpoint>
+      </Track><CoursePoint><Name>Col</Name><Position><LatitudeDegrees>45.0</LatitudeDegrees><LongitudeDegrees>6.0</LongitudeDegrees></Position></CoursePoint></Course>
+      <Course><Name>Autre</Name></Course></Courses></TrainingCenterDatabase>`;
+    const route = readTcxCourse(encode(tcx));
+    expect(route).toEqual({
+      format: "tcx",
+      name: "Semnoz",
+      sport: null,
+      points: [
+        { latitudeE7: 458_000_000, longitudeE7: 61_000_000, altitudeMm: 500_000 },
+        { latitudeE7: 458_100_000, longitudeE7: 61_100_000, altitudeMm: null },
+      ],
+    });
+    expect(failure(() => readTcxCourse(read("garmin-run.tcx")))).toBe("not_a_route");
+  });
+
+  it("reads a FIT course with its name and sport, and refuses a FIT activity", () => {
+    const name = [...encode("Tour du lac")];
+    const course = fitFile([
+      [0x40, 0, 0, 0, 0, 1, 0, 1, 0x00],
+      [0x00, 6],
+      [0x41, 0, 0, 31, 0, 2, 4, 1, 0x00, 5, 16, 0x07],
+      [0x01, fitSport.cycling, ...name, ...Array<number>(16 - name.length).fill(0)],
+      [0x42, 0, 0, 20, 0, 3, 0, 4, 0x85, 1, 4, 0x85, 2, 2, 0x84],
+      [0x02, ...int32LittleEndian(547_608_328), ...int32LittleEndian(73_076_400), 0xc4, 0x09],
+      [0x02, ...int32LittleEndian(547_609_328), ...int32LittleEndian(73_077_400), 0xff, 0xff],
+    ]);
+    const route = readFitCourse(course);
+    expect(route.name).toBe("Tour du lac");
+    expect(route.sport).toEqual({ sport: "bike", values: { kind: "road" } });
+    expect(route.points).toHaveLength(2);
+    expect(route.points[0]?.altitudeMm).toBe(0x09c4 * 200 - 500_000);
+    expect(route.points[1]?.altitudeMm).toBeNull();
+    expect(readFitCourse(read("malformed/course.fit")).points).toHaveLength(10);
+    expect(failure(() => readFitCourse(read("venu3s-run.fit")))).toBe("not_a_route");
+  });
+
+  it("finds the route in any container, and refuses a route of a single point", () => {
+    expect(readRouteFile(gzipSync(read("komoot-route.gpx"))).points).toHaveLength(20);
+    expect(readRouteFile(read("malformed/course.fit")).format).toBe("fit");
+    const single = `<gpx version="1.1"><trk><trkseg><trkpt lat="45.9" lon="6.1"/></trkseg></trk></gpx>`;
+    expect(failure(() => readRouteFile(encode(single)))).toBe("not_a_route");
+    expect(failure(() => readRouteFile(read("malformed/not-an-activity.txt")))).toBe("unsupported_format");
+  });
+});
 
 describe("file detection and archives", () => {
   it("reads the same activity from a .fit, a .fit.gz and a Garmin Connect Export original ZIP", () => {
