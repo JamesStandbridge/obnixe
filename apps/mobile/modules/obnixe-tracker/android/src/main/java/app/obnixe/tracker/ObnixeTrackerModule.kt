@@ -1,6 +1,5 @@
 package app.obnixe.tracker
 
-import android.bluetooth.BluetoothAdapter
 import android.net.Uri
 import app.obnixe.tracker.bluetooth.SensorDevice
 import app.obnixe.tracker.bluetooth.SensorService
@@ -196,8 +195,7 @@ class StartRequestRecord : Record {
       journalPath.isNotEmpty() &&
       (batchIntervalMs == 1_000.0 || batchIntervalMs == 5_000.0) &&
       (backgroundBatchIntervalMs == 1_000.0 || backgroundBatchIntervalMs == 5_000.0) &&
-      bluetooth.all { BluetoothAdapter.checkBluetoothAddress(it.address) } &&
-      bluetooth.distinctBy { it.service.role }.size == bluetooth.size &&
+      BluetoothSensor.isValidSelection(bluetooth) &&
       (replay == null || replay.speed in 1.0..50.0)
     if (!valid) return null
     return RecordingConfig(

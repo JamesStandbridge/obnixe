@@ -12,14 +12,10 @@ import android.os.Handler
 import android.os.PowerManager
 import androidx.core.content.ContextCompat
 import androidx.core.location.LocationManagerCompat
-import app.obnixe.tracker.bluetooth.CrankCadence
 import app.obnixe.tracker.bluetooth.SensorLink
 import app.obnixe.tracker.bluetooth.SensorRole
+import app.obnixe.tracker.bluetooth.SensorSamples
 import app.obnixe.tracker.bluetooth.SensorService
-import app.obnixe.tracker.bluetooth.parseCscMeasurement
-import app.obnixe.tracker.bluetooth.parseCyclingPowerMeasurement
-import app.obnixe.tracker.bluetooth.parseHeartRateMeasurement
-import app.obnixe.tracker.bluetooth.parseRscCadence
 import app.obnixe.tracker.journal.JournalBatch
 import app.obnixe.tracker.journal.JournalFormat
 import app.obnixe.tracker.journal.JournalFormatException
@@ -108,8 +104,7 @@ class Recording private constructor(
   private var barometer: SensorStream? = null
   private var steps: SensorStream? = null
   private var links: List<SensorLink> = emptyList()
-  private val sensorCrank = CrankCadence()
-  private val powerCrank = CrankCadence()
+  private val sensorSamples = SensorSamples()
   private var stopped = false
   private var receiverRegistered = false
   private var storageLowReported = false
@@ -245,16 +240,7 @@ class Recording private constructor(
 
   private val sensorListener = object : SensorLink.Listener {
     override fun onValue(link: SensorLink, service: SensorService, elapsedRealtimeNanos: Long, value: ByteArray) {
-      val t = clock.at(elapsedRealtimeNanos)
-      val sample = when (service) {
-        SensorService.HEART_RATE -> parseHeartRateMeasurement(value)?.let { HeartRateSample(t, it.bpm, it.contact, it.rrInterval) }
-        SensorService.CYCLING_SPEED_CADENCE -> parseCscMeasurement(value)?.let { sensorCrank.push(elapsedRealtimeNanos, it) }?.let { CadenceSample(t, it) }
-        SensorService.RUNNING_SPEED_CADENCE -> parseRscCadence(value)?.let { CadenceSample(t, it) }
-        SensorService.CYCLING_POWER -> parseCyclingPowerMeasurement(value)?.let { power ->
-          PowerSample(t, power.watts, power.crank?.let { powerCrank.push(elapsedRealtimeNanos, it) })
-        }
-      }
-      sample?.let(::onSample)
+      sensorSamples.sampleOf(service, clock.at(elapsedRealtimeNanos), elapsedRealtimeNanos, value)?.let(::onSample)
     }
 
     override fun onLost(link: SensorLink) {

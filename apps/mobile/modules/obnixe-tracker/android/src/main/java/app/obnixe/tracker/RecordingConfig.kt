@@ -31,7 +31,16 @@ data class TrackerNotificationContent(
 data class ReplaySource(val gpxPath: String, val speed: Double)
 
 /** A paired source: the service it streams and its Bluetooth address. */
-data class BluetoothSensor(val service: SensorService, val address: String)
+data class BluetoothSensor(val service: SensorService, val address: String) {
+  companion object {
+    /** The form `BluetoothAdapter.checkBluetoothAddress` accepts: six upper-case hex pairs. */
+    private val addressPattern = Regex("[0-9A-F]{2}(:[0-9A-F]{2}){5}")
+
+    /** Valid addresses and at most one source per role; one device may serve several roles. */
+    fun isValidSelection(sensors: List<BluetoothSensor>): Boolean =
+      sensors.all { addressPattern.matches(it.address) } && sensors.distinctBy { it.service.role }.size == sensors.size
+  }
+}
 
 data class RecordingConfig(
   val sessionId: String,

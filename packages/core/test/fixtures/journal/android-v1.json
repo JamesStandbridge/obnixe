@@ -102,6 +102,23 @@
       "count": 19
     },
     {
+      "type": "power",
+      "t": 10600,
+      "watts": 238,
+      "cadence": 91
+    },
+    {
+      "type": "cadence",
+      "t": 10700,
+      "perMinute": 172
+    },
+    {
+      "type": "power",
+      "t": 10900,
+      "watts": 0,
+      "cadence": null
+    },
+    {
       "type": "pressure",
       "t": 11000,
       "pascals": 89401
@@ -129,6 +146,6 @@
       "t": 11000
     }
   ],
-  "lastSequence": 5,
-  "validLength": 375
+  "lastSequence": 6,
+  "validLength": 412
 }
