@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Id } from "@obnixe/schema";
-import { activityArea, activityRegionBounds, regionOutline } from "@/features/maps/activityRegion";
+import { activityArea, activityRegionBounds, regionOutline, routeArea } from "@/features/maps/activityRegion";
 import type { ActivityArea } from "@/features/maps/activityRegion";
 import { db } from "../../../test/mocks/database.ts";
 
@@ -36,5 +36,11 @@ describe("offline region around an activity (MAP-031)", () => {
 
   it("has nothing to frame for a session without a track", () => {
     expect(activityArea(db(), "missing" as Id)).toBeNull();
+  });
+});
+
+describe("offline region around a route (RTE-006)", () => {
+  it("frames the route's extent under its name", () => {
+    expect(routeArea({ name: "Tour de la Bastille", bbox: { south: 451_000_000, west: 56_000_000, north: 452_000_000, east: 58_000_000 } })).toEqual({ title: "Tour de la Bastille", corners: area.corners });
   });
 });

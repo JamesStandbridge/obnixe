@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { defaultRecordingSettings, resolveProfile } from "@obnixe/core";
 import type { RecordAnnouncement, RecordingAlertEvent, ResolvedProfile } from "@obnixe/core";
 import type { EpochMs, FieldValues, Id, RecordingSettings, SportKey } from "@obnixe/schema";
-import { alertNotice, alertPulses, beepWave, heartRateSpanBpm, vibrationPattern } from "@/features/recording/alerts";
+import { alertNotice, alertPulses, beepWave, heartRateSpanBpm, rejoinText, vibrationPattern } from "@/features/recording/alerts";
 import { elevationShape } from "@/features/recording/elevation";
 import { lapFigures, metricText, summaryFigures } from "@/features/recording/metrics";
 import { maxHeartRateDetail, maxHeartRateFrom, zoneLines } from "@/features/recording/physiology";
@@ -52,6 +52,15 @@ describe("live metrics", () => {
     expect(text("gps_quality", 4.2)).toEqual({ value: "±4", unit: "m" });
     expect(text("heart_rate_zone", 3)).toEqual({ value: "Z3", unit: "" });
     expect(metricText("clock", {}, run, noon, "Europe/Paris").value).toBe("12:05");
+  });
+
+  it("shows what is left of the followed route (RTE-003)", () => {
+    const text = (key: Parameters<typeof metricText>[0], value: number) => metricText(key, { [key]: value }, run, noon, "Europe/Paris");
+    expect(text("route_remaining", 12_345)).toEqual({ value: "12,3", unit: "km" });
+    expect(text("route_remaining", 784)).toEqual({ value: "780", unit: "m" });
+    expect(text("route_ascent_remaining", 412.6)).toEqual({ value: "413", unit: "m" });
+    expect(text("route_progress", 0.999)).toEqual({ value: "99", unit: "%" });
+    expect(metricText("route_progress", {}, run, noon, "Europe/Paris")).toEqual({ value: "–", unit: "%" });
   });
 
   it("shows a placeholder when a value is missing, such as the pace while still", () => {
@@ -223,6 +232,19 @@ describe("recording alerts", () => {
     expect(alertPulses({ kind: "workout_step", step: null })).toEqual([200, 150, 200]);
   });
 
+  it("points back to the route when off it (RTE-005)", () => {
+    expect(rejoinText({ distance: 84, bearing: 130 })).toBe("à 80 m au sud-est");
+    expect(rejoinText({ distance: 1520, bearing: -10 })).toBe("à 1,5 km au nord");
+    expect(alertNotice({ kind: "route", status: "off", repeat: 0, rejoin: { latitude: 45, longitude: 5, progress: 100, distance: 60, bearing: 270 } }, run)).toEqual({
+      title: "Hors itinéraire",
+      detail: "L'itinéraire est à 60 m à l'ouest",
+      tone: "warn",
+    });
+    expect(alertNotice({ kind: "route", status: "off", repeat: 1, rejoin: null }, run).detail).toBe("Reviens sur le tracé");
+    expect(alertNotice({ kind: "route", status: "back" }, run)).toEqual({ title: "De retour sur l'itinéraire", detail: "Le suivi reprend", tone: "mark" });
+    expect(alertLabel("route", run).title).toBe("Sortie d'itinéraire");
+  });
+
   it("tells alerts apart by their vibration, on both systems (REC-075)", () => {
     expect(alertPulses({ kind: "split", index: 1, meters: 1000, movingMs: 300_000 })).toEqual([200]);
     expect(alertPulses({ kind: "goal", goal: { kind: "duration", seconds: 1800 } })).toEqual([200, 150, 200]);
@@ -351,5 +373,16 @@ describe("elevation profile", () => {
     );
     expect(flat?.line).toBe("M0.0 22.0 L100.0 18.0");
     expect(elevationShape([{ distance: 0, altitude: 100 }], 100, 40)).toBeNull();
+  });
+
+  it("places the position on a route's profile (RTE-003)", () => {
+    const points = [
+      { distance: 0, altitude: 200 },
+      { distance: 500, altitude: 300 },
+      { distance: 1000, altitude: 250 },
+    ];
+    expect(elevationShape(points, 100, 50)?.marker).toBeNull();
+    expect(elevationShape(points, 100, 50, 250)?.marker).toEqual({ x: 25, y: 25 });
+    expect(elevationShape(points, 100, 50, 4000)?.marker).toEqual({ x: 100, y: 25 });
   });
 });

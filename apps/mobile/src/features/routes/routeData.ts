@@ -1,15 +1,13 @@
 import { eq } from "drizzle-orm";
-import { activityRoute, decodeTrack, hasRouteAltitude, ImportError, lttb, newRoute, readRouteFile, RouteGeometry, routeGeometryOf, routePathOf, RouteTooShortError, simplifyPath, TrackDecodeError, trackDigest } from "@obnixe/core";
-import type { ElevationPoint, ImportErrorReason, ProcessedTrack, RoutePath, RoutePlan, SportGuess } from "@obnixe/core";
+import { activityRoute, decodeTrack, hasRouteAltitude, ImportError, InvalidRouteError, lttb, newRoute, readRouteFile, RouteGeometry, routeGeometryOf, routePathOf, RouteTooShortError, simplifyPath, TrackDecodeError, trackDigest } from "@obnixe/core";
+import type { ElevationPoint, ImportErrorReason, ProcessedTrack, RoutePath, RoutePlan, RouteProblem, SportGuess, Track } from "@obnixe/core";
 import { route } from "@obnixe/schema";
 import type { ElevationSource, Id, Route, SportKey } from "@obnixe/schema";
 import { db, environment } from "@/data/database";
-import { write } from "@/data/write";
 import { importErrorMessage } from "@/features/activityFiles/importActivity";
 import type { PreviewPath } from "@/features/activityFiles/importActivity";
 import type { LngLat } from "@/features/maps/surface";
-import type { GeoPoint } from "@/features/maps/tiles";
-import { readTrack, writeRouteTrack } from "@/features/tracking/trackStore";
+import { readTrack, TrackWriteError, writeRouteTrack } from "@/features/tracking/trackStore";
 
 /** A route read from a file or an activity, measured by the engine before it is saved (`RTE-001`). */
 export interface RouteCandidate {
@@ -79,15 +77,45 @@ export function activityCandidate(processed: ProcessedTrack, name: string, sport
   }
 }
 
-/** Writes and verifies the file first (`DAT-020`), then commits the row that references it. */
-export async function saveRoute(candidate: RouteCandidate, name: string, sport: SportKey, sourceSessionId: Id | null): Promise<RoutePlan> {
+/** Distance and D+ of a candidate as the engine measures them, for the preview before saving. */
+export function candidateFigures(geometry: RouteGeometry): Pick<Route, "distanceMm" | "ascentMm"> {
+  const last = geometry.length - 1;
+  const ascent = geometry.profile.ascent?.[last];
+  return { distanceMm: Math.round((geometry.profile.distance[last] ?? 0) * 1000), ascentMm: ascent === undefined ? null : Math.round(ascent * 1000) };
+}
+
+export function routeProblemMessage(problem: RouteProblem): string {
+  switch (problem) {
+    case "name":
+      return "Donne un nom à l'itinéraire";
+    case "sport":
+      return "Ce sport ne s'enregistre pas en GPS";
+    case "length":
+      return "Itinéraire trop court pour être suivi";
+    default: {
+      const unreachable: never = problem;
+      return unreachable;
+    }
+  }
+}
+
+export const routeSaveInterrupted = "Enregistrement interrompu, rien n'a changé";
+
+/** The message for a failure of `writeRouteFile` the engine or the file store explains, `null` otherwise. */
+export function routeSaveError(error: unknown): string | null {
+  if (error instanceof InvalidRouteError) return routeProblemMessage(error.problem);
+  if (error instanceof TrackWriteError) return routeSaveInterrupted;
+  return null;
+}
+
+/** Writes and verifies the file (`DAT-020`): the caller then commits the row that references it. */
+export async function writeRouteFile(candidate: RouteCandidate, name: string, sport: SportKey, sourceSessionId: Id | null): Promise<RoutePlan> {
   const plan = newRoute(environment, { name, sport, path: candidate.path, elevationSource: candidate.elevationSource, sourceSessionId });
   await writeRouteTrack(plan.routeId, plan.file.bytes);
-  write(`Itinéraire : ${name.trim()}`, [plan.mutation]);
   return plan;
 }
 
-export type RouteLoad = { readonly kind: "loaded"; readonly geometry: RouteGeometry } | { readonly kind: "missing" } | { readonly kind: "damaged" };
+export type RouteLoad = { readonly kind: "loaded"; readonly track: Track; readonly geometry: RouteGeometry } | { readonly kind: "missing" } | { readonly kind: "damaged" };
 
 /** The route as followed, from its file checked against the row's digest. */
 export async function loadRouteGeometry(row: Pick<Route, "trackFile" | "trackSha256" | "reversed" | "elevationSource">): Promise<RouteLoad> {
@@ -95,7 +123,8 @@ export async function loadRouteGeometry(row: Pick<Route, "trackFile" | "trackSha
   if (bytes === null) return { kind: "missing" };
   if (trackDigest(bytes) !== row.trackSha256) return { kind: "damaged" };
   try {
-    return { kind: "loaded", geometry: routeGeometryOf(row, decodeTrack(bytes)) };
+    const track = decodeTrack(bytes);
+    return { kind: "loaded", track, geometry: routeGeometryOf(row, track) };
   } catch (error) {
     if (error instanceof TrackDecodeError || error instanceof RouteTooShortError) return { kind: "damaged" };
     throw error;
@@ -134,15 +163,6 @@ export function routeProfilePoints(geometry: RouteGeometry): readonly ElevationP
     ys.push(value);
   }
   return Array.from(lttb(xs, ys, profileMaxPoints), (index): ElevationPoint => ({ distance: xs[index] ?? 0, altitude: ys[index] ?? 0 }));
-}
-
-/** The corners of the route's extent, for an offline region around it (`RTE-006`). */
-export function routeCorners(row: Pick<Route, "bbox">): readonly GeoPoint[] {
-  const { south, west, north, east } = row.bbox;
-  return [
-    { latitude: south / 1e7, longitude: west / 1e7 },
-    { latitude: north / 1e7, longitude: east / 1e7 },
-  ];
 }
 
 export function routeById(routeId: Id): Route | null {
