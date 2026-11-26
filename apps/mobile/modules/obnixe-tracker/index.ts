@@ -41,6 +41,8 @@ export interface BluetoothSensor {
 }
 
 export interface TrackerSensors {
+  /** `REC-060`: false records without location, for a stopwatch recording with a heart rate source; no replay then. */
+  readonly location: boolean;
   readonly barometer: boolean;
   readonly pedometer: boolean;
   /** At most one per measured role; one device may appear under several services. */
@@ -64,10 +66,13 @@ export interface TrackerStartRequest {
   readonly journal: "create" | "continue";
   readonly power: TrackerPower;
   readonly sensors: TrackerSensors;
-  /** Journal batch and `onSamples` interval while the screen is on (iOS: the app in the foreground) (PRF-003). */
-  readonly batchIntervalMs: 1000 | 5000;
-  /** The same interval while the screen is off (iOS: the app in the background): 5 s (PRF-051), 1 s during a guided workout (WKT-006). */
-  readonly backgroundBatchIntervalMs: 1000 | 5000;
+  /**
+   * `onSamples` interval while the screen is on (iOS: the app in the foreground) (PRF-003). The journal is written
+   * every 5 s whatever the interval (PRF-051), and at once on a mark or when the screen goes off.
+   */
+  readonly deliveryIntervalMs: 1000 | 5000;
+  /** The same interval while the screen is off (iOS: the app in the background): 5 s, 1 s during a guided workout (WKT-006). */
+  readonly backgroundDeliveryIntervalMs: 1000 | 5000;
   readonly notification: TrackerNotification;
   readonly replay: TrackerReplay | null;
 }
@@ -75,7 +80,8 @@ export interface TrackerStartRequest {
 export type TrackerLocationSource = "fused" | "gps" | "core_location" | "replay";
 
 export interface TrackerSources {
-  readonly location: TrackerLocationSource;
+  /** Null without location (`REC-060`). */
+  readonly location: TrackerLocationSource | null;
   readonly barometer: boolean;
   readonly pedometer: boolean;
   readonly heartRate: boolean;
@@ -101,14 +107,19 @@ export interface TrackerStatus {
   readonly sessionId: string | null;
 }
 
-/** Samples of one journal batch, emitted once the batch is on storage; `sequence` is the batch's journal sequence. */
-export interface SampleBatch {
+/**
+ * Samples of journal batch `sequence` from its `offset`-th on. A batch arrives in parts at the delivery interval while
+ * it fills, then a last part with `end` once it is on storage; the parts of a batch follow each other without gap.
+ */
+export interface SamplePart {
   readonly sessionId: string;
   readonly sequence: number;
+  readonly offset: number;
   readonly samples: readonly Sample[];
+  readonly end: boolean;
 }
 
-/** A mark as written to the journal, whether it came from the app or the notification; it closes batch `sequence`. */
+/** A mark as written to the journal, whether it came from the app or the notification; it closes batch `sequence`, after its last part. */
 export interface TrackerMarkEvent {
   readonly sessionId: string;
   readonly sequence: number;
@@ -154,7 +165,7 @@ export type TrackerErrorCode =
   | "ERR_TRACKER_FOREGROUND_START";
 
 export type TrackerEvents = {
-  onSamples: (batch: SampleBatch) => void;
+  onSamples: (part: SamplePart) => void;
   onMark: (mark: TrackerMarkEvent) => void;
   onIssue: (issue: TrackerIssue) => void;
   onSensorDevice: (device: SensorDevice) => void;

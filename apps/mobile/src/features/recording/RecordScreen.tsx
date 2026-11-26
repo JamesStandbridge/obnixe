@@ -133,7 +133,7 @@ export function RecordScreen({ sessionId }: RecordScreenProps) {
       case "paused":
         return <LiveScreen recording={recording} />;
       case "finishing":
-        return <FinishView recording={recording} reason={state.reason} target={target} onSave={() => void save(recording)} onResume={() => act(recorder.resume())} onDiscard={() => void discard()} />;
+        return <FinishView recording={recording} reason={state.reason} target={target} onSave={() => void save(recording)} onResume={() => act(recorder.resume())} onDiscard={() => void discard()} onDistance={(distanceMm) => act(recorder.setStopwatchDistance(distanceMm))} />;
       case "interrupted":
         return <RecoveryView recording={recording} endT={state.endT} onResume={() => act(recorder.resume())} onFinish={() => act(recorder.stop())} />;
       case "saved":

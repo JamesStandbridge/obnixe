@@ -10,6 +10,7 @@ import android.location.LocationManager
 import android.os.Build
 import android.os.Handler
 import android.os.PowerManager
+import android.os.SystemClock
 import androidx.core.content.ContextCompat
 import androidx.core.location.LocationManagerCompat
 import app.obnixe.tracker.bluetooth.SensorLink
@@ -17,10 +18,12 @@ import app.obnixe.tracker.bluetooth.SensorRole
 import app.obnixe.tracker.bluetooth.SensorSamples
 import app.obnixe.tracker.bluetooth.SensorService
 import app.obnixe.tracker.journal.JournalBatch
+import app.obnixe.tracker.journal.JournalCadence
 import app.obnixe.tracker.journal.JournalFormat
 import app.obnixe.tracker.journal.JournalFormatException
 import app.obnixe.tracker.journal.JournalHeader
 import app.obnixe.tracker.journal.JournalWriter
+import app.obnixe.tracker.journal.SamplePart
 import app.obnixe.tracker.location.LocationMode
 import app.obnixe.tracker.location.LocationSource
 import app.obnixe.tracker.location.LocationSourceKind
@@ -40,9 +43,9 @@ enum class TrackerIssue(val wire: String) {
   POWER_LOST("power_lost"),
 }
 
-data class TrackerSources(val location: LocationSourceKind, val barometer: Boolean, val pedometer: Boolean, val bluetooth: Set<SensorRole>) {
-  fun toBridge(): Map<String, Any> = mapOf(
-    "location" to location.wire,
+data class TrackerSources(val location: LocationSourceKind?, val barometer: Boolean, val pedometer: Boolean, val bluetooth: Set<SensorRole>) {
+  fun toBridge(): Map<String, Any?> = mapOf(
+    "location" to location?.wire,
     "barometer" to barometer,
     "pedometer" to pedometer,
     "heartRate" to (SensorRole.HEART_RATE in bluetooth),
@@ -56,9 +59,10 @@ data class StoppedRecording(val sessionId: String, val endedAt: Long, val lastSe
 }
 
 /**
- * One recording: its sources, its journal and its pause state. Samples reach the journal before JavaScript sees them
- * (`REC-080`); batches close every `batchIntervalMs` while the screen is on and every `backgroundBatchIntervalMs` while it is off
- * (`PRF-003`, `PRF-051`), and immediately on a mark. Confined to [handler]'s thread.
+ * One recording: its sources, its journal and its pause state. New samples go to JavaScript as parts every
+ * `deliveryIntervalMs` while the screen is on and every `backgroundDeliveryIntervalMs` while it is off (`PRF-003`);
+ * the batch holding them reaches storage at most every 5 s (`PRF-051`), and at once on a mark, when the screen goes
+ * off and in critical power, so a crash loses at most 5 s of samples (`REC-080`). Confined to [handler]'s thread.
  */
 class Recording private constructor(
   private val context: Context,
@@ -73,6 +77,8 @@ class Recording private constructor(
   private var lastStepCount: Long,
 ) {
   interface Listener {
+    fun onPart(recording: Recording, part: SamplePart)
+
     fun onBatch(recording: Recording, batch: JournalBatch)
 
     fun onIssue(recording: Recording, issue: TrackerIssue)
@@ -108,6 +114,7 @@ class Recording private constructor(
   private var stopped = false
   private var receiverRegistered = false
   private var storageLowReported = false
+  private val cadence = JournalCadence(writeIntervalMs, SystemClock.elapsedRealtime())
   private val flushTick = Runnable { tick() }
   private val writeLock = context.getSystemService(PowerManager::class.java)
     .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "obnixe:journal")
@@ -122,11 +129,13 @@ class Recording private constructor(
   /** Starts every available source the configuration asks for and reports which ones run. */
   fun startSources(screenInteractive: Boolean): TrackerSources {
     this.screenInteractive = screenInteractive
-    val location = LocationSource.create(context, handler, clock, ::onSample, replay)
+    val location = if (config.location) LocationSource.create(context, handler, clock, ::onSample, replay) else null
     this.location = location
-    startLocation()
-    ContextCompat.registerReceiver(context, providerReceiver, IntentFilter(LocationManager.PROVIDERS_CHANGED_ACTION), null, handler, ContextCompat.RECEIVER_NOT_EXPORTED)
-    receiverRegistered = true
+    if (location != null) {
+      startLocation()
+      ContextCompat.registerReceiver(context, providerReceiver, IntentFilter(LocationManager.PROVIDERS_CHANGED_ACTION), null, handler, ContextCompat.RECEIVER_NOT_EXPORTED)
+      receiverRegistered = true
+    }
     val sensors = context.getSystemService(SensorManager::class.java)
     val live = replay == null
     if (live && config.barometer) {
@@ -145,7 +154,7 @@ class Recording private constructor(
       }
     }
     scheduleTick()
-    return TrackerSources(location.kind, barometer != null, steps != null, links.flatMap { link -> link.services.map { it.role } }.toSet())
+    return TrackerSources(location?.kind, barometer != null, steps != null, links.flatMap { link -> link.services.map { it.role } }.toSet())
   }
 
   /** Writes a pause, resume or lap mark; false when the pause state makes it meaningless (lap or pause while paused). */
@@ -255,9 +264,9 @@ class Recording private constructor(
       TrackerPower.SAVER -> saverIntervalMs
       TrackerPower.CRITICAL -> criticalIntervalMs
     }
-    val batched = !screenInteractive && intervalMs < config.backgroundBatchIntervalMs
+    val batched = !screenInteractive && intervalMs < config.backgroundDeliveryIntervalMs
     try {
-      location.start(LocationMode(intervalMs, config.power == TrackerPower.NORMAL, if (batched) config.backgroundBatchIntervalMs else 0))
+      location.start(LocationMode(intervalMs, config.power == TrackerPower.NORMAL, if (batched) config.backgroundDeliveryIntervalMs else 0))
     } catch (error: SecurityException) {
       listener.onIssue(this, TrackerIssue.PERMISSION_LOST)
     }
@@ -277,13 +286,15 @@ class Recording private constructor(
   }
 
   private fun tick() {
-    flush()
+    if (cadence.writeDue(SystemClock.elapsedRealtime())) flush() else journal.takePart()?.let { listener.onPart(this, it) }
     scheduleTick()
   }
 
   private fun scheduleTick() {
     handler.removeCallbacks(flushTick)
-    if (!stopped) handler.postDelayed(flushTick, if (screenInteractive) config.batchIntervalMs else config.backgroundBatchIntervalMs)
+    if (stopped) return
+    val deliveryIntervalMs = if (screenInteractive) config.deliveryIntervalMs else config.backgroundDeliveryIntervalMs
+    handler.postDelayed(flushTick, cadence.nextTickDelayMs(SystemClock.elapsedRealtime(), deliveryIntervalMs))
   }
 
   private fun flush(mark: Mark? = null) {
@@ -295,7 +306,9 @@ class Recording private constructor(
       return
     } finally {
       writeLock.release()
-    } ?: return
+    }
+    cadence.wrote(SystemClock.elapsedRealtime())
+    if (batch == null) return
     listener.onBatch(this, batch)
     checkStorage()
   }
@@ -326,6 +339,7 @@ class Recording private constructor(
     private const val pausedIntervalMs = 5_000L
     private const val saverIntervalMs = 5_000L
     private const val criticalIntervalMs = 10_000L
+    private const val writeIntervalMs = 5_000L
     private const val maxPendingBytes = 64 * 1024
     private const val writeLockTimeoutMs = 2_000L
     private const val storageLowBytes = 50L * 1024 * 1024
@@ -356,7 +370,7 @@ class Recording private constructor(
      * last record (unless the journal already ends with one) and a start mark now turn the gap into a pause (`REC-081`).
      * [stepBaseline] is the step counter reading at the start of this boot, if known.
      */
-    fun open(context: Context, config: RecordingConfig, stepBaseline: Long?, reopen: Boolean, handler: Handler, listener: Listener): Recording {
+    fun open(context: Context, config: RecordingConfig, replay: ReplayTrack?, stepBaseline: Long?, reopen: Boolean, handler: Handler, listener: Listener): Recording {
       val resumed = JournalWriter.resume(File(config.journalPath), afterStop = reopen)
       val header = resumed.writer.header
       if (header.sessionId != config.sessionId) {
@@ -378,7 +392,7 @@ class Recording private constructor(
       } else {
         emptyList()
       }
-      val recording = Recording(context, config, resumed.writer, clock, null, handler, listener, resumed.paused && !reopen, baseline, resumed.lastStepCount)
+      val recording = Recording(context, config, resumed.writer, clock, replay?.copy(fromT = clock.now()), handler, listener, resumed.paused && !reopen, baseline, resumed.lastStepCount)
       batches.forEach { listener.onBatch(recording, it) }
       recording.persist()
       return recording

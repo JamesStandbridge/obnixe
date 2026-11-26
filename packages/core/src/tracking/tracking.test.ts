@@ -11,7 +11,7 @@ import type { Fix, Sample } from "./types.ts";
 
 describe("resolveProfile (SPT-002)", () => {
   it("returns the sport profile tagged with its sport", () => {
-    expect(resolveProfile("trail", { kind: "race" })).toEqual({ ...sports.trail.recording, sport: "trail" });
+    expect(resolveProfile("trail", { kind: "race" })).toEqual({ ...sports.trail.recording, sport: "trail", stopwatch: false });
   });
 
   it("applies the override of the chosen option", () => {

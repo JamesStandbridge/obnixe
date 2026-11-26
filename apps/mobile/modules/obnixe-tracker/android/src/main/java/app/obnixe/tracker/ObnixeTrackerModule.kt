@@ -5,6 +5,7 @@ import app.obnixe.tracker.bluetooth.SensorDevice
 import app.obnixe.tracker.bluetooth.SensorService
 import app.obnixe.tracker.journal.JournalBatch
 import app.obnixe.tracker.journal.JournalHeader
+import app.obnixe.tracker.journal.SamplePart
 import expo.modules.interfaces.permissions.Permissions
 import expo.modules.interfaces.permissions.PermissionsResponseListener
 import expo.modules.kotlin.Promise
@@ -90,13 +91,23 @@ class ObnixeTrackerModule : Module() {
     }
   }
 
+  internal fun emitPart(sessionId: String, part: SamplePart) {
+    sendEvent(
+      "onSamples",
+      mapOf(
+        "sessionId" to sessionId,
+        "sequence" to part.sequence.toDouble(),
+        "offset" to part.offset.toDouble(),
+        "samples" to part.samples.map(Sample::toBridge),
+        "end" to part.end,
+      ),
+    )
+  }
+
   internal fun emitBatch(sessionId: String, batch: JournalBatch) {
-    val sequence = batch.sequence.toDouble()
-    if (batch.samples.isNotEmpty()) {
-      sendEvent("onSamples", mapOf("sessionId" to sessionId, "sequence" to sequence, "samples" to batch.samples.map(Sample::toBridge)))
-    }
+    emitPart(sessionId, batch.lastPart())
     val mark = batch.mark ?: return
-    sendEvent("onMark", mapOf("sessionId" to sessionId, "sequence" to sequence, "kind" to mark.kind.wire, "t" to mark.t.toDouble()))
+    sendEvent("onMark", mapOf("sessionId" to sessionId, "sequence" to batch.sequence.toDouble(), "kind" to mark.kind.wire, "t" to mark.t.toDouble()))
   }
 
   internal fun emitIssue(sessionId: String, issue: TrackerIssue) {
@@ -166,6 +177,7 @@ class BluetoothSensorRecord : Record {
 }
 
 class SensorsRecord : Record {
+  @Field val location: Boolean = true
   @Field val barometer: Boolean = false
   @Field val pedometer: Boolean = false
   @Field val bluetooth: List<BluetoothSensorRecord> = emptyList()
@@ -182,8 +194,8 @@ class StartRequestRecord : Record {
   @Field val journal: JournalModeArgument = JournalModeArgument.CREATE
   @Field val power: TrackerPower = TrackerPower.NORMAL
   @Field val sensors: SensorsRecord = SensorsRecord()
-  @Field val batchIntervalMs: Double = 5_000.0
-  @Field val backgroundBatchIntervalMs: Double = 5_000.0
+  @Field val deliveryIntervalMs: Double = 5_000.0
+  @Field val backgroundDeliveryIntervalMs: Double = 5_000.0
   @Field val notification: NotificationRecord = NotificationRecord()
   @Field val replay: ReplayRecord? = null
 
@@ -193,20 +205,22 @@ class StartRequestRecord : Record {
     val replay = replay
     val valid = JournalHeader.isSessionId(sessionId) &&
       journalPath.isNotEmpty() &&
-      (batchIntervalMs == 1_000.0 || batchIntervalMs == 5_000.0) &&
-      (backgroundBatchIntervalMs == 1_000.0 || backgroundBatchIntervalMs == 5_000.0) &&
+      (deliveryIntervalMs == 1_000.0 || deliveryIntervalMs == 5_000.0) &&
+      (backgroundDeliveryIntervalMs == 1_000.0 || backgroundDeliveryIntervalMs == 5_000.0) &&
       BluetoothSensor.isValidSelection(bluetooth) &&
+      (sensors.location || (bluetooth.isNotEmpty() && replay == null)) &&
       (replay == null || replay.speed in 1.0..50.0)
     if (!valid) return null
     return RecordingConfig(
       sessionId = sessionId.lowercase(),
       journalPath = filePath(journalPath),
       power = power,
+      location = sensors.location,
       barometer = sensors.barometer,
       pedometer = sensors.pedometer,
       bluetooth = bluetooth,
-      batchIntervalMs = batchIntervalMs.toLong(),
-      backgroundBatchIntervalMs = backgroundBatchIntervalMs.toLong(),
+      deliveryIntervalMs = deliveryIntervalMs.toLong(),
+      backgroundDeliveryIntervalMs = backgroundDeliveryIntervalMs.toLong(),
       notification = notification.toContent(),
       replay = replay?.let { ReplaySource(filePath(it.gpxPath), it.speed) },
     )

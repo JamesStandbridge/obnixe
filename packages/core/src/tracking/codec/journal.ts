@@ -60,9 +60,15 @@ export interface JournalContents {
   readonly validLength: number;
 }
 
+/** A point in the journal: the first `samples` samples of batch `sequence` lie before it. */
+export interface JournalPosition {
+  readonly sequence: number;
+  readonly samples: number;
+}
+
 export interface ReadJournalOptions {
-  /** Only return the records of batches after this sequence (re-read after a batch lost by the bridge). */
-  readonly afterSequence?: number;
+  /** Only return the records from this position on (re-read after parts lost by the bridge). */
+  readonly from?: JournalPosition;
 }
 
 export type JournalCorruption = "magic" | "version" | "header_crc" | "started_at" | "platform" | "device";
@@ -207,7 +213,7 @@ export function readJournal(bytes: Uint8Array, options: ReadJournalOptions = {})
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const parsed = readHeader(bytes, view);
   if (parsed === null) return { header: null, samples: [], marks: [], lastSequence: null, validLength: 0 };
-  const afterSequence = options.afterSequence ?? -1;
+  const from = options.from ?? { sequence: 0, samples: 0 };
   const samples: Sample[] = [];
   const marks: TrackerMark[] = [];
   const clock: StreamClock = { fix: 0, pressure: 0, steps: 0, heart_rate: 0, cadence: 0, power: 0, mark: 0 };
@@ -222,9 +228,11 @@ export function readJournal(bytes: Uint8Array, options: ReadJournalOptions = {})
     if (crc32(bytes, offset, recordsEnd) !== view.getUint32(recordsEnd, true)) break;
     const records = readBatchRecords(bytes, view, offset + batchPrefixLength, recordsEnd, clock);
     if (records === null) break;
-    if (sequence > afterSequence) {
+    if (sequence >= from.sequence) {
+      let skipped = sequence === from.sequence ? from.samples : 0;
       for (const record of records) {
         if (record.type === "mark") marks.push({ kind: record.kind, t: record.t });
+        else if (skipped > 0) skipped -= 1;
         else samples.push(record);
       }
     }

@@ -13,12 +13,11 @@
   "PRF-009": { "verifiedBy": "field", "where": "field protocol 7, budgets on the Pixel 9 Pro; Node timings in performance.test.ts guard regressions" },
   "PRF-040": { "verifiedBy": "field", "where": "field protocol 7, gfxinfo on the live screen and the map" },
   "PRF-050": { "verifiedBy": "field", "where": "field protocol 6, memory after 6 h" },
-  "REC-060": { "verifiedBy": "gap", "where": "not implemented: the native start needs the location permission; a refusal offers manual entry" },
   "REC-070": { "verifiedBy": "field", "where": "field protocol 4, background, call and other apps" },
   "REC-072": { "verifiedBy": "field", "where": "needs an iPhone with the Live Activity, not covered by the Pixel 9 Pro protocol" },
   "TST-001": { "verifiedBy": "ci", "where": "packages/core coverage gate (vitest thresholds and scripts/check-coverage.ts)" },
   "TST-020": { "verifiedBy": "field", "where": "field protocol 9, reference corpus collection" },
-  "TST-030": { "verifiedBy": "field", "where": "field protocol 5, kills, reload, permission, storage and reboot" },
+  "TST-030": { "verifiedBy": "field", "where": "field protocol 5, kills, reload, permission, storage and reboot on the dev replay source" },
   "TST-040": { "verifiedBy": "field", "where": "field protocol 1 to 3" },
   "TST-050": { "verifiedBy": "ci", "where": "this check, run in CI" }
 }

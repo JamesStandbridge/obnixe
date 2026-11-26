@@ -1,10 +1,25 @@
 import Foundation
 
 /// One batch as written: the samples in arrival order, then at most one mark, which always closes its batch.
+/// The first `delivered` samples already went out in parts before the batch reached storage.
 struct JournalBatch: Equatable {
   let sequence: Int
   let samples: [Sample]
   let mark: Mark?
+  let delivered: Int
+
+  /// The samples of the batch not sent yet, as its last part.
+  var lastPart: SamplePart {
+    SamplePart(sequence: sequence, offset: delivered, samples: Array(samples[delivered...]), end: true)
+  }
+}
+
+/// Samples of batch `sequence` from its `offset`-th on, as JavaScript receives them; `end` once the batch is on storage.
+struct SamplePart: Equatable {
+  let sequence: Int
+  let offset: Int
+  let samples: [Sample]
+  let end: Bool
 }
 
 struct ResumedJournal {
@@ -28,6 +43,7 @@ final class JournalWriter {
   private var lastT: [Int64]
   private var pending = ByteSink(capacity: 4096)
   private var pendingSamples: [Sample] = []
+  private var delivered = 0
 
   private(set) var nextSequence: Int
 
@@ -49,6 +65,14 @@ final class JournalWriter {
     lastT[Int(sample.recordType.rawValue)] = sample.t
     pendingSamples.append(sample)
     return true
+  }
+
+  /// The pending samples not sent yet, as the next part of the coming batch; nil when there are none.
+  func takePart() -> SamplePart? {
+    guard delivered < pendingSamples.count else { return nil }
+    let part = SamplePart(sequence: nextSequence, offset: delivered, samples: Array(pendingSamples[delivered...]), end: false)
+    delivered = pendingSamples.count
+    return part
   }
 
   /**
@@ -77,9 +101,10 @@ final class JournalWriter {
       throw error
     }
     if let written { lastT[markType] = written.t }
-    let batch = JournalBatch(sequence: nextSequence, samples: pendingSamples, mark: written)
+    let batch = JournalBatch(sequence: nextSequence, samples: pendingSamples, mark: written, delivered: delivered)
     nextSequence += 1
     pendingSamples.removeAll(keepingCapacity: true)
+    delivered = 0
     pending.truncate(to: JournalFormat.batchPrefixBytes)
     return batch
   }

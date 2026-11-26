@@ -41,6 +41,46 @@ export async function readJournalFile(sessionId: Id): Promise<Uint8Array | null>
   return file.exists ? file.bytes() : null;
 }
 
+export function readJournalFileSync(sessionId: Id): Uint8Array | null {
+  const file = new File(journals(), `${sessionId}${journalExtension}`);
+  return file.exists ? file.bytesSync() : null;
+}
+
+/** `REC-060`: the journal of a stopwatch recording is written by JavaScript, batch after batch. */
+export function appendJournal(sessionId: Id, bytes: Uint8Array): void {
+  new File(ensure(journals()), `${sessionId}${journalExtension}`).writeSync(bytes, { append: true });
+}
+
+export function replaceJournal(sessionId: Id, bytes: Uint8Array): void {
+  new File(ensure(journals()), `${sessionId}${journalExtension}`).writeSync(bytes);
+}
+
+const stopwatchMarker = (): File => new File(journals(), "stopwatch.json");
+
+/** The stopwatch recording running in JavaScript, kept across restarts of the app. */
+export function readStopwatchMarker(): Id | null {
+  const file = stopwatchMarker();
+  if (!file.exists) return null;
+  let value: unknown;
+  try {
+    value = JSON.parse(file.textSync());
+  } catch (error) {
+    if (error instanceof SyntaxError) return null;
+    throw error;
+  }
+  return typeof value === "object" && value !== null && "sessionId" in value && typeof value.sessionId === "string" ? (value.sessionId as Id) : null;
+}
+
+export function writeStopwatchMarker(sessionId: Id | null): void {
+  const file = stopwatchMarker();
+  if (sessionId === null) {
+    if (file.exists) file.delete();
+    return;
+  }
+  ensure(journals());
+  file.writeSync(JSON.stringify({ sessionId }));
+}
+
 export async function journalSessionIds(): Promise<readonly Id[]> {
   return names(journals(), journalExtension).map((name) => name.slice(0, -journalExtension.length) as Id);
 }

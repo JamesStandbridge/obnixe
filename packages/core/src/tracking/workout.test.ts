@@ -434,14 +434,14 @@ describe("guided recordings in the journal (WKT-007, WKT-009)", () => {
 
   it("refuses a recording start whose workout does not fit the sport", () => {
     const speed = plan(step("work", seconds(60), { kind: "speed", minMmS: 8000, maxMmS: 9000 }));
-    expect(() => planRecordingStart(context.db, context.env, { sport: "run", values: {}, gearId: null, slot: null, timeZone: "Europe/Paris", routeId: null, workout: speed })).toThrow(ZodError);
+    expect(() => planRecordingStart(context.db, context.env, { sport: "run", values: {}, gearId: null, slot: null, timeZone: "Europe/Paris", routeId: null, workout: speed, stopwatch: false })).toThrow(ZodError);
   });
 
   it("freezes the workout in the recording and saves one lap per step", () => {
     const slot = slotWithVariant("run", intervalsWorkout);
     make.write(slot.mutations);
     const workout = variantWorkoutOf(context.db, slot.variantId);
-    const started = planRecordingStart(context.db, context.env, { sport: "run", values: {}, gearId: null, slot: { slotId: slot.slotId, variantId: slot.variantId, countsInRotation: true }, timeZone: "Europe/Paris", routeId: null, workout });
+    const started = planRecordingStart(context.db, context.env, { sport: "run", values: {}, gearId: null, slot: { slotId: slot.slotId, variantId: slot.variantId, countsInRotation: true }, timeZone: "Europe/Paris", routeId: null, workout, stopwatch: false });
     make.write(recordingStartMutations(started, { startedAt, device: "Pixel 9 Pro" }));
     make.write([{ kind: "update", table: "program_variant", key: slot.variantId, patch: { workout: plan(step("work", seconds(600))) } }]);
     const row = () => context.db.select().from(recording).where(eq(recording.sessionId, started.sessionId)).get();
@@ -470,7 +470,7 @@ describe("guided recordings in the journal (WKT-007, WKT-009)", () => {
   });
 
   it("refuses workout laps without a workout or beyond its steps", () => {
-    const started = planRecordingStart(context.db, context.env, { sport: "run", values: {}, gearId: null, slot: null, timeZone: "Europe/Paris", routeId: null, workout: plan(step("work", seconds(60)), step("recovery", seconds(60))) });
+    const started = planRecordingStart(context.db, context.env, { sport: "run", values: {}, gearId: null, slot: null, timeZone: "Europe/Paris", routeId: null, workout: plan(step("work", seconds(60)), step("recovery", seconds(60))), stopwatch: false });
     make.write(recordingStartMutations(started, { startedAt, device: "Pixel 9 Pro" }));
     make.write([{ kind: "update", table: "recording", key: started.recordingId, patch: { elapsedMs: 120_000 } }]);
     const lapRow = (workoutStep: number) => ({ id: context.env.newId(), sessionId: started.sessionId, position: 0, trigger: "workout" as const, startOffsetMs: 0, endOffsetMs: 60_000, workoutStep });

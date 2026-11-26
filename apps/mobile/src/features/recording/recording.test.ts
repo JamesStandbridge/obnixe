@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { defaultRecordingSettings, resolveProfile } from "@obnixe/core";
+import { defaultRecordingSettings, resolveProfile, stopwatchProfile } from "@obnixe/core";
 import type { RecordAnnouncement, RecordingAlertEvent, ResolvedProfile } from "@obnixe/core";
 import type { EpochMs, FieldValues, Id, RecordingSettings, SportKey } from "@obnixe/schema";
 import { alertNotice, alertPulses, beepWave, heartRateSpanBpm, rejoinText, vibrationPattern } from "@/features/recording/alerts";
@@ -95,6 +95,15 @@ describe("live metrics", () => {
       "D+ 120",
       "FC moy. 152",
     ]);
+  });
+
+  it("sums up a stopwatch recording by its time until a distance is typed, per 100 m in the pool (REC-060)", () => {
+    const pool = stopwatchProfile("swim", { water: "pool", pool_length: 25 });
+    if (pool === null) throw new Error("No pool profile");
+    const base = { elapsedMs: 3_000_000, movingMs: 2_400_000, distanceMm: 0, ascentMm: null, heartRateAvg: null, cadenceAvg: null };
+    expect(summaryFigures(base, pool)).toEqual({ distance: null, moving: "40:00", stats: [{ label: "Temps total", value: "50:00", unit: "" }] });
+    expect(summaryFigures({ ...base, distanceMm: 1_500_000 }, pool)).toMatchObject({ distance: { value: "1,50", unit: "km" }, stats: [{ label: "Temps total" }, { label: "Allure moy.", value: "2:40", unit: "/100 m" }] });
+    expect(liveReadout(pool, defaultRecordingSettings({ autoPauseDefault: false })).main).toBe("moving");
   });
 });
 

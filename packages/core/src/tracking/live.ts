@@ -363,7 +363,7 @@ export class LiveTracker {
       this.lapStart = { ...this.lapStart, t: mark.t };
     }
     if (mark.kind !== "lap") return;
-    const at: LapPoint = { ...this.lastPoint, t: mark.t };
+    const at: LapPoint = this.profile.stopwatch ? { t: mark.t, distance: 0, moving: this.activeMs(mark.t) } : { ...this.lastPoint, t: mark.t };
     this.lapper.restart(at);
     this.closeLap(at);
   }
@@ -386,7 +386,7 @@ export class LiveTracker {
   }
 
   snapshot(now: number): LiveSnapshot {
-    const totals = this.totals();
+    const totals = this.totals(now);
     const motion = this.classifier.state;
     const accuracy = this.lastFixT !== null && now - this.lastFixT <= signalTimeoutMs ? this.lastAccuracy : null;
     const lap: LiveLap = {
@@ -417,7 +417,7 @@ export class LiveTracker {
 
   /** The counted distance and the held heart rate at `now`, without computing the metrics of `snapshot`. */
   progress(now: number): TrackerProgress {
-    return { t: now, distanceMm: Math.round(this.totals().distance * 1000), heartRate: this.heldReading(now) };
+    return { t: now, distanceMm: Math.round(this.totals(now).distance * 1000), heartRate: this.heldReading(now) };
   }
 
   private get cadenceSensor(): SensorLedger | null {
@@ -494,7 +494,7 @@ export class LiveTracker {
   }
 
   private advanceLaps(t: number, events: LiveEvent[]): void {
-    const point: LapPoint = { t, ...this.totals() };
+    const point: LapPoint = { t, ...this.totals(t) };
     const trigger = this.lapper.trigger;
     if (trigger !== null) {
       for (const fraction of this.lapper.advance(this.lastPoint, point)) {
@@ -559,7 +559,15 @@ export class LiveTracker {
     if (count > 0) this.pending = this.pending.slice(count);
   }
 
-  private totals(): Totals {
+  /** `REC-060`: the time since the start without the manual pauses. */
+  private activeMs(now: number): number {
+    if (!this.started || now <= this.startMs) return 0;
+    const window = { startMs: this.startMs, endMs: now };
+    return this.ledger.spans(window).reduce((active, span) => active - (span.endMs - span.startMs), now - this.startMs);
+  }
+
+  private totals(now: number): Totals {
+    if (this.profile.stopwatch) return { distance: 0, moving: this.activeMs(now) };
     let distance = this.distance;
     let moving = this.moving;
     for (const interval of this.pending) {

@@ -50,7 +50,8 @@ export type FinishReason = "user" | "storage_full" | "inactivity" | "interruptio
 /** What the stop summary needs from the processed track to choose its main action (`REC-052`). */
 export interface ActivityBrief {
   readonly movingMs: number;
-  readonly distanceMm: number;
+  /** Null when no distance was measured: a stopwatch recording (`REC-060`) is judged on its time alone. */
+  readonly distanceMm: number | null;
 }
 
 export interface FinishingState extends RecorderTimers {
@@ -431,5 +432,5 @@ export function recorderClock(state: RecorderState, t: number): RecorderClock | 
 
 /** The stop summary then makes *Supprimer* its main action (`REC-052`). */
 export function isShortActivity(brief: ActivityBrief): boolean {
-  return brief.movingMs < shortActivityMovingMs || brief.distanceMm < shortActivityDistanceMm;
+  return brief.movingMs < shortActivityMovingMs || (brief.distanceMm !== null && brief.distanceMm < shortActivityDistanceMm);
 }

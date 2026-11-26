@@ -27,8 +27,10 @@ import type { RecordingView } from "@/features/tracking/recorderHost";
 import { deviceTimeZone, formatTimeAt, weekdayTitle } from "@/format/dates";
 import { formatLongClock } from "@/format/durations";
 import { plural } from "@/format/labels";
+import { formatNumber } from "@/format/numbers";
 import { ControlButton, LinkButton, PrimaryButton } from "@/ui/Button";
 import { Icon } from "@/ui/icons/Icon";
+import { PadSheet } from "@/ui/PadSheet";
 import { Confetti } from "@/ui/illustrations/Confetti";
 import { CheerScene } from "@/ui/illustrations/scenes";
 import { Screen, Section } from "@/ui/Layout";
@@ -94,6 +96,60 @@ function StillMap({ track, bounds, sport, size }: StillMapProps) {
   );
 }
 
+interface StopwatchDistanceProps {
+  readonly distanceMm: number;
+  readonly meters: boolean;
+  readonly disabled: boolean;
+  readonly onDistance: (distanceMm: number) => void;
+}
+
+const stopwatchDistanceMaxMm = 1_000_000_000;
+
+/** `REC-060`: the distance of a stopwatch recording, typed at the stop and optional. */
+function StopwatchDistance({ distanceMm, meters, disabled, onDistance }: StopwatchDistanceProps) {
+  const { colors } = useTheme();
+  const [open, setOpen] = useState(false);
+  const unit = meters ? "m" : "km";
+  const typed = distanceMm > 0;
+  const current = typed ? formatNumber(meters ? distanceMm / 1000 : distanceMm / 1_000_000, meters ? 0 : 2) : null;
+  return (
+    <BevelView fill={colors.surface} cut={bevels.card} style={styles.stopwatch}>
+      <Text variant="label">Distance</Text>
+      <Text variant="small" tone="secondary">
+        {typed ? `${current ?? ""} ${unit}, saisie à la main` : "Sans localisation, la distance n'est pas mesurée. Tu peux la saisir si tu la connais."}
+      </Text>
+      <ControlButton label={typed ? "Modifier la distance" : "Saisir la distance"} disabled={disabled} onPress={() => setOpen(true)} style={styles.stopwatchButton} />
+      <PadSheet
+        open={open}
+        title="Distance"
+        context="Saisie à la main"
+        mode="number"
+        unit={unit}
+        decimals={meters ? 0 : 2}
+        current={current}
+        validate={(value) => (value <= 0 ? "Distance nulle" : value * (meters ? 1000 : 1_000_000) > stopwatchDistanceMaxMm ? `Maximum ${meters ? "1 000 000 m" : "1 000 km"}` : null)}
+        {...(typed
+          ? {
+              action: {
+                label: "Retirer la distance",
+                appearance: "link",
+                onPress: () => {
+                  setOpen(false);
+                  onDistance(0);
+                },
+              },
+            }
+          : {})}
+        onSubmit={(result) => {
+          setOpen(false);
+          if (result.kind === "value") onDistance(Math.round(result.value * (meters ? 1000 : 1_000_000)));
+        }}
+        onClose={() => setOpen(false)}
+      />
+    </BevelView>
+  );
+}
+
 interface FinishViewProps {
   readonly recording: RecordingView;
   readonly reason: FinishReason;
@@ -101,17 +157,18 @@ interface FinishViewProps {
   readonly onSave: () => void;
   readonly onResume: () => void;
   readonly onDiscard: () => void;
+  readonly onDistance: (distanceMm: number) => void;
 }
 
-/** `REC-050`, `REC-052`: the stop summary, before *Enregistrer*, *Reprendre* or *Supprimer*. */
-export function FinishView({ recording, reason, target, onSave, onResume, onDiscard }: FinishViewProps) {
+/** `REC-050`, `REC-052`: the stop summary, before *Enregistrer*, *Reprendre* or *Supprimer*; a stopwatch one takes its distance (`REC-060`). */
+export function FinishView({ recording, reason, target, onSave, onResume, onDiscard, onDistance }: FinishViewProps) {
   const { colors } = useTheme();
   const { sessionId, profile, summary, startedAt } = recording;
   const title = useMemo(() => recordingTitle(sessionId) ?? "Sortie", [sessionId]);
   const timeZone = useMemo(() => deviceTimeZone(), []);
   const track = useMemo(() => (summary === null ? null : summaryTrack(summary.processed.series)), [summary]);
   const box = summary?.processed.summary.bbox ?? null;
-  const short = summary !== null && isShortActivity({ movingMs: summary.processed.summary.movingMs, distanceMm: summary.processed.summary.distanceMm });
+  const short = summary !== null && isShortActivity({ movingMs: summary.processed.summary.movingMs, distanceMm: profile.stopwatch ? null : summary.processed.summary.distanceMm });
   const busy = recording.busy || summary === null;
   const endAt = startedAt + (summary?.endT ?? recording.clock?.elapsedMs ?? 0);
   const figures = summary === null ? null : summaryFigures(summary.processed.summary, profile);
@@ -132,7 +189,9 @@ export function FinishView({ recording, reason, target, onSave, onResume, onDisc
           </Text>
         </Animated.View>
 
-        {track !== null && box !== null ? (
+        {profile.stopwatch ? (
+          <StopwatchDistance distanceMm={summary?.distanceMm ?? 0} meters={profile.pacePerMeters === 100} disabled={busy} onDistance={onDistance} />
+        ) : track !== null && box !== null ? (
           <SummaryMap track={track} bounds={boundsOf(box)} sport={profile.sport} />
         ) : (
           <View style={[styles.map, styles.noMap, { borderColor: colors.line, backgroundColor: colors.surface }]}>
@@ -146,7 +205,7 @@ export function FinishView({ recording, reason, target, onSave, onResume, onDisc
           <View style={[styles.short, { backgroundColor: colors.surface, borderLeftColor: colors.warn }]} accessibilityLiveRegion="polite">
             <Text variant="label">Activité très courte</Text>
             <Text variant="caption" tone="secondary">
-              Moins de 30 secondes en mouvement ou de 50 mètres : tu peux la supprimer.
+              {profile.stopwatch ? "Moins de 30 secondes d'activité : tu peux la supprimer." : "Moins de 30 secondes en mouvement ou de 50 mètres : tu peux la supprimer."}
             </Text>
           </View>
         ) : null}
@@ -154,7 +213,11 @@ export function FinishView({ recording, reason, target, onSave, onResume, onDisc
         {figures === null ? null : (
           <Animated.View entering={reveal(1)} style={styles.figures}>
             <FigureRow
-              left={<Figure value={figures.distance.value} label={`Distance · ${figures.distance.unit}`} size={72} accessibilityLabel={`Distance, ${figures.distance.value} ${figures.distance.unit}`} />}
+              left={
+                figures.distance === null ? null : (
+                  <Figure value={figures.distance.value} label={`Distance · ${figures.distance.unit}`} size={72} accessibilityLabel={`Distance, ${figures.distance.value} ${figures.distance.unit}`} />
+                )
+              }
               right={<Figure value={figures.moving} label="En mouvement" size={72} accessibilityLabel={`Temps en mouvement, ${figures.moving}`} />}
             />
             <StatRow stats={figures.stats.slice(0, 3)} />
@@ -204,7 +267,7 @@ export function RecoveryView({ recording, endT, onResume, onFinish }: RecoveryVi
   const { sessionId, profile, startedAt, live } = recording;
   const title = useMemo(() => recordingTitle(sessionId) ?? "Sortie", [sessionId]);
   const timeZone = useMemo(() => deviceTimeZone(), []);
-  const distance = formatDistance(live.distanceMm / 1000);
+  const distance = profile.stopwatch ? null : formatDistance(live.distanceMm / 1000);
   return (
     <View style={[styles.root, { backgroundColor: colors.bg }]}>
       <Screen bottomInset={bottomPanelHeight + 96}>
@@ -224,7 +287,7 @@ export function RecoveryView({ recording, endT, onResume, onFinish }: RecoveryVi
         </View>
         <View style={styles.figures}>
           <FigureRow
-            left={<Figure value={distance.value} label={`Distance · ${distance.unit}`} size={64} accessibilityLabel={`Distance, ${distance.value} ${distance.unit}`} />}
+            left={distance === null ? null : <Figure value={distance.value} label={`Distance · ${distance.unit}`} size={64} accessibilityLabel={`Distance, ${distance.value} ${distance.unit}`} />}
             right={<Figure value={formatLongClock(live.movingMs / 1000)} label="En mouvement" size={64} accessibilityLabel={`Temps en mouvement, ${formatLongClock(live.movingMs / 1000)}`} />}
           />
         </View>
@@ -337,6 +400,8 @@ const styles = StyleSheet.create({
   figures: { marginTop: 20, gap: 16 },
   target: { marginTop: 16 },
   laps: { marginTop: 8 },
+  stopwatch: { marginTop: 18, padding: 16, gap: 6 },
+  stopwatchButton: { alignSelf: "flex-start", marginTop: 6 },
   actions: { gap: 8 },
   secondary: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
   resume: { minWidth: 140 },

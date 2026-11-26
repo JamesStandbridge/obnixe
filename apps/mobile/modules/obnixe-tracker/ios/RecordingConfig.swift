@@ -30,14 +30,16 @@ struct RecordingConfig {
   let sessionId: String
   let journalURL: URL
   var power: TrackerPower
+  /// False for a stopwatch recording (`REC-060`): no location source, no location permission needed.
+  let location: Bool
   let barometer: Bool
   let pedometer: Bool
   /// At most one per role; one source may appear under several services.
   let bluetooth: [BluetoothSensor]
-  /// Batch interval while the app is in the foreground.
-  let batchIntervalMs: Int64
-  /// Batch interval while the app is in the background.
-  let backgroundBatchIntervalMs: Int64
+  /// Interval of the parts sent to JavaScript while the app is in the foreground.
+  let deliveryIntervalMs: Int64
+  /// The same interval while the app is in the background.
+  let backgroundDeliveryIntervalMs: Int64
   var notification: TrackerNotificationContent
   let replay: ReplaySource?
 }

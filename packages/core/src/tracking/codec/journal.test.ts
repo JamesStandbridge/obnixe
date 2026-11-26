@@ -214,12 +214,24 @@ describe("raw journal .ojr", () => {
     expect(readJournal(bytes).lastSequence).toBeNull();
   });
 
-  it("returns only the batches after a sequence when asked", () => {
-    const contents = readJournal(journal.bytes, { afterSequence: 1 });
+  it("returns only the records from a position when asked", () => {
+    const contents = readJournal(journal.bytes, { from: { sequence: 2, samples: 0 } });
     const expected = splitRecords(journal.batches.slice(2).flat());
     expect(contents.samples).toEqual(expected.samples);
     expect(contents.marks).toEqual(expected.marks);
     expect(contents.lastSequence).toBe(journal.batches.length - 1);
+  });
+
+  it("PRF-051 skips the samples of a batch already received in parts, but not its mark", () => {
+    const last = journal.batches.length - 1;
+    const tail = journal.batches[last] ?? [];
+    const contents = readJournal(journal.bytes, { from: { sequence: last, samples: 3 } });
+    const expected = splitRecords(tail);
+    expect(expected.marks.length).toBeGreaterThan(0);
+    expect(contents.samples).toEqual(expected.samples.slice(3));
+    expect(contents.marks).toEqual(expected.marks);
+    const middle = readJournal(journal.bytes, { from: { sequence: 1, samples: 16 } });
+    expect(middle.samples).toEqual(splitRecords(journal.batches.slice(2).flat()).samples);
   });
 
   it("refuses a file whose header is not a journal header", () => {

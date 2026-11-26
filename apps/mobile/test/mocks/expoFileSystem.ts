@@ -20,6 +20,10 @@ export interface CreateOptions {
   readonly intermediates?: boolean;
 }
 
+export interface FileWriteOptions {
+  readonly append?: boolean;
+}
+
 export interface RelocationOptions {
   readonly overwrite?: boolean;
 }
@@ -114,9 +118,22 @@ export class File {
     storedFiles.set(this.uri, new Uint8Array());
   }
 
-  async write(content: Uint8Array | string): Promise<void> {
+  async write(content: Uint8Array | string, options: FileWriteOptions = {}): Promise<void> {
+    this.writeSync(content, options);
+  }
+
+  writeSync(content: Uint8Array | string, options: FileWriteOptions = {}): void {
     if (!this.exists) this.create();
-    storedFiles.set(this.uri, typeof content === "string" ? new TextEncoder().encode(content) : content.slice());
+    const bytes = typeof content === "string" ? new TextEncoder().encode(content) : content.slice();
+    const current = options.append === true ? (storedFiles.get(this.uri) ?? new Uint8Array()) : new Uint8Array();
+    const next = new Uint8Array(current.length + bytes.length);
+    next.set(current);
+    next.set(bytes, current.length);
+    storedFiles.set(this.uri, next);
+  }
+
+  textSync(): string {
+    return new TextDecoder().decode(this.bytesSync());
   }
 
   /** Only the modes the app uses: `Truncate` empties the file, writes append. */

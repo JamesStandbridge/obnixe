@@ -73,7 +73,7 @@ export function TabBar({ state, navigateToTab }: BottomTabBarProps) {
             <View style={styles.iconSlot}>
               <Icon name={tab.icon} color={focused ? colors.brandInk : colors.text2} />
             </View>
-            <Text variant="caption" tone={focused ? "primary" : "secondary"} style={[styles.label, focused && styles.labelFocused]} maxFontSizeMultiplier={1.2}>
+            <Text variant="caption" tone={focused ? "primary" : "secondary"} style={[styles.label, focused && styles.labelFocused]} numberOfLines={1} maxFontSizeMultiplier={1.2}>
               {tab.label}
             </Text>
           </Pressable>
@@ -88,6 +88,6 @@ const styles = StyleSheet.create({
   pill: { position: "absolute", top: 8, left: 0 },
   tab: { flex: 1, alignItems: "center", paddingTop: 8, gap: 4 },
   iconSlot: { height: pillHeight, alignItems: "center", justifyContent: "center" },
-  label: { fontFamily: fonts.text600, fontSize: 12, letterSpacing: 0.24 },
+  label: { alignSelf: "stretch", textAlign: "center", fontFamily: fonts.text600, fontSize: 12, letterSpacing: 0.24 },
   labelFocused: { fontFamily: fonts.text700 },
 });

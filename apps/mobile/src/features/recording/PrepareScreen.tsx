@@ -22,6 +22,7 @@ import {
   resolveProfile,
   sensorRolesOf,
   signalLevelAccuracy,
+  stopwatchProfile,
   workoutEstimate,
 } from "@obnixe/core";
 import type { LiveSignal, ResolvedProfile } from "@obnixe/core";
@@ -53,6 +54,8 @@ import { ensureActivityPermission, ensureNotificationPermission, locationAccess,
 import type { LocationAccess } from "@/features/tracking/permissions";
 import { recorder, recordingAvailable, useRecorderView } from "@/features/tracking/recorder";
 import type { RecorderFailure } from "@/features/tracking/recorderHost";
+import { pickReplay, replaySpeeds } from "@/features/tracking/replaySource";
+import type { ReplayChoice } from "@/features/tracking/replaySource";
 import { estimateText, workoutText } from "@/features/workouts/format";
 import { defaultWorkout } from "@/features/workouts/plan";
 import { deviceTimeZone } from "@/format/dates";
@@ -89,10 +92,11 @@ function close(router: ReturnType<typeof useRouter>): void {
   else router.replace("/");
 }
 
-/** `REC-010`, `REC-012`: sport, permissions and GPS readiness before the start. */
+/** `REC-010`, `REC-012`: sport, permissions and GPS readiness before the start; the stopwatch without location (`REC-060`). */
 export function PrepareScreen(props: PrepareScreenProps) {
   const view = useRecorderView();
   const [access, setAccess] = useState<Access>({ kind: "checking" });
+  const [stopwatchChosen, setStopwatchChosen] = useState(false);
   const recheck = useCallback(() => {
     void locationAccess().then(setAccess);
   }, []);
@@ -120,13 +124,14 @@ export function PrepareScreen(props: PrepareScreenProps) {
     case "checking":
       return null;
     case "granted":
-      return <Preparation {...props} signal={view.kind === "preparing" ? view.signal : null} position={view.kind === "preparing" ? view.position : null} onLocationLost={recheck} />;
+      return <Preparation {...props} located signal={view.kind === "preparing" ? view.signal : null} position={view.kind === "preparing" ? view.position : null} onLocationLost={recheck} />;
     case "unsupported":
       return <WebNotice />;
     case "explain":
     case "approximate":
     case "denied":
-      return <PermissionPrompt access={access} sport={props.sport} onAccess={setAccess} />;
+      if (stopwatchChosen) return <Preparation {...props} located={false} signal={null} position={null} onLocationLost={recheck} />;
+      return <PermissionPrompt access={access} sport={props.sport} onAccess={setAccess} onStopwatch={() => setStopwatchChosen(true)} />;
     default: {
       const unreachable: never = access;
       return unreachable;
@@ -142,7 +147,7 @@ function WebNotice() {
       title="Enregistre tes activités depuis l'application mobile"
       body="Le suivi GPS en direct fonctionne sur Android et iOS. Ici, tu peux noter une activité à la main."
       primary={{ label: "Noter une activité", run: () => router.replace("/log") }}
-      secondary={null}
+      secondary={[]}
     />
   );
 }
@@ -151,15 +156,19 @@ interface PermissionPromptProps {
   readonly access: Extract<LocationAccess, { readonly kind: "explain" | "approximate" | "denied" }>;
   readonly sport: SportKey | null;
   readonly onAccess: (access: LocationAccess) => void;
+  readonly onStopwatch: () => void;
 }
 
-/** `PRV-002`, `PRV-003`; a refusal leaves the settings and manual entry (`REC-060` is impossible: the tracker needs the position). */
-function PermissionPrompt({ access, sport, onAccess }: PermissionPromptProps) {
+/** `PRV-002`, `PRV-003`; without the position, the stopwatch (`REC-060`) or manual entry. */
+function PermissionPrompt({ access, sport, onAccess, onStopwatch }: PermissionPromptProps) {
   const router = useRouter();
   const ask = (): void => {
     void requestLocation().then(onAccess);
   };
-  const manual = { label: "Noter à la main", run: () => router.replace({ pathname: "/log", params: sport === null ? {} : { sport } }) };
+  const others: readonly NoticeAction[] = [
+    { label: "Chronomètre seul", run: onStopwatch },
+    { label: "Noter à la main", run: () => router.replace({ pathname: "/log", params: sport === null ? {} : { sport } }) },
+  ];
   switch (access.kind) {
     case "explain":
       return (
@@ -168,7 +177,7 @@ function PermissionPrompt({ access, sport, onAccess }: PermissionPromptProps) {
           title="Ta position, pendant la sortie seulement"
           body="Obnixe lit le GPS du début à la fin de l'enregistrement, même écran éteint, pour mesurer distance, allure et dénivelé. La trace reste sur ton téléphone."
           primary={{ label: "Autoriser la localisation", run: ask }}
-          secondary={manual}
+          secondary={others}
         />
       );
     case "approximate":
@@ -176,9 +185,9 @@ function PermissionPrompt({ access, sport, onAccess }: PermissionPromptProps) {
         <Notice
           scene={sport ?? "run"}
           title="Position précise nécessaire"
-          body="Avec une position approximative, la distance serait fausse de plusieurs centaines de mètres. Autorise la position exacte pour enregistrer."
+          body="Avec une position approximative, la distance serait fausse de plusieurs centaines de mètres. Autorise la position exacte pour enregistrer la trace, ou démarre le chronomètre seul."
           primary={access.canAskAgain ? { label: "Autoriser la position exacte", run: ask } : { label: "Ouvrir les réglages", run: openSystemSettings }}
-          secondary={manual}
+          secondary={others}
         />
       );
     case "denied":
@@ -186,9 +195,9 @@ function PermissionPrompt({ access, sport, onAccess }: PermissionPromptProps) {
         <Notice
           scene={sport ?? "run"}
           title="Localisation refusée"
-          body="Sans ta position, Obnixe ne peut pas enregistrer de trace. Autorise-la dans les réglages du téléphone, ou note ta sortie à la main."
+          body="Sans ta position, Obnixe ne peut pas enregistrer de trace. Autorise-la dans les réglages du téléphone, ou enregistre au chronomètre : temps, tours et fréquence cardiaque."
           primary={access.canAskAgain ? { label: "Autoriser la localisation", run: ask } : { label: "Ouvrir les réglages", run: openSystemSettings }}
-          secondary={manual}
+          secondary={others}
         />
       );
     default: {
@@ -208,7 +217,7 @@ interface NoticeProps {
   readonly title: string;
   readonly body: string;
   readonly primary: NoticeAction;
-  readonly secondary: NoticeAction | null;
+  readonly secondary: readonly NoticeAction[];
 }
 
 function Notice({ scene, title, body, primary, secondary }: NoticeProps) {
@@ -233,7 +242,9 @@ function Notice({ scene, title, body, primary, secondary }: NoticeProps) {
       <BottomPanel>
         <View style={styles.noticeActions}>
           <PrimaryButton label={primary.label} onPress={primary.run} />
-          {secondary === null ? null : <LinkButton label={secondary.label} onPress={secondary.run} style={styles.noticeLink} />}
+          {secondary.map((action) => (
+            <LinkButton key={action.label} label={action.label} onPress={action.run} style={styles.noticeLink} />
+          ))}
         </View>
       </BottomPanel>
     </View>
@@ -241,6 +252,8 @@ function Notice({ scene, title, body, primary, secondary }: NoticeProps) {
 }
 
 interface PreparationProps extends PrepareScreenProps {
+  /** False once the stopwatch was chosen without the position (`REC-060`). */
+  readonly located: boolean;
   readonly signal: LiveSignal | null;
   readonly position: GeoPoint | null;
   readonly onLocationLost: () => void;
@@ -251,6 +264,7 @@ type PrepareSheet =
   | { readonly kind: "catalogue" }
   | { readonly kind: "gear" }
   | { readonly kind: "route" }
+  | { readonly kind: "replay" }
   | { readonly kind: "quick"; readonly initial: WorkoutPlan; readonly opening: number }
   | { readonly kind: "open"; readonly sessionId: Id };
 
@@ -259,7 +273,7 @@ function fits(plan: WorkoutPlan, profile: ResolvedProfile | null): boolean {
   return profile !== null && workoutPlanSchemaFor(profile.primary).safeParse(plan).success;
 }
 
-function Preparation({ sport: requested, kind: requestedKind, slotId, variantId, routeId: requestedRoute, signal, position, onLocationLost }: PreparationProps) {
+function Preparation({ sport: requested, kind: requestedKind, slotId, variantId, routeId: requestedRoute, located, signal, position, onLocationLost }: PreparationProps) {
   const { colors } = useTheme();
   const router = useRouter();
   const notify = useSnackbar();
@@ -285,10 +299,13 @@ function Preparation({ sport: requested, kind: requestedKind, slotId, variantId,
   const [starting, setStarting] = useState(false);
   const [programGuided, setProgramGuided] = useState(true);
   const [quick, setQuick] = useState<WorkoutPlan | null>(null);
+  const [replay, setReplay] = useState<ReplayChoice | null>(null);
   const launched = useRef(false);
 
   const definition = sports[sport];
-  const profile = useMemo(() => resolveProfile(sport, values), [sport, values]);
+  const trackProfile = useMemo(() => resolveProfile(sport, values), [sport, values]);
+  const stopwatch = !located || trackProfile === null;
+  const profile = useMemo(() => (stopwatch ? stopwatchProfile(sport, values) : trackProfile), [stopwatch, trackProfile, sport, values]);
   const settings = useMemo(() => (profile === null ? null : recordingSettingsOf(db(), profile)), [profile, preferences]);
   const firstRecording = useMemo(() => !hasLiveRecording(), []);
   const [autoPause, setAutoPause] = useState<{ readonly sport: SportKey; readonly value: boolean } | null>(null);
@@ -300,20 +317,20 @@ function Preparation({ sport: requested, kind: requestedKind, slotId, variantId,
   const slotApplies = start !== null && start.slot.sport === sport;
   const goodFix = signal !== null && signal.accuracy !== null && signal.accuracy <= signalLevelAccuracy.fair;
   const referenceSpeedMmS = useMemo(() => (profile === null ? null : recentSpeedOf(db(), sport)), [profile === null, sport]);
-  const programWorkout = slotApplies && start?.workout != null && fits(start.workout, profile) ? start.workout : null;
-  const quickWorkout = quick !== null && fits(quick, profile) ? quick : null;
+  const programWorkout = !stopwatch && slotApplies && start?.workout != null && fits(start.workout, profile) ? start.workout : null;
+  const quickWorkout = !stopwatch && quick !== null && fits(quick, profile) ? quick : null;
   const workout = quickWorkout ?? (programGuided ? programWorkout : null);
 
   useFocusEffect(
     useCallback(() => {
-      if (profile === null) return undefined;
+      if (profile === null || stopwatch) return undefined;
       void recorder.prepare().then((outcome) => {
         if (!outcome.ok && outcome.failure.kind === "location_denied") onLocationLost();
       });
       return () => {
         if (!launched.current) recorder.cancelPreparation();
       };
-    }, [profile === null, onLocationLost]),
+    }, [profile === null, stopwatch, onLocationLost]),
   );
 
   const stripKeys = useMemo(() => {
@@ -385,14 +402,23 @@ function Preparation({ sport: requested, kind: requestedKind, slotId, variantId,
     if (profile === null) return;
     launched.current = true;
     const outcome = await recorder.start({
-      request: { sport, values, gearId, slot: slotApplies && start !== null ? { slotId: start.slot.id, variantId: start.variantId, countsInRotation: true } : null, timeZone: deviceTimeZone(), routeId: followed?.id ?? null, workout },
-      autoPause: autoPauseOn,
+      request: {
+        sport,
+        values,
+        gearId,
+        slot: slotApplies && start !== null ? { slotId: start.slot.id, variantId: start.variantId, countsInRotation: true } : null,
+        timeZone: deviceTimeZone(),
+        routeId: stopwatch ? null : (followed?.id ?? null),
+        workout,
+        stopwatch,
+      },
+      autoPause: !stopwatch && autoPauseOn,
       power: "normal",
-      replay: null,
+      replay: stopwatch ? null : (replay?.replay ?? null),
     });
     setStarting(false);
     if (outcome.ok) {
-      if (!goodFix) notify({ text: weakSignalNotice, aboveTabBar: false, extraOffset: 120 });
+      if (!goodFix && !stopwatch && replay === null) notify({ text: weakSignalNotice, aboveTabBar: false, extraOffset: 120 });
       router.replace({ pathname: "/record/[id]", params: { id: outcome.value } });
       return;
     }
@@ -471,15 +497,25 @@ function Preparation({ sport: requested, kind: requestedKind, slotId, variantId,
           </View>
         )}
 
-        {profile === null ? (
-          <IndoorNotice label={definition.label} onManual={() => router.replace({ pathname: "/log", params: { sport, ...(slotApplies && start !== null ? { slotId: start.slot.id } : {}) } })} />
-        ) : (
+        {profile === null ? null : (
           <>
-            <SignalCard signal={signal} />
-            {sensorRolesOf(profile).map((role) => {
-              const device = settings === null ? null : pairedSensorOf(profile, settings, role);
-              return role === "heart_rate" || device !== null ? <SensorCard key={role} role={role} profile={profile} device={device} /> : null;
-            })}
+            {stopwatch ? (
+              <StopwatchCard
+                located={located}
+                label={definition.label}
+                distanceUnit={profile.pacePerMeters === 100 ? "m" : "km"}
+                heartRate={profile.metrics.includes("heart_rate")}
+                onManual={() => router.replace({ pathname: "/log", params: { sport, ...(slotApplies && start !== null ? { slotId: start.slot.id } : {}) } })}
+              />
+            ) : (
+              <SignalCard signal={signal} />
+            )}
+            {sensorRolesOf(profile)
+              .filter((role) => !stopwatch || role === "heart_rate")
+              .map((role) => {
+                const device = settings === null ? null : pairedSensorOf(profile, settings, role);
+                return role === "heart_rate" || device !== null ? <SensorCard key={role} role={role} profile={profile} device={device} /> : null;
+              })}
             {firstRecording ? <BatteryHint /> : null}
 
             <View style={styles.options}>
@@ -490,11 +526,13 @@ function Preparation({ sport: requested, kind: requestedKind, slotId, variantId,
                   onPress={() => setSheet({ kind: "gear" })}
                 />
               ) : null}
-              <DetailRow
-                title="Itinéraire"
-                value={followed === null ? "Aucun" : position === null ? followed.name : `${followed.name} · ${startDistanceText(distanceToRouteStart(followed, position))}`}
-                onPress={() => setSheet({ kind: "route" })}
-              />
+              {stopwatch ? null : (
+                <DetailRow
+                  title="Itinéraire"
+                  value={followed === null ? "Aucun" : position === null ? followed.name : `${followed.name} · ${startDistanceText(distanceToRouteStart(followed, position))}`}
+                  onPress={() => setSheet({ kind: "route" })}
+                />
+              )}
               {programWorkout === null ? null : (
                 <SwitchRow
                   title="Séance guidée"
@@ -506,18 +544,25 @@ function Preparation({ sport: requested, kind: requestedKind, slotId, variantId,
                   }}
                 />
               )}
-              <DetailRow
-                title="Fractionné rapide"
-                value={quickWorkout === null ? null : (estimateText(workoutEstimate(quickWorkout, referenceSpeedMmS)) ?? workoutText(quickWorkout))}
-                onPress={() => setSheet({ kind: "quick", initial: quickWorkout ?? quickStart(sport, profile), opening: Date.now() })}
-              />
-              <SwitchRow title="Pause automatique" detail="Pour cette sortie" value={autoPauseOn} onChange={(value) => setAutoPause({ sport, value })} />
+              {stopwatch ? null : (
+                <>
+                  <DetailRow
+                    title="Fractionné rapide"
+                    value={quickWorkout === null ? null : (estimateText(workoutEstimate(quickWorkout, referenceSpeedMmS)) ?? workoutText(quickWorkout))}
+                    onPress={() => setSheet({ kind: "quick", initial: quickWorkout ?? quickStart(sport, profile), opening: Date.now() })}
+                  />
+                  <SwitchRow title="Pause automatique" detail="Pour cette sortie" value={autoPauseOn} onChange={(value) => setAutoPause({ sport, value })} />
+                </>
+              )}
+              {__DEV__ && !stopwatch ? (
+                <DetailRow title="Source de position (dev)" value={replay === null ? "GPS du téléphone" : `Rejeu ${replay.replay.speed}× · ${replay.name}`} onPress={() => setSheet({ kind: "replay" })} />
+              ) : null}
               <SwitchRow title="Décompte de 3 secondes" detail="Avant le départ" value={display.countdown} onChange={(value) => updateSettings({ countdown: value })} />
               <SwitchRow title="Garder l'écran allumé" detail="Pendant l'enregistrement" value={display.keepScreenOn} onChange={(value) => updateSettings({ keepScreenOn: value })} />
             </View>
             {followed === null ? null : <RouteOfflineHint route={followed} />}
 
-            {readout === null || settings === null ? null : (
+            {stopwatch || readout === null || settings === null ? null : (
               <ReadoutEditor profile={profile} readout={readout} customized={settings.readout !== null} onChange={saveReadout} onReset={() => saveReadout(null)} />
             )}
             <LinkButton label={`Alertes et réglages · ${definition.label}`} onPress={() => router.push({ pathname: "/settings/recording/[sport]", params: { sport } })} style={styles.settingsLink} />
@@ -527,12 +572,12 @@ function Preparation({ sport: requested, kind: requestedKind, slotId, variantId,
 
       {profile === null ? null : (
         <BottomPanel>
-          {goodFix ? null : (
+          {goodFix || stopwatch || replay !== null ? null : (
             <Text variant="caption" tone="secondary" style={styles.weak}>
               {signal?.level === "weak" ? weakSignalNotice : "Recherche du signal GPS : tu peux démarrer quand tu veux"}
             </Text>
           )}
-          <PrimaryButton label="Démarrer" disabled={starting} icon={<Icon name="play" size={20} color={starting ? colors.text2 : colors.actInk} />} onPress={() => void begin()} />
+          <PrimaryButton label={stopwatch ? "Démarrer le chronomètre" : "Démarrer"} disabled={starting} icon={<Icon name="play" size={20} color={starting ? colors.text2 : colors.actInk} />} onPress={() => void begin()} />
         </BottomPanel>
       )}
 
@@ -595,6 +640,32 @@ function Preparation({ sport: requested, kind: requestedKind, slotId, variantId,
           onClose={() => setSheet({ kind: "none" })}
         />
       )}
+      {__DEV__ ? (
+        <Sheet open={sheet.kind === "replay"} title="Source de position" context="Build de développement" onClose={() => setSheet({ kind: "none" })}>
+          <View>
+            <MenuItem
+              label="GPS du téléphone"
+              onPress={() => {
+                setReplay(null);
+                setSheet({ kind: "none" });
+              }}
+            />
+            {replaySpeeds.map((speed) => (
+              <MenuItem
+                key={speed}
+                label={speed === 1 ? "Rejouer un GPX en temps réel" : `Rejouer un GPX ${speed}× plus vite`}
+                detail={speed === 1 ? "Reprend après un arrêt du processus" : "Ne survit pas à un arrêt du processus"}
+                onPress={() => {
+                  setSheet({ kind: "none" });
+                  void pickReplay(speed).then((choice) => {
+                    if (choice !== null) setReplay(choice);
+                  });
+                }}
+              />
+            ))}
+          </View>
+        </Sheet>
+      ) : null}
       <Sheet open={sheet.kind === "open"} title="Une séance est déjà ouverte" context="Une seule activité à la fois" onClose={() => setSheet({ kind: "none" })}>
         <View>
           <MenuItem
@@ -623,20 +694,25 @@ function quickStart(sport: SportKey, profile: ResolvedProfile): WorkoutPlan {
   return last !== null && fits(last, profile) ? last : defaultWorkout(profile.primary);
 }
 
-interface IndoorNoticeProps {
+interface StopwatchCardProps {
+  readonly located: boolean;
   readonly label: string;
+  readonly distanceUnit: "m" | "km";
+  readonly heartRate: boolean;
   readonly onManual: () => void;
 }
 
-function IndoorNotice({ label, onManual }: IndoorNoticeProps) {
+/** `REC-060`: what a recording without position measures. */
+function StopwatchCard({ located, label, distanceUnit, heartRate, onManual }: StopwatchCardProps) {
   const { colors } = useTheme();
+  const measured = heartRate ? "le temps, les pauses, les tours et la fréquence cardiaque d'un capteur appairé" : "le temps, les pauses et les tours";
   return (
-    <BevelView fill={colors.surface} cut={bevels.card} style={styles.indoor}>
-      <Text variant="heading">Pas de trace GPS pour cette option</Text>
+    <BevelView fill={colors.surface} cut={bevels.card} band={{ color: colors.mark, height: 4 }} style={styles.stopwatch}>
+      <Text variant="heading">Chronomètre seul</Text>
       <Text variant="body" tone="secondary">
-        {`${label} en intérieur se note à la main, avec sa durée et sa distance.`}
+        {`${located ? `Pas de trace GPS pour cette option de ${label.toLowerCase()}` : "Sans localisation"} : ${measured} sont enregistrés. Tu pourras saisir la distance en ${distanceUnit === "m" ? "mètres" : "kilomètres"} à la fin.`}
       </Text>
-      <ControlButton label="Noter l'activité" onPress={onManual} style={styles.indoorButton} />
+      <ControlButton label="Noter à la main plutôt" onPress={onManual} style={styles.stopwatchButton} />
     </BevelView>
   );
 }
@@ -740,8 +816,8 @@ const styles = StyleSheet.create({
   signalBars: { alignItems: "center", gap: 4 },
   options: { marginTop: 12 },
   settingsLink: { alignSelf: "center", marginTop: 20 },
-  indoor: { marginTop: 24, padding: 18, gap: 8 },
-  indoorButton: { alignSelf: "flex-start", marginTop: 6 },
+  stopwatch: { marginTop: 20, padding: 18, paddingTop: 20, gap: 8 },
+  stopwatchButton: { alignSelf: "flex-start", marginTop: 6 },
   weak: { textAlign: "center", marginBottom: 8 },
   noticeScene: { marginTop: 24, height: 180, alignItems: "center", justifyContent: "center" },
   noticeTitle: { marginTop: 24 },

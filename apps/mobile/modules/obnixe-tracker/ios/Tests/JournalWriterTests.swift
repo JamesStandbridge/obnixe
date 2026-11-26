@@ -113,7 +113,7 @@ final class JournalWriterTests: XCTestCase {
     try withWriter { writer in
       XCTAssertTrue(writer.append(.pressure(PressureSample(t: 500, pascals: 101_325))))
       let batch = try XCTUnwrap(try writer.flush(mark: Mark(t: 600, kind: .lap)))
-      XCTAssertEqual(batch, JournalBatch(sequence: 0, samples: [.pressure(PressureSample(t: 500, pascals: 101_325))], mark: Mark(t: 600, kind: .lap)))
+      XCTAssertEqual(batch, JournalBatch(sequence: 0, samples: [.pressure(PressureSample(t: 500, pascals: 101_325))], mark: Mark(t: 600, kind: .lap), delivered: 0))
     }
     let bytes = try bytes()
     let start = headerLength

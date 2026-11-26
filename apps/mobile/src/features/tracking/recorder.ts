@@ -18,6 +18,7 @@ import { DerivedRebuild } from "@/features/tracking/derivedRebuild";
 import type { DerivedRebuildState } from "@/features/tracking/derivedRebuild";
 import { RecorderHost } from "@/features/tracking/recorderHost";
 import type { RecorderFeedback, RecorderView, RecorderWriter } from "@/features/tracking/recorderHost";
+import { StopwatchTracker } from "@/features/tracking/stopwatchTracker";
 import { WeatherQueue, timedFetch } from "@/features/tracking/weatherQueue";
 import { tracker } from "../../../modules/obnixe-tracker";
 
@@ -59,7 +60,7 @@ const feedback: RecorderFeedback = {
 export const recordingAvailable = tracker !== null;
 
 /** The app's only recorder: screens read it through `useRecorderView` and act through its methods. */
-export const recorder = new RecorderHost({ tracker, writer, feedback });
+export const recorder = new RecorderHost({ tracker, stopwatch: new StopwatchTracker(), writer, feedback });
 
 export const derivedRebuild = new DerivedRebuild(writer, report);
 

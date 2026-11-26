@@ -286,6 +286,11 @@ describe("finishing", () => {
     expect(isShortActivity({ movingMs: 600_000, distanceMm: 49_999 })).toBe(true);
     expect(isShortActivity({ movingMs: 30_000, distanceMm: 50_000 })).toBe(false);
   });
+
+  it("judges a stopwatch recording on its time alone (REC-060)", () => {
+    expect(isShortActivity({ movingMs: 600_000, distanceMm: null })).toBe(false);
+    expect(isShortActivity({ movingMs: 29_999, distanceMm: null })).toBe(true);
+  });
 });
 
 describe("interruption", () => {

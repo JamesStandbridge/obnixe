@@ -86,6 +86,7 @@ class TrackerService : Service() {
   private fun foregroundTypes(): Int {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return 0
     val bluetooth = TrackerHub.usesBluetooth(this) && TrackerPermissions.isGranted(this, TrackerPermission.BLUETOOTH)
-    return ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION or if (bluetooth) ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE else 0
+    val location = if (TrackerHub.usesLocation(this)) ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION else 0
+    return location or if (bluetooth) ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE else 0
   }
 }

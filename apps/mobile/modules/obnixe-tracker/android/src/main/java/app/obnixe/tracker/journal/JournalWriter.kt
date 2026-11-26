@@ -19,8 +19,17 @@ import java.nio.ByteOrder
 import java.nio.channels.FileChannel
 import java.util.zip.CRC32
 
-/** One batch as written: the samples in arrival order, then at most one mark, which always closes its batch. */
-data class JournalBatch(val sequence: Long, val samples: List<Sample>, val mark: Mark?)
+/**
+ * One batch as written: the samples in arrival order, then at most one mark, which always closes its batch. The first
+ * [delivered] samples already went out in parts before the batch reached storage.
+ */
+data class JournalBatch(val sequence: Long, val samples: List<Sample>, val mark: Mark?, val delivered: Int) {
+  /** The samples of the batch not sent yet, as its last part. */
+  fun lastPart() = SamplePart(sequence, delivered, samples.subList(delivered, samples.size), end = true)
+}
+
+/** Samples of batch [sequence] from its [offset]-th on, as JavaScript receives them; [end] once the batch is on storage. */
+data class SamplePart(val sequence: Long, val offset: Int, val samples: List<Sample>, val end: Boolean)
 
 /** [lastT] is the latest `t` of any record; [stopped] is only true for a journal reopened after its stop mark. */
 data class ResumedJournal(val writer: JournalWriter, val paused: Boolean, val stopped: Boolean, val lastT: Long, val lastStepCount: Long)
@@ -40,6 +49,7 @@ class JournalWriter private constructor(
   private val channel: FileChannel = file.channel
   private val pending = ByteSink(4096).apply { truncate(JournalFormat.batchPrefixBytes) }
   private val pendingSamples = ArrayList<Sample>()
+  private var delivered = 0
 
   var nextSequence = nextSequence
     private set
@@ -54,6 +64,14 @@ class JournalWriter private constructor(
     lastT[sample.recordType.code] = sample.t
     pendingSamples += sample
     return true
+  }
+
+  /** The pending samples not sent yet, as the next part of the coming batch; null when there are none. */
+  fun takePart(): SamplePart? {
+    if (delivered == pendingSamples.size) return null
+    val part = SamplePart(nextSequence, delivered, pendingSamples.subList(delivered, pendingSamples.size).toList(), end = false)
+    delivered = pendingSamples.size
+    return part
   }
 
   /**
@@ -81,9 +99,10 @@ class JournalWriter private constructor(
       throw error
     }
     if (written != null) lastT[written.recordType.code] = written.t
-    val batch = JournalBatch(nextSequence, pendingSamples.toList(), written)
+    val batch = JournalBatch(nextSequence, pendingSamples.toList(), written, delivered)
     nextSequence += 1
     pendingSamples.clear()
+    delivered = 0
     pending.truncate(JournalFormat.batchPrefixBytes)
     return batch
   }

@@ -122,7 +122,7 @@ export function GuidedPanel({ workout, profile }: GuidedPanelProps) {
         )}
         <Text style={[styles.rank, { color: colors.text2 }]}>{rank}</Text>
       </View>
-      <MetricTile caption={workout.remaining?.kind === "open" ? "Écoulé · étape libre" : "Restant"} text={remaining} size={104} minimumScale={0.55} accent={colors.sport[profile.sport]} style={styles.remaining} />
+      <MetricTile caption={workout.remaining?.kind === "open" ? "Écoulé · étape libre" : "Restant"} text={remaining} scale="guided" accent={colors.sport[profile.sport]} style={styles.remaining} />
       {target === null || current.target.kind === "none" ? null : <TargetGauge step={current} reading={target} />}
       <Text variant="small" tone="secondary" numberOfLines={1} style={styles.next}>
         {next === null ? "Dernière étape" : `Ensuite : ${stepTitle(next)} · ${compactStep(next)}`}

@@ -9,7 +9,7 @@ import type { Track } from "../tracking/codec/track.ts";
 import { maskTrack } from "../tracking/privacy.ts";
 import type { PointRange } from "../tracking/privacy.ts";
 import { activePrivacyMask } from "../tracking/privacyZones.ts";
-import { resolveProfile } from "../tracking/profile.ts";
+import { resolveProfile, stopwatchProfile } from "../tracking/profile.ts";
 import type { ResolvedProfile } from "../tracking/profile.ts";
 import { lttb } from "../tracking/simplify.ts";
 import { slowestPaceSecondsPerKm } from "../tracking/stages/derive.ts";
@@ -39,7 +39,7 @@ function loadActivity(db: ObnixeDatabase, env: AgentEnvironment, sessionId: stri
   const row = db.select().from(recording).where(eq(recording.sessionId, owner.id)).get();
   if (row === undefined) throw new ToolInputError(`Session '${sessionId}' was not recorded with the phone or imported from a watch, so it has no track.`);
   if (row.trackFile === null) throw new ToolInputError(`Session '${sessionId}' has no stored track; its summary is in get_history.`);
-  const profile = resolveProfile(owner.sport, owner.values);
+  const profile = row.source === "stopwatch" ? stopwatchProfile(owner.sport, owner.values) : resolveProfile(owner.sport, owner.values);
   if (profile === null) throw new ToolInputError(`Session '${sessionId}' is a ${owner.sport} activity without a GPS profile, so its track cannot be analysed; its summary is in get_history.`);
   const bytes = env.readTrack(row.trackFile);
   if (bytes === null) throw new ToolInputError(`The track of session '${sessionId}' cannot be read on this phone; its summary is in get_history.`);

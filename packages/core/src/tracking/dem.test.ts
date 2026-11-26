@@ -224,7 +224,7 @@ describe("DEM correction rows (ELE-003)", () => {
 
   function recordOuting(scenario: Scenario): { readonly sessionId: Id; readonly track: Track } {
     const track: Track = { ...trackOf(scenario.samples, [{ kind: "start", t: 0 }]), startedAt };
-    const plan = planRecordingStart(context.db, context.env, { sport: scenario.sport, values: {}, gearId: null, slot: null, timeZone: "Europe/Paris", routeId: null, workout: null });
+    const plan = planRecordingStart(context.db, context.env, { sport: scenario.sport, values: {}, gearId: null, slot: null, timeZone: "Europe/Paris", routeId: null, workout: null, stopwatch: false });
     commit(context.db, context.env, { actor: user, summary: "Sortie démarrée", revertsId: null, mutations: recordingStartMutations(plan, { startedAt, device: "Pixel 9 Pro" }) });
     const processed = processTrack(track, profileOf(scenario), { laps: recordedLaps, trim: untrimmed });
     const bytes = encodeTrack(track);

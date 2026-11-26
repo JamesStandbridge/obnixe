@@ -11,14 +11,14 @@ enum TrackerIssue: String {
 }
 
 struct TrackerSources {
-  let location: LocationSourceKind
+  let location: LocationSourceKind?
   let barometer: Bool
   let pedometer: Bool
   let bluetooth: Set<SensorRole>
 
   var bridge: [String: Any] {
     [
-      "location": location.rawValue,
+      "location": location?.rawValue as Any,
       "barometer": barometer,
       "pedometer": pedometer,
       "heartRate": bluetooth.contains(.heartRate),
@@ -39,6 +39,8 @@ struct StoppedRecording {
 }
 
 protocol RecordingListener: AnyObject {
+  func recording(_ recording: Recording, didDeliver part: SamplePart)
+
   func recording(_ recording: Recording, didWrite batch: JournalBatch)
 
   func recording(_ recording: Recording, didReport issue: TrackerIssue)
@@ -51,9 +53,10 @@ protocol RecordingListener: AnyObject {
 }
 
 /**
- One recording: its sources, its journal and its pause state. Samples reach the journal before JavaScript sees them
- (`REC-080`); batches close every `batchIntervalMs` while the app is in the foreground and every `backgroundBatchIntervalMs` otherwise
- (`PRF-003`, `PRF-051`), and immediately on a mark. Confined to `queue`.
+ One recording: its sources, its journal and its pause state. New samples go to JavaScript as parts every
+ `deliveryIntervalMs` while the app is in the foreground and every `backgroundDeliveryIntervalMs` otherwise
+ (`PRF-003`); the batch holding them reaches storage at most every 5 s (`PRF-051`), and at once on a mark, on a move
+ to the background and in critical power, so a crash loses at most 5 s of samples (`REC-080`). Confined to `queue`.
  */
 final class Recording: SensorLinkListener {
   private(set) var config: RecordingConfig
@@ -86,6 +89,7 @@ final class Recording: SensorLinkListener {
   private var links: [SensorLink] = []
   private let sensorCrank = CrankCadence()
   private let powerCrank = CrankCadence()
+  private var cadence = JournalCadence(writeIntervalMs: Recording.writeIntervalMs, startedAtMs: Recording.uptimeMs())
   private var tick: DispatchWorkItem?
   private var stopped = false
   /// Set once the journal is closed; a storage-full self stop can happen while `stop()` drains the mark requests.
@@ -97,6 +101,7 @@ final class Recording: SensorLinkListener {
   private static let pausedIntervalMs: Int64 = 5_000
   private static let saverIntervalMs: Int64 = 5_000
   private static let criticalIntervalMs: Int64 = 10_000
+  private static let writeIntervalMs: Int64 = 5_000
   private static let maxPendingBytes = 64 * 1024
   private static let storageCheckIntervalMs: Int64 = 30_000
   private static let storageLowBytes: Int64 = 50 * 1024 * 1024
@@ -115,16 +120,17 @@ final class Recording: SensorLinkListener {
   /// Starts every available source the configuration asks for and reports which ones run.
   func startSources(foreground: Bool) -> TrackerSources {
     self.foreground = foreground
-    let location = LocationSources.create(
-      queue: queue,
-      clock: clock,
-      background: true,
-      replay: replay,
-      onFix: { [weak self] fix in self?.onSample(.fix(fix)) },
-      onIssue: { [weak self] issue in self?.report(issue) }
-    )
-    self.location = location
-    startLocation()
+    if config.location {
+      location = LocationSources.create(
+        queue: queue,
+        clock: clock,
+        background: true,
+        replay: replay,
+        onFix: { [weak self] fix in self?.onSample(.fix(fix)) },
+        onIssue: { [weak self] issue in self?.report(issue) }
+      )
+      startLocation()
+    }
     let live = replay == nil
     let motion = TrackerPermissions.isGranted(.activity)
     if live, motion, config.barometer, let pressure = PressureStream(queue: queue) {
@@ -143,7 +149,7 @@ final class Recording: SensorLinkListener {
       }
     }
     scheduleTick()
-    return TrackerSources(location: location.kind, barometer: pressure != nil, pedometer: steps != nil, bluetooth: Set(links.flatMap { $0.services.map(\.role) }))
+    return TrackerSources(location: location?.kind, barometer: pressure != nil, pedometer: steps != nil, bluetooth: Set(links.flatMap { $0.services.map(\.role) }))
   }
 
   /// Writes a pause, resume or lap mark at `t` (now by default); false when the pause state makes it meaningless (lap or pause while paused).
@@ -280,12 +286,21 @@ final class Recording: SensorLinkListener {
     tick?.cancel()
     guard !stopped else { return }
     let tick = DispatchWorkItem { [weak self] in
-      self?.flush()
-      self?.scheduleTick()
+      self?.onTick()
     }
     self.tick = tick
-    let intervalMs = foreground ? config.batchIntervalMs : config.backgroundBatchIntervalMs
-    queue.asyncAfter(deadline: .now() + .milliseconds(Int(intervalMs)), execute: tick)
+    let deliveryIntervalMs = foreground ? config.deliveryIntervalMs : config.backgroundDeliveryIntervalMs
+    let delayMs = cadence.nextTickDelayMs(nowMs: Self.uptimeMs(), deliveryIntervalMs: deliveryIntervalMs)
+    queue.asyncAfter(deadline: .now() + .milliseconds(Int(delayMs)), execute: tick)
+  }
+
+  private func onTick() {
+    if cadence.writeDue(nowMs: Self.uptimeMs()) {
+      flush()
+    } else if let part = journal.takePart() {
+      listener?.recording(self, didDeliver: part)
+    }
+    scheduleTick()
   }
 
   private func flush(mark: Mark? = nil) {
@@ -295,6 +310,7 @@ final class Recording: SensorLinkListener {
     } catch {
       return selfStop()
     }
+    cadence.wrote(nowMs: Self.uptimeMs())
     guard let batch else { return }
     listener?.recording(self, didWrite: batch)
     checkStorage(at: batch.mark?.t ?? clock.now())
@@ -360,6 +376,10 @@ final class Recording: SensorLinkListener {
     let recording = Recording(config: config, journal: resumed.writer, clock: clock, replay: nil, queue: queue, listener: listener, paused: false)
     for batch in batches { listener.recording(recording, didWrite: batch) }
     return recording
+  }
+
+  private static func uptimeMs() -> Int64 {
+    TrackerClock.monotonicNs() / 1_000_000
   }
 
   /// The hardware model, such as `Apple iPhone17,1`.

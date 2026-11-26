@@ -1,5 +1,5 @@
 import { asc, eq } from "drizzle-orm";
-import { decodeTrack, exportActivity, exportFileName, exportMimeTypes, exportPrivacyMask, processTrack, resolveProfile, retrimmedLaps } from "@obnixe/core";
+import { decodeTrack, exportActivity, exportFileName, exportMimeTypes, exportPrivacyMask, processStopwatch, processTrack, resolveProfile, retrimmedLaps, stopwatchProfile } from "@obnixe/core";
 import type { ExportFormat, PrivacyMask } from "@obnixe/core";
 import { lap, recording, session } from "@obnixe/schema";
 import type { EpochMs, Id } from "@obnixe/schema";
@@ -33,9 +33,11 @@ export async function maskedActivityFile(sessionId: Id, format: ExportFormat, ma
   const track = decodeTrack(bytes);
   const { sport, values, title, startedAt, timeZone } = found.session;
   const trim = { startMs: found.recording.trimStartMs, endMs: found.recording.trimEndMs };
-  const profile = resolveProfile(sport, values);
+  const stopwatch = found.recording.source === "stopwatch";
+  const profile = stopwatch ? stopwatchProfile(sport, values) : resolveProfile(sport, values);
   const laps = db().select().from(lap).where(eq(lap.sessionId, sessionId)).orderBy(asc(lap.position)).all();
-  const processed = profile === null ? null : processTrack(track, profile, { laps: { kind: "given", laps: retrimmedLaps(laps, trim, trim) }, trim });
+  const processed =
+    profile === null ? null : stopwatch ? processStopwatch(track, profile, found.recording.distanceMm) : processTrack(track, profile, { laps: { kind: "given", laps: retrimmedLaps(laps, trim, trim) }, trim });
   return {
     name: exportFileName({ startedAt, timeZone, title, sport }, format),
     bytes: exportActivity({ track, processed, trim, sport, values, title, mask, energyKcal: found.recording.energyKcal }, format),
