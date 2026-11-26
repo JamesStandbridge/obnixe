@@ -47,8 +47,7 @@ const revealSteps = 8;
 export function reveal(index: number): FadeInDown {
   return FadeInDown.delay(Math.min(index, revealSteps) * revealStep)
     .duration(durations.reveal)
-    .easing(easeOut)
-    .withInitialValues({ transform: [{ translateY: 14 }] });
+    .easing(easeOut);
 }
 
 /** A value that runs from 0 to 1 over and over, frozen at 0 when reduced motion is on. */
