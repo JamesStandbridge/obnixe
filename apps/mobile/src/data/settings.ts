@@ -13,3 +13,15 @@ export function useMassUnit(): MassUnit {
   const { data } = useLiveQuery(db().select({ massUnit: settings.massUnit }).from(settings));
   return data[0]?.massUnit ?? "kg";
 }
+
+export interface RecordingDisplay {
+  /** `UX-004`. */
+  readonly keepScreenOn: boolean;
+  /** `REC-013`. */
+  readonly countdown: boolean;
+}
+
+export function useRecordingDisplay(): RecordingDisplay {
+  const { data } = useLiveQuery(db().select({ keepScreenOn: settings.keepScreenOn, countdown: settings.countdown }).from(settings));
+  return { keepScreenOn: data[0]?.keepScreenOn ?? false, countdown: data[0]?.countdown ?? false };
+}

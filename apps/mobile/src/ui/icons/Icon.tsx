@@ -115,6 +115,26 @@ const glyphs = {
     ),
   },
   play: { viewBox: 18, render: (color) => <Path d="M5 3.2v11.6a.6.6 0 0 0 .9.5l9.2-5.8a.6.6 0 0 0 0-1L5.9 2.7a.6.6 0 0 0-.9.5z" fill={color} /> },
+  pause: {
+    viewBox: 18,
+    render: (color) => (
+      <>
+        <Rect x={4} y={3} width={3.6} height={12} rx={0.8} fill={color} />
+        <Rect x={10.4} y={3} width={3.6} height={12} rx={0.8} fill={color} />
+      </>
+    ),
+  },
+  stop: { viewBox: 18, render: (color) => <Rect x={3.5} y={3.5} width={11} height={11} rx={1.6} fill={color} /> },
+  flag: { viewBox: 18, render: (color) => <Path d="M4.5 16V2.8M4.5 3.2h8.6l-2 3.3 2 3.3H4.5" {...stroke(color, 1.8)} /> },
+  unlock: {
+    viewBox: 18,
+    render: (color) => (
+      <>
+        <Rect x={3.5} y={8} width={11} height={7.5} rx={1.5} {...stroke(color, 1.7)} />
+        <Path d="M6 8V5.8a3 3 0 0 1 5.8-1.1" {...stroke(color, 1.7)} />
+      </>
+    ),
+  },
   tabToday: {
     viewBox: 22,
     render: (color) => (

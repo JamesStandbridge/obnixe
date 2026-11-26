@@ -7,6 +7,7 @@ import { AndroidImportance } from "expo-notifications/build/NotificationChannelM
 import { dismissNotificationAsync } from "expo-notifications/build/dismissNotificationAsync";
 import { scheduleNotificationAsync } from "expo-notifications/build/scheduleNotificationAsync";
 import { setNotificationChannelAsync } from "expo-notifications/build/setNotificationChannelAsync";
+import type { Id } from "@obnixe/schema";
 import { undo, write } from "@/data/write";
 import { DerivedRebuild } from "@/features/tracking/derivedRebuild";
 import type { DerivedRebuildState } from "@/features/tracking/derivedRebuild";
@@ -46,6 +47,9 @@ const feedback: RecorderFeedback = {
   report,
 };
 
+/** `PLT-020`: false on the web, where the screens offer no recording. */
+export const recordingAvailable = tracker !== null;
+
 /** The app's only recorder: screens read it through `useRecorderView` and act through its methods. */
 export const recorder = new RecorderHost({ tracker, writer, feedback });
 
@@ -53,6 +57,16 @@ export const derivedRebuild = new DerivedRebuild(writer, report);
 
 export function useRecorderView(): RecorderView {
   return useSyncExternalStore(recorder.subscribe, recorder.getView);
+}
+
+function recordingSessionId(): Id | null {
+  const view = recorder.getView();
+  return view.kind === "recording" ? view.recording.sessionId : null;
+}
+
+/** The session of the current recording, without the 1 Hz renders of `useRecorderView`. */
+export function useRecordingSessionId(): Id | null {
+  return useSyncExternalStore(recorder.subscribe, recordingSessionId);
 }
 
 export function useDerivedRebuildState(): DerivedRebuildState {

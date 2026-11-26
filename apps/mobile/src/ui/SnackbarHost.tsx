@@ -15,6 +15,8 @@ export interface SnackbarMessage {
   readonly action?: SnackbarAction;
   readonly aboveTabBar?: boolean;
   readonly extraOffset?: number;
+  /** Overrides the default display time. */
+  readonly durationMs?: number;
 }
 
 type Notify = (message: SnackbarMessage) => void;
@@ -36,7 +38,7 @@ export function SnackbarHost({ children }: SnackbarHostProps) {
   const notify = useCallback<Notify>((next) => {
     if (timer.current !== null) clearTimeout(timer.current);
     setMessage(next);
-    timer.current = setTimeout(() => setMessage(null), next.action === undefined ? visibleMs : visibleWithActionMs);
+    timer.current = setTimeout(() => setMessage(null), next.durationMs ?? (next.action === undefined ? visibleMs : visibleWithActionMs));
   }, []);
 
   useEffect(

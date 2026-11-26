@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import Animated, { useAnimatedStyle } from "react-native-reanimated";
@@ -56,6 +56,9 @@ import { deviceTimeZone, formatTimeAt, relativeDay, shortDate, weekdayLong } fro
 import { useLiveValue, useLocalNow } from "@/features/stats/live";
 import { distanceFigure, sportLabel } from "@/features/stats/presentation";
 import { WeekHero } from "@/features/stats/WeekStrip";
+import { lastRecordedSport, recordableSports, slotRecordable } from "@/features/recording/queries";
+import { LiveRecordingStats, StartRecordingCard } from "@/features/recording/TodayCards";
+import { recordingAvailable, useRecordingSessionId } from "@/features/tracking/recorder";
 
 const bottomPanelHeight = 84;
 const heroHeight = 148;
@@ -128,6 +131,10 @@ function startSlot(slot: ProgramSlot, variantId: Id | null): void {
   }
 }
 
+function startRecording(slot: ProgramSlot, variantId: Id | null): void {
+  router.push({ pathname: "/record", params: variantId === null ? { slotId: slot.id } : { slotId: slot.id, variantId } });
+}
+
 function resumeOpen(open: OpenSession): void {
   if (open.session.sport === "climb") router.push({ pathname: "/climb/[id]", params: { id: open.session.id } });
   else if (sports[open.session.sport].archetype === "strength") router.push({ pathname: "/workout/[id]", params: { id: open.session.id } });
@@ -159,6 +166,10 @@ export function TodayScreen() {
   const [othersOpen, setOthersOpen] = useState(false);
   const [chosenVariant, setChosenVariant] = useState<Id | null>(null);
   const variantId = effectiveVariant(data.next, chosenVariant);
+  const recordingId = useRecordingSessionId();
+  const recordingOpen = data.open !== null && data.open.session.id === recordingId;
+  const recordsNext = recordingAvailable && data.next !== null && slotRecordable(data.next.slot);
+  const startSport = useMemo(() => lastRecordedSport(recordableSports(data.preferences)), [data.preferences]);
   const isEmpty = data.open === null && data.programId === null;
   const hasBottomPanel = data.open !== null || data.next !== null;
   const snackbarOffset = hasBottomPanel ? bottomPanelHeight : 0;
@@ -188,7 +199,11 @@ export function TodayScreen() {
         {isEmpty && week.sessionsDone === 0 ? null : <WeekHero week={week} onJournal={() => router.navigate("/journal")} />}
 
         {data.open !== null ? (
-          <ResumeCard open={data.open} onFinish={finish} />
+          recordingOpen ? (
+            <RecordingCard open={data.open} />
+          ) : (
+            <ResumeCard open={data.open} onFinish={finish} />
+          )
         ) : isEmpty ? (
           <EmptyCard />
         ) : data.next === null ? (
@@ -206,11 +221,13 @@ export function TodayScreen() {
         ) : (
           <>
             <NextCard next={data.next} variantId={variantId} onVariant={setChosenVariant} notices={data.notices} today={today} onOpenNotices={() => setNoticesOpen(true)} />
+            {recordsNext ? <LinkButton label="Noter sans GPS" onPress={() => (data.next === null ? undefined : startSlot(data.next.slot, variantId))} style={styles.otherSlots} /> : null}
             {data.next.cycle.some((entry) => entry.state.kind === "pending") ? <LinkButton label="Autre séance du programme" onPress={() => setOthersOpen(true)} style={styles.otherSlots} /> : null}
           </>
         )}
 
         <Section title={isEmpty ? "Noter une activité" : "Hors programme"}>
+          {data.open === null && startSport !== null ? <StartRecordingCard sport={startSport} /> : null}
           <QuickLog sports={quickSports(data.preferences)} today={today} />
         </Section>
 
@@ -220,7 +237,17 @@ export function TodayScreen() {
       {hasBottomPanel ? (
         <View style={[styles.bottomPanel, { backgroundColor: colors.bg }]}>
           {data.open !== null ? (
-            <PrimaryButton label={`Reprendre ${slotSessionLabel(data.open.slotName)}`} icon={<Icon name="play" color={colors.actInk} />} onPress={() => (data.open === null ? undefined : resumeOpen(data.open))} />
+            recordingOpen ? (
+              <PrimaryButton
+                label="Revenir à la sortie"
+                icon={<Icon name="play" color={colors.actInk} />}
+                onPress={() => (recordingId === null ? undefined : router.push({ pathname: "/record/[id]", params: { id: recordingId } }))}
+              />
+            ) : (
+              <PrimaryButton label={`Reprendre ${slotSessionLabel(data.open.slotName)}`} icon={<Icon name="play" color={colors.actInk} />} onPress={() => (data.open === null ? undefined : resumeOpen(data.open))} />
+            )
+          ) : data.next !== null && recordsNext ? (
+            <PrimaryButton label="Démarrer la sortie" icon={<Icon name="play" color={colors.actInk} />} onPress={() => (data.next === null ? undefined : startRecording(data.next.slot, variantId))} />
           ) : data.next !== null ? (
             <PrimaryButton
               label={`Commencer ${slotSessionLabel(data.next.slot.name)}`}
@@ -332,6 +359,20 @@ function ResumeCard({ open, onFinish }: { readonly open: OpenSession; readonly o
     >
       <StatRow stats={recorded === null ? [window] : [recorded, window]} />
       <ControlButton label="Terminer sans reprendre" onPress={() => onFinish(open)} style={styles.fullControl} />
+    </HeroCard>
+  );
+}
+
+function RecordingCard({ open }: { readonly open: OpenSession }) {
+  return (
+    <HeroCard
+      sport={open.session.sport}
+      eyebrow="Sortie en cours"
+      title={sessionTitle({ sport: open.session.sport, title: open.session.title, slotName: open.slotName, variantName: open.variantName, values: open.session.values })}
+      detail={`Depuis ${formatTimeAt(open.session.startedAt, deviceTimeZone())}`}
+      live={open.session.status !== "interrupted"}
+    >
+      <LiveRecordingStats />
     </HeroCard>
   );
 }

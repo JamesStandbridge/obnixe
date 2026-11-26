@@ -18,6 +18,7 @@ import {
   newGear,
   planFreeSession,
   primaryChoice,
+  resolveProfile,
   toStored,
   trackedZones,
   zoneStatuses,
@@ -39,7 +40,8 @@ import { PadSheet } from "@/ui/PadSheet";
 import type { PadResult } from "@/ui/PadSheet";
 import { fieldUnit, formatKilometers, formatQuantity, formatRatio, gearLabel, sportArticle } from "@/features/activity/presentation";
 import { zoneLabel } from "@/format/labels";
-import { LinkButton, PrimaryButton } from "@/ui/Button";
+import { recordingAvailable } from "@/features/tracking/recorder";
+import { ControlButton, LinkButton, PrimaryButton } from "@/ui/Button";
 import { Icon } from "@/ui/icons/Icon";
 import { IconButton, Question, Scale, TextField, ZoneRow } from "@/ui/Inputs";
 import { Screen, Section } from "@/ui/Layout";
@@ -208,6 +210,19 @@ export function LogScreen() {
   const startedAt = epochAt({ date: when.date, minutes: when.minutes }, timeZone);
   const future = startedAt + (shownDuration + paused) * 1000 > Date.now();
   const slotApplies = slot !== null && slot.sport === sport;
+  const recordable = recordingAvailable && pickedWhen === null && resolveProfile(sport, values) !== null;
+  const kindValue = values.kind;
+
+  const recordLive = (): void => {
+    router.replace({
+      pathname: "/record",
+      params: {
+        sport,
+        ...(typeof kindValue === "string" ? { kind: kindValue } : {}),
+        ...(slotApplies && slot !== null ? { slotId: slot.id, ...(slot.variantId === null ? {} : { variantId: slot.variantId }) } : {}),
+      },
+    });
+  };
 
   const stripKeys = useMemo(() => {
     const top = recentOrder.slice(0, 3);
@@ -465,6 +480,10 @@ export function LogScreen() {
           </View>
         )}
 
+        {recordable ? (
+          <ControlButton label="Enregistrer en direct avec le GPS" icon={<Icon name="locate" size={18} color={colors.text} />} onPress={recordLive} style={styles.live} />
+        ) : null}
+
         <View style={styles.readout}>
           <FigureRow
             rightWeight={emphasis === null ? 1 : 1.25}
@@ -662,6 +681,7 @@ const styles = StyleSheet.create({
   when: { marginRight: -10 },
   sports: { marginTop: 12 },
   kind: { marginTop: 16, gap: 8 },
+  live: { marginTop: 16 },
   readout: { marginTop: 20, gap: 14 },
   zones: { marginTop: 2 },
   note: { marginTop: 10 },
