@@ -178,6 +178,10 @@ final class TrackerHub: RecordingListener {
     }
   }
 
+  func recording(_ recording: Recording, didDeliver part: SamplePart) {
+    module?.emitPart(sessionId: recording.sessionId, part: part)
+  }
+
   func recording(_ recording: Recording, didWrite batch: JournalBatch) {
     module?.emitBatch(sessionId: recording.sessionId, batch: batch)
   }

@@ -72,13 +72,20 @@ public final class ObnixeTrackerModule: Module {
     }
   }
 
+  func emitPart(sessionId: String, part: SamplePart) {
+    sendEvent("onSamples", [
+      "sessionId": sessionId,
+      "sequence": Double(part.sequence),
+      "offset": Double(part.offset),
+      "samples": part.samples.map(\.bridge),
+      "end": part.end,
+    ])
+  }
+
   func emitBatch(sessionId: String, batch: JournalBatch) {
-    let sequence = Double(batch.sequence)
-    if !batch.samples.isEmpty {
-      sendEvent("onSamples", ["sessionId": sessionId, "sequence": sequence, "samples": batch.samples.map(\.bridge)])
-    }
+    emitPart(sessionId: sessionId, part: batch.lastPart)
     guard let mark = batch.mark else { return }
-    sendEvent("onMark", ["sessionId": sessionId, "sequence": sequence, "kind": mark.kind.wire, "t": Double(mark.t)])
+    sendEvent("onMark", ["sessionId": sessionId, "sequence": Double(batch.sequence), "kind": mark.kind.wire, "t": Double(mark.t)])
   }
 
   func emitIssue(sessionId: String, issue: TrackerIssue) {
@@ -140,8 +147,8 @@ struct StartRequestRecord: Record {
   @Field var journal: JournalMode = .create
   @Field var power: TrackerPower = .normal
   @Field var sensors: SensorsRecord = SensorsRecord()
-  @Field var batchIntervalMs: Double = 5_000
-  @Field var backgroundBatchIntervalMs: Double = 5_000
+  @Field var deliveryIntervalMs: Double = 5_000
+  @Field var backgroundDeliveryIntervalMs: Double = 5_000
   @Field var notification: NotificationRecord = NotificationRecord()
   @Field var replay: ReplayRecord?
 
@@ -150,8 +157,8 @@ struct StartRequestRecord: Record {
     let bluetooth = sensors.bluetooth.compactMap { sensor in UUID(uuidString: sensor.id).map { BluetoothSensor(service: sensor.service, identifier: $0) } }
     let valid = JournalHeader.isSessionId(sessionId)
       && !journalPath.isEmpty
-      && (batchIntervalMs == 1_000 || batchIntervalMs == 5_000)
-      && (backgroundBatchIntervalMs == 1_000 || backgroundBatchIntervalMs == 5_000)
+      && (deliveryIntervalMs == 1_000 || deliveryIntervalMs == 5_000)
+      && (backgroundDeliveryIntervalMs == 1_000 || backgroundDeliveryIntervalMs == 5_000)
       && bluetooth.count == sensors.bluetooth.count
       && Set(bluetooth.map(\.service.role)).count == bluetooth.count
       && (replay.map { (1...50).contains($0.speed) } ?? true)
@@ -163,8 +170,8 @@ struct StartRequestRecord: Record {
       barometer: sensors.barometer,
       pedometer: sensors.pedometer,
       bluetooth: bluetooth,
-      batchIntervalMs: Int64(batchIntervalMs),
-      backgroundBatchIntervalMs: Int64(backgroundBatchIntervalMs),
+      deliveryIntervalMs: Int64(deliveryIntervalMs),
+      backgroundDeliveryIntervalMs: Int64(backgroundDeliveryIntervalMs),
       notification: notification.content,
       replay: replay.map { ReplaySource(gpxURL: Self.fileURL($0.gpxPath), speed: $0.speed) }
     )

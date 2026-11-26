@@ -78,7 +78,7 @@ import { notificationOf, timerBaseOf } from "@/features/tracking/notification";
 import { bluetoothSensorsOf, sensorLostIssueOf, sensorRoleOfIssue } from "@/features/tracking/sensorDevices";
 import { availableBytes, deleteJournal, journalUri, readJournalFile, writeTrack } from "@/features/tracking/trackStore";
 import { formatNumber } from "@/format/numbers";
-import type { SampleBatch, TrackerIssue, TrackerIssueKind, TrackerMarkEvent, TrackerModule, TrackerPower, TrackerReplay } from "../../../modules/obnixe-tracker";
+import type { SamplePart, TrackerIssue, TrackerIssueKind, TrackerMarkEvent, TrackerModule, TrackerPower, TrackerReplay } from "../../../modules/obnixe-tracker";
 
 /** The native tracker calls the host relies on; the tests pass a fake. */
 export type TrackerPort = Pick<TrackerModule, "status" | "start" | "stop" | "mark" | "setPower" | "setNotification" | "prepare" | "cancelPreparation" | "addListener">;
@@ -216,8 +216,13 @@ interface Active {
   plan: RecordingStartPlan | null;
   startedAt: EpochMs;
   state: RecorderState;
-  /** Last journal batch applied, and whether its mark was. */
+  /**
+   * Journal batch the parts being applied belong to, and how many of its samples were; once `sealed` its last part
+   * was, and with `markApplied` its mark too, so the next part starts batch `sequence + 1`.
+   */
   sequence: number;
+  offset: number;
+  sealed: boolean;
   markApplied: boolean;
   lastT: number;
   started: boolean;
@@ -239,7 +244,7 @@ interface PendingDiscard {
   timer: ReturnType<typeof setTimeout> | null;
 }
 
-type Inbound = { readonly kind: "samples"; readonly batch: SampleBatch } | { readonly kind: "mark"; readonly mark: TrackerMarkEvent } | { readonly kind: "issue"; readonly issue: TrackerIssue };
+type Inbound = { readonly kind: "samples"; readonly part: SamplePart } | { readonly kind: "mark"; readonly mark: TrackerMarkEvent } | { readonly kind: "issue"; readonly issue: TrackerIssue };
 
 type Mode = "live" | "replay";
 
@@ -309,7 +314,7 @@ export class RecorderHost {
       tracker === null
         ? []
         : [
-            tracker.addListener("onSamples", (batch) => this.receive({ kind: "samples", batch })),
+            tracker.addListener("onSamples", (part) => this.receive({ kind: "samples", part })),
             tracker.addListener("onMark", (mark) => this.receive({ kind: "mark", mark })),
             tracker.addListener("onIssue", (issue) => this.receive({ kind: "issue", issue })),
             tracker.addListener("onWarmupFix", (fix) => this.warmup(fix)),
@@ -543,8 +548,7 @@ export class RecorderHost {
       if (contents?.header !== null && contents?.header !== undefined) active.startedAt = contents.header.startedAt;
       this.apply(active, feedOf(contents?.samples ?? [], contents?.marks ?? []), "replay");
       if (active.state.phase === "preparing") await this.dispatch({ type: "start" }, "replay");
-      active.sequence = contents?.lastSequence ?? -1;
-      active.markApplied = true;
+      this.sealAt(active, contents?.lastSequence ?? -1);
       const status = this.options.tracker?.status() ?? null;
       const recording = status !== null && status.state === "recording" && status.sessionId === active.sessionId;
       if (!recording && (isActivePhase(active.state) || active.state.phase === "finishing")) await this.dispatch({ type: "interrupt", lastSampleT: active.lastT }, "live");
@@ -609,6 +613,8 @@ export class RecorderHost {
       plan: null,
       state: { phase: "preparing", autoPause: fields.settings.autoPause },
       sequence: -1,
+      offset: 0,
+      sealed: true,
       markApplied: true,
       lastT: 0,
       started: false,
@@ -695,8 +701,8 @@ export class RecorderHost {
       journal: create ? "create" : "continue",
       power: active.power,
       sensors: { barometer: true, pedometer: active.profile.cadence === "steps", bluetooth: bluetoothSensorsOf(active.profile, active.settings) },
-      batchIntervalMs: 1000,
-      backgroundBatchIntervalMs: active.workout === null ? 5000 : 1000,
+      deliveryIntervalMs: 1000,
+      backgroundDeliveryIntervalMs: active.workout === null ? 5000 : 1000,
       notification: notificationOf(active.profile, active.state, active.live.snapshot(active.lastT), active.startedAt, null, active.runner?.view(active.lastT) ?? null),
       replay: create ? active.replay : null,
     });
@@ -827,27 +833,40 @@ export class RecorderHost {
     if (active === null) return;
     switch (event.kind) {
       case "samples": {
-        const { batch } = event;
-        if (batch.sessionId !== active.sessionId || batch.sequence <= active.sequence) return;
-        if (batch.sequence > active.sequence + 1) await this.catchUp(active);
-        if (batch.sequence <= active.sequence) return;
+        const { part } = event;
+        if (part.sessionId !== active.sessionId || part.sequence < active.sequence || (part.sequence === active.sequence && active.sealed)) return;
+        if (active.sealed && part.sequence === active.sequence + 1 && part.offset === 0) {
+          active.sequence = part.sequence;
+          active.offset = 0;
+          active.sealed = false;
+        }
+        if (part.sequence !== active.sequence || part.offset > active.offset) {
+          // A part was lost: the journal holds its batch once the last part is out (`REC-080`).
+          if (!part.end) return;
+          await this.catchUp(active);
+          this.observe(active);
+          return;
+        }
         this.apply(
           active,
-          batch.samples.map((sample): FeedItem => ({ kind: "sample", sample })),
+          part.samples.slice(active.offset - part.offset).map((sample): FeedItem => ({ kind: "sample", sample })),
           "live",
         );
-        active.sequence = batch.sequence;
-        active.markApplied = false;
+        active.offset = Math.max(active.offset, part.offset + part.samples.length);
+        if (part.end) {
+          active.sealed = true;
+          active.markApplied = false;
+        }
         this.observe(active);
         return;
       }
       case "mark": {
         const { mark } = event;
-        if (mark.sessionId !== active.sessionId || mark.sequence < active.sequence || (mark.sequence === active.sequence && active.markApplied)) return;
-        if (mark.sequence > active.sequence + 1) await this.catchUp(active);
-        if (mark.sequence < active.sequence || (mark.sequence === active.sequence && active.markApplied)) return;
+        const applied = (): boolean => mark.sequence < active.sequence || (mark.sequence === active.sequence && active.sealed && active.markApplied);
+        if (mark.sessionId !== active.sessionId || applied()) return;
+        if (mark.sequence !== active.sequence || !active.sealed) await this.catchUp(active);
+        if (applied()) return;
         this.apply(active, [{ kind: "mark", mark: { kind: mark.kind, t: mark.t } }], "live");
-        active.sequence = mark.sequence;
         active.markApplied = true;
         return;
       }
@@ -861,16 +880,23 @@ export class RecorderHost {
     }
   }
 
-  /** A batch lost by the bridge: the journal on storage has it (`REC-080`). */
+  /** Parts lost by the bridge: the journal on storage has their batches (`REC-080`). */
   private async catchUp(active: Active): Promise<void> {
     const bytes = await readJournalFile(active.sessionId);
     if (bytes === null) return;
-    const contents = readJournal(bytes, { afterSequence: active.sequence });
+    const from = active.sealed && active.markApplied ? { sequence: active.sequence + 1, samples: 0 } : { sequence: active.sequence, samples: active.offset };
+    const contents = readJournal(bytes, { from });
+    if (contents.lastSequence === null || contents.lastSequence < from.sequence) return;
     this.apply(active, feedOf(contents.samples, contents.marks), "live");
-    if (contents.lastSequence !== null && contents.lastSequence > active.sequence) {
-      active.sequence = contents.lastSequence;
-      active.markApplied = true;
-    }
+    this.sealAt(active, contents.lastSequence);
+  }
+
+  /** Every batch up to `sequence` was applied with its mark. */
+  private sealAt(active: Active, sequence: number): void {
+    active.sequence = sequence;
+    active.offset = 0;
+    active.sealed = true;
+    active.markApplied = true;
   }
 
   private async onIssue(active: Active, kind: TrackerIssueKind): Promise<void> {

@@ -10,6 +10,7 @@ import android.location.LocationManager
 import android.os.Build
 import android.os.Handler
 import android.os.PowerManager
+import android.os.SystemClock
 import androidx.core.content.ContextCompat
 import androidx.core.location.LocationManagerCompat
 import app.obnixe.tracker.bluetooth.SensorLink
@@ -17,10 +18,12 @@ import app.obnixe.tracker.bluetooth.SensorRole
 import app.obnixe.tracker.bluetooth.SensorSamples
 import app.obnixe.tracker.bluetooth.SensorService
 import app.obnixe.tracker.journal.JournalBatch
+import app.obnixe.tracker.journal.JournalCadence
 import app.obnixe.tracker.journal.JournalFormat
 import app.obnixe.tracker.journal.JournalFormatException
 import app.obnixe.tracker.journal.JournalHeader
 import app.obnixe.tracker.journal.JournalWriter
+import app.obnixe.tracker.journal.SamplePart
 import app.obnixe.tracker.location.LocationMode
 import app.obnixe.tracker.location.LocationSource
 import app.obnixe.tracker.location.LocationSourceKind
@@ -56,9 +59,10 @@ data class StoppedRecording(val sessionId: String, val endedAt: Long, val lastSe
 }
 
 /**
- * One recording: its sources, its journal and its pause state. Samples reach the journal before JavaScript sees them
- * (`REC-080`); batches close every `batchIntervalMs` while the screen is on and every `backgroundBatchIntervalMs` while it is off
- * (`PRF-003`, `PRF-051`), and immediately on a mark. Confined to [handler]'s thread.
+ * One recording: its sources, its journal and its pause state. New samples go to JavaScript as parts every
+ * `deliveryIntervalMs` while the screen is on and every `backgroundDeliveryIntervalMs` while it is off (`PRF-003`);
+ * the batch holding them reaches storage at most every 5 s (`PRF-051`), and at once on a mark, when the screen goes
+ * off and in critical power, so a crash loses at most 5 s of samples (`REC-080`). Confined to [handler]'s thread.
  */
 class Recording private constructor(
   private val context: Context,
@@ -73,6 +77,8 @@ class Recording private constructor(
   private var lastStepCount: Long,
 ) {
   interface Listener {
+    fun onPart(recording: Recording, part: SamplePart)
+
     fun onBatch(recording: Recording, batch: JournalBatch)
 
     fun onIssue(recording: Recording, issue: TrackerIssue)
@@ -108,6 +114,7 @@ class Recording private constructor(
   private var stopped = false
   private var receiverRegistered = false
   private var storageLowReported = false
+  private val cadence = JournalCadence(writeIntervalMs, SystemClock.elapsedRealtime())
   private val flushTick = Runnable { tick() }
   private val writeLock = context.getSystemService(PowerManager::class.java)
     .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "obnixe:journal")
@@ -255,9 +262,9 @@ class Recording private constructor(
       TrackerPower.SAVER -> saverIntervalMs
       TrackerPower.CRITICAL -> criticalIntervalMs
     }
-    val batched = !screenInteractive && intervalMs < config.backgroundBatchIntervalMs
+    val batched = !screenInteractive && intervalMs < config.backgroundDeliveryIntervalMs
     try {
-      location.start(LocationMode(intervalMs, config.power == TrackerPower.NORMAL, if (batched) config.backgroundBatchIntervalMs else 0))
+      location.start(LocationMode(intervalMs, config.power == TrackerPower.NORMAL, if (batched) config.backgroundDeliveryIntervalMs else 0))
     } catch (error: SecurityException) {
       listener.onIssue(this, TrackerIssue.PERMISSION_LOST)
     }
@@ -277,13 +284,15 @@ class Recording private constructor(
   }
 
   private fun tick() {
-    flush()
+    if (cadence.writeDue(SystemClock.elapsedRealtime())) flush() else journal.takePart()?.let { listener.onPart(this, it) }
     scheduleTick()
   }
 
   private fun scheduleTick() {
     handler.removeCallbacks(flushTick)
-    if (!stopped) handler.postDelayed(flushTick, if (screenInteractive) config.batchIntervalMs else config.backgroundBatchIntervalMs)
+    if (stopped) return
+    val deliveryIntervalMs = if (screenInteractive) config.deliveryIntervalMs else config.backgroundDeliveryIntervalMs
+    handler.postDelayed(flushTick, cadence.nextTickDelayMs(SystemClock.elapsedRealtime(), deliveryIntervalMs))
   }
 
   private fun flush(mark: Mark? = null) {
@@ -295,7 +304,9 @@ class Recording private constructor(
       return
     } finally {
       writeLock.release()
-    } ?: return
+    }
+    cadence.wrote(SystemClock.elapsedRealtime())
+    if (batch == null) return
     listener.onBatch(this, batch)
     checkStorage()
   }
@@ -326,6 +337,7 @@ class Recording private constructor(
     private const val pausedIntervalMs = 5_000L
     private const val saverIntervalMs = 5_000L
     private const val criticalIntervalMs = 10_000L
+    private const val writeIntervalMs = 5_000L
     private const val maxPendingBytes = 64 * 1024
     private const val writeLockTimeoutMs = 2_000L
     private const val storageLowBytes = 50L * 1024 * 1024

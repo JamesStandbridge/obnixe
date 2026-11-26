@@ -50,10 +50,10 @@ data class RecordingConfig(
   val pedometer: Boolean,
   /** At most one source per role; a device serving two roles appears once per service. */
   val bluetooth: List<BluetoothSensor>,
-  /** Batch interval while the screen is on. */
-  val batchIntervalMs: Long,
-  /** Batch interval while the screen is off; location updates are batched by the provider up to it. */
-  val backgroundBatchIntervalMs: Long,
+  /** Interval of the parts sent to JavaScript while the screen is on. */
+  val deliveryIntervalMs: Long,
+  /** The same interval while the screen is off; location updates are batched by the provider up to it. */
+  val backgroundDeliveryIntervalMs: Long,
   val notification: TrackerNotificationContent,
   val replay: ReplaySource?,
 )
@@ -78,8 +78,8 @@ object RecordingStore {
       .put("barometer", config.barometer)
       .put("pedometer", config.pedometer)
       .put("bluetooth", JSONArray(config.bluetooth.map { JSONObject().put("service", it.service.value).put("address", it.address) }))
-      .put("batchIntervalMs", config.batchIntervalMs)
-      .put("backgroundBatchIntervalMs", config.backgroundBatchIntervalMs)
+      .put("deliveryIntervalMs", config.deliveryIntervalMs)
+      .put("backgroundDeliveryIntervalMs", config.backgroundDeliveryIntervalMs)
       .put("title", config.notification.title)
       .put("text", config.notification.text)
       .put("timerBaseAt", config.notification.timerBaseAt ?: JSONObject.NULL)
@@ -104,8 +104,8 @@ object RecordingStore {
             BluetoothSensor(SensorService.of(sensor.getString("service")) ?: throw JSONException("Unknown sensor service"), sensor.getString("address"))
           }
         },
-        batchIntervalMs = json.getLong("batchIntervalMs"),
-        backgroundBatchIntervalMs = json.getLong("backgroundBatchIntervalMs"),
+        deliveryIntervalMs = json.getLong("deliveryIntervalMs"),
+        backgroundDeliveryIntervalMs = json.getLong("backgroundDeliveryIntervalMs"),
         notification = TrackerNotificationContent(
           json.getString("title"),
           json.getString("text"),

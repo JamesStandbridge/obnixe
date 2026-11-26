@@ -9,6 +9,7 @@ import app.obnixe.tracker.bluetooth.BluetoothUnavailableException
 import app.obnixe.tracker.bluetooth.SensorScanner
 import app.obnixe.tracker.bluetooth.SensorService
 import app.obnixe.tracker.journal.JournalBatch
+import app.obnixe.tracker.journal.SamplePart
 import app.obnixe.tracker.location.GpxFormatException
 import app.obnixe.tracker.location.GpxReader
 import app.obnixe.tracker.location.LocationMode
@@ -188,6 +189,10 @@ internal object TrackerHub : Recording.Listener {
     }
     module?.emitIssue(current.sessionId, TrackerIssue.PERMISSION_LOST)
     release(current, delete = false)
+  }
+
+  override fun onPart(recording: Recording, part: SamplePart) {
+    module?.emitPart(recording.sessionId, part)
   }
 
   override fun onBatch(recording: Recording, batch: JournalBatch) {

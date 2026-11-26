@@ -28,6 +28,9 @@ class FakeTracker implements TrackerPort {
   state: TrackerStatus = { state: "idle", sessionId: null };
   startedAt = 0 as EpochMs;
   sequence = 0;
+  /** Samples of the coming batch, not on storage yet, and how many of them went out in parts. */
+  pending: Sample[] = [];
+  delivered = 0;
   paused = false;
   stopped = false;
   lastT = 0;
@@ -102,10 +105,22 @@ class FakeTracker implements TrackerPort {
     return Math.max(this.lastT, Date.now() - this.startedAt);
   }
 
-  /** Appends a batch; `silent` keeps it from the bridge, as a lost event. */
+  /** Sends samples of the coming batch before it reaches storage; `silent` loses the part on the bridge. */
+  deliver(samples: readonly Sample[], silent = false): void {
+    const part = { sessionId: this.state.sessionId ?? "", sequence: this.sequence, offset: this.delivered, samples, end: false };
+    this.pending.push(...samples);
+    this.delivered += samples.length;
+    if (!silent) for (const listener of this.listeners.onSamples) listener(part);
+  }
+
+  /** Appends the coming batch with `samples` and `mark`, then sends its last part; `silent` loses both events on the bridge. */
   write(samples: readonly Sample[], mark: TrackerMarkKind | null, markT: number, silent = false): void {
-    const records: JournalRecord[] = [...samples];
+    const rest = [...this.pending.slice(this.delivered), ...samples];
+    const offset = this.delivered;
+    const records: JournalRecord[] = [...this.pending, ...samples];
     if (mark !== null) records.push({ type: "mark", kind: mark, t: markT });
+    this.pending = [];
+    this.delivered = 0;
     const sequence = this.sequence;
     this.sequence += 1;
     const current = storedFiles.get(this.path) ?? new Uint8Array();
@@ -117,7 +132,7 @@ class FakeTracker implements TrackerPort {
     for (const record of records) this.lastT = Math.max(this.lastT, record.t);
     if (silent) return;
     const sessionId = this.state.sessionId ?? "";
-    if (samples.length > 0) for (const listener of this.listeners.onSamples) listener({ sessionId, sequence, samples });
+    for (const listener of this.listeners.onSamples) listener({ sessionId, sequence, offset, samples: rest, end: true });
     if (mark !== null) for (const listener of this.listeners.onMark) listener({ sessionId, sequence, kind: mark, t: markT });
   }
 
@@ -170,13 +185,14 @@ async function settle(): Promise<void> {
   for (let round = 0; round < 5; round += 1) await new Promise<void>((resolve) => setImmediate(resolve));
 }
 
-/** Runs `seconds` of steady running at 3 m/s, one batch a second. */
+/** Runs `seconds` of steady running at 3 m/s with the screen on: a part every second, a batch on storage every 5 s (PRF-051). */
 async function run(seconds: number, fromMeters: number): Promise<number> {
   let meters = fromMeters;
-  for (let second = 0; second < seconds; second += 1) {
+  for (let second = 1; second <= seconds; second += 1) {
     await vi.advanceTimersByTimeAsync(1000);
     meters += 3;
-    tracker.write([fixAt(tracker.now(), meters)], null, 0);
+    tracker.deliver([fixAt(tracker.now(), meters)]);
+    if (second % 5 === 0) tracker.write([], null, 0);
   }
   await settle();
   return meters;
@@ -383,6 +399,45 @@ describe("recording", () => {
     host.setBatteryLevel(0.04);
     expect(recordingOf(host).power).toBe("critical");
     expect(tracker.powers).toEqual(["critical"]);
+  });
+
+  it("PRF-051 shows every second with the screen on while the journal takes a batch every 5 s, and reads lost parts back", async () => {
+    const host = newHost();
+    await started(host);
+    expect(tracker.requests.at(-1)).toMatchObject({ deliveryIntervalMs: 1000 });
+    const batchesAtStart = tracker.sequence;
+    let meters = 0;
+    let shown = 0;
+    for (let second = 1; second <= 60; second += 1) {
+      await vi.advanceTimersByTimeAsync(1000);
+      meters += 3;
+      tracker.deliver([fixAt(tracker.now(), meters)]);
+      if (second % 5 === 0) tracker.write([], null, 0);
+      await settle();
+      const distance = recordingOf(host).live.distanceMm;
+      if (second > 5) expect(distance).toBeGreaterThan(shown);
+      shown = distance;
+    }
+    expect(tracker.sequence - batchesAtStart).toBe(12);
+    expect(readJournal(storedFiles.get(tracker.path) ?? new Uint8Array()).lastSequence).toBe(tracker.sequence - 1);
+    await vi.advanceTimersByTimeAsync(1000);
+    tracker.deliver([{ type: "heart_rate", t: tracker.now(), bpm: 171, contact: "contact", rrInterval: null }, fixAt(tracker.now(), (meters += 3))], true);
+    let frozen: number | null = null;
+    for (let second = 2; second <= 4; second += 1) {
+      await vi.advanceTimersByTimeAsync(1000);
+      tracker.deliver([fixAt(tracker.now(), (meters += 3))]);
+      await settle();
+      const { distanceMm, heartRate } = recordingOf(host).live;
+      expect(heartRate).toBeNull();
+      if (frozen !== null) expect(distanceMm).toBe(frozen);
+      frozen = distanceMm;
+    }
+    await vi.advanceTimersByTimeAsync(1000);
+    tracker.write([fixAt(tracker.now(), (meters += 3))], null, 0);
+    await settle();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(recordingOf(host).live.heartRate).toBe(171);
+    expect(recordingOf(host).live.distanceMm).toBeGreaterThan(shown + 12_000);
   });
 
   it("reads a batch the bridge lost back from the journal (REC-080)", async () => {
@@ -596,10 +651,10 @@ describe("guided workout", () => {
 
   const stepAlerts = (): number => feedback.calls.filter((call) => call === "alert:workout_step").length;
 
-  it("batches every second with the screen off, announces each step and saves one lap per step (WKT-006, WKT-007, WKT-009)", async () => {
+  it("delivers every second with the screen off, announces each step and saves one lap per step (WKT-006, WKT-007, WKT-009)", async () => {
     const host = newHost();
     const sessionId = await startedGuided(host);
-    expect(tracker.requests.at(-1)).toMatchObject({ batchIntervalMs: 1000, backgroundBatchIntervalMs: 1000 });
+    expect(tracker.requests.at(-1)).toMatchObject({ deliveryIntervalMs: 1000, backgroundDeliveryIntervalMs: 1000 });
     expect(recordingRow(sessionId)?.workout).toEqual(workout);
     expect(recordingOf(host).workout).toMatchObject({ started: true, current: { index: 0, intent: "warmup" }, next: { index: 1 } });
     let meters = await run(200, 0);
@@ -622,9 +677,9 @@ describe("guided workout", () => {
     expect(meters).toBeGreaterThan(600);
   });
 
-  it("batches every 5 s with the screen off without a workout (PRF-051)", async () => {
+  it("delivers every 5 s with the screen off without a workout (PRF-051)", async () => {
     await started(newHost());
-    expect(tracker.requests.at(-1)).toMatchObject({ batchIntervalMs: 1000, backgroundBatchIntervalMs: 5000 });
+    expect(tracker.requests.at(-1)).toMatchObject({ deliveryIntervalMs: 1000, backgroundDeliveryIntervalMs: 5000 });
     expect(recordingOf(hosts[0] as RecorderHost).workout).toBeNull();
   });
 
