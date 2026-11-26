@@ -102,18 +102,13 @@ export function buildSnapshot(db: ObnixeDatabase, createdAt: EpochMs, photos: re
   return { schemaVersion: backupSchemaVersion, catalogVersion, createdAt, tables: tables as unknown as SnapshotTables, settings: readSettings(db), photos, tracks };
 }
 
-export interface RestorableTrack {
-  readonly file: string;
-  readonly bytes: Uint8Array;
-}
-
 /** Track files of the snapshot whose bytes match their recording row (`DAT-030`), limited to `recordingIds` when given. */
-export function restorableTracks(snapshot: Pick<Snapshot, "tables" | "tracks">, recordingIds: ReadonlySet<Id> | null): readonly RestorableTrack[] {
+export function restorableTracks(snapshot: Pick<Snapshot, "tables" | "tracks">, recordingIds: ReadonlySet<Id> | null): readonly TrackFile[] {
   const rows = new Map(snapshot.tables.recording.map((row) => [row.id, row]));
-  return snapshot.tracks.flatMap((track): RestorableTrack[] => {
+  return snapshot.tracks.filter((track) => {
     const row = rows.get(track.recordingId);
-    if (row === undefined || row.trackFile === null || (recordingIds !== null && !recordingIds.has(row.id))) return [];
-    return trackDigest(track.bytes) === row.trackSha256 ? [{ file: row.trackFile, bytes: track.bytes }] : [];
+    if (row === undefined || row.trackFile === null || (recordingIds !== null && !recordingIds.has(row.id))) return false;
+    return trackDigest(track.bytes) === row.trackSha256;
   });
 }
 

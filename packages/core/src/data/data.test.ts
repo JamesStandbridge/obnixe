@@ -16,7 +16,7 @@ import { remindersCalendar, toggleWeekday, weekdaysOf, EmptyReminderError } from
 import { SportLockedError, initialSportMutations, lockedSports, moveSportMutations, setSportEnabledMutations, sportChoices } from "./sports.ts";
 import { fixtures } from "./testFixtures.ts";
 import type { Fixtures } from "./testFixtures.ts";
-import { expiredReplacedSnapshots, planTrashPurge, purgeExpiredTrash, restoreBlocker, restoreMutation, trashItems, trashRetentionMs } from "./trash.ts";
+import { expiredReplacedSnapshots, expiredSafetyCopies, planTrashPurge, purgeExpiredTrash, restoreBlocker, restoreMutation, trashItems, trashRetentionMs } from "./trash.ts";
 
 let context: TestContext;
 let make: Fixtures;
@@ -266,6 +266,14 @@ describe("trash", () => {
     expect(expiredReplacedSnapshots(context.db, context.env.now())).toHaveLength(0);
     context.advance(31 * day);
     expect(expiredReplacedSnapshots(context.db, context.env.now()).map((row) => row.snapshotFile)).toEqual(["replaced.bin"]);
+  });
+
+  it("expires pre-migration copies after 30 days (DAT-033)", () => {
+    context.db.insert(backup).values({ id: context.env.newId(), kind: "pre_migration", schemaVersion: 4, catalogVersion: 1, includesPhotos: true, sizeBytes: 10, coveredFrom: null, coveredTo: null, snapshotFile: "copy.db", createdAt: context.env.now() }).run();
+    expect(expiredSafetyCopies(context.db, context.env.now())).toHaveLength(0);
+    expect(expiredReplacedSnapshots(context.db, (context.env.now() + 31 * day) as EpochMs)).toHaveLength(0);
+    context.advance(31 * day);
+    expect(expiredSafetyCopies(context.db, context.env.now()).map((row) => row.snapshotFile)).toEqual(["copy.db"]);
   });
 });
 

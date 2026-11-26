@@ -18,6 +18,7 @@ import { DatabaseGate } from "@/data/DatabaseGate";
 import { useAppLaunch } from "@/features/data/launch";
 import { MapCacheHost } from "@/features/maps/MapCacheHost";
 import { RemoteAccessHost } from "@/features/remote/RemoteAccessHost";
+import { RecordingLaunch } from "@/features/tracking/RecordingLaunch";
 import { configureRestAlerts } from "@/features/training/workout/restAlert";
 import { BrandIntro } from "@/ui/illustrations/BrandIntro";
 import { SnackbarHost } from "@/ui/SnackbarHost";
@@ -76,7 +77,9 @@ export default function RootLayout() {
   return (
     <DatabaseGate>
       <ThemeProvider>
-        <Navigator />
+        <RecordingLaunch>
+          <Navigator />
+        </RecordingLaunch>
       </ThemeProvider>
     </DatabaseGate>
   );

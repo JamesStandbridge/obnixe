@@ -329,6 +329,9 @@ describe("recording", () => {
     await started(host);
     host.setBatteryLevel(0.12);
     expect(recordingOf(host).saverOffered).toBe(true);
+    host.dismissSaverOffer();
+    host.setBatteryLevel(0.11);
+    expect(recordingOf(host).saverOffered).toBe(false);
     host.setBatteryLevel(0.04);
     expect(recordingOf(host).power).toBe("critical");
     expect(tracker.powers).toEqual(["critical"]);

@@ -172,7 +172,8 @@ interface Active {
   started: boolean;
   issues: Set<TrackerIssueKind>;
   power: TrackerPower;
-  saverOffered: boolean;
+  /** `NRG-001`: the saver mode is offered once per recording; choosing a mode or dismissing answers it. */
+  saverOffer: "none" | "offered" | "answered";
   summary: StopSummary | null;
   /** The stop summary state a discard undo returns to. */
   restorable: RecorderState | null;
@@ -269,7 +270,7 @@ export class RecorderHost {
     this.stopTicker();
     if (this.pendingPublish !== null) clearTimeout(this.pendingPublish);
     this.active?.map.dispose();
-    if (this.discarded !== null) clearTimeout(this.discarded.timer);
+    if (this.discarded?.timer != null) clearTimeout(this.discarded.timer);
   }
 
   /** `REC-012`: warms the receiver up while the preparation screen is visible. */
@@ -407,7 +408,7 @@ export class RecorderHost {
     const active = this.active;
     if (active === null || active.power === power) return;
     active.power = power;
-    active.saverOffered = false;
+    if (active.saverOffer === "offered") active.saverOffer = "answered";
     if (active.started && isActivePhase(active.state)) this.options.tracker?.setPower(power);
     this.publish(true);
   }
@@ -420,10 +421,17 @@ export class RecorderHost {
       this.setPower("critical");
       return;
     }
-    if (level < batteryThresholds.saver && active.power === "normal" && !active.saverOffered) {
-      active.saverOffered = true;
+    if (level < batteryThresholds.saver && active.power === "normal" && active.saverOffer === "none") {
+      active.saverOffer = "offered";
       this.publish(true);
     }
+  }
+
+  dismissSaverOffer(): void {
+    const active = this.active;
+    if (active?.saverOffer !== "offered") return;
+    active.saverOffer = "answered";
+    this.publish(true);
   }
 
   /**
@@ -504,7 +512,7 @@ export class RecorderHost {
       lastT: 0,
       started: false,
       issues: new Set(),
-      saverOffered: false,
+      saverOffer: "none",
       summary: null,
       restorable: null,
       saved: null,
@@ -915,7 +923,7 @@ export class RecorderHost {
         live: zone === null ? snapshot : { ...snapshot, metrics: { ...snapshot.metrics, heart_rate_zone: zone } },
         issues: [...active.issues],
         power: active.power,
-        saverOffered: active.saverOffered,
+        saverOffered: active.saverOffer === "offered",
         summary: active.summary,
         busy: this.busy,
       },

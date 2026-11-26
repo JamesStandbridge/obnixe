@@ -1,0 +1,183 @@
+import { eq } from "drizzle-orm";
+import { beforeEach, describe, expect, it } from "vitest";
+import {
+  commit,
+  encodeJournalBatch,
+  encodeJournalHeader,
+  encodeTrack,
+  maskInputsOf,
+  planRecordingSave,
+  planRecordingStart,
+  processTrack,
+  recordingStartMutations,
+  staleDerivationCount,
+  trackDigest,
+  trashMutation,
+  zoneProposalFor,
+} from "@obnixe/core";
+import type { Fix, JournalRecord, Mutation } from "@obnixe/core";
+import { bestEffort, recording, recordingDerivation, session, settings } from "@obnixe/schema";
+import type { EpochMs, Id } from "@obnixe/schema";
+import { DerivedRebuild } from "@/features/tracking/derivedRebuild";
+import { journalTrackOf } from "@/features/tracking/journalFeed";
+import { reconcileRecordingFiles } from "@/features/tracking/launchReconciliation";
+import { journalSessionIds, journalUri, readTrackFile, storedTrackFiles, writeTrack } from "@/features/tracking/trackStore";
+import { settleZoneProposal, zoneFromProposal } from "@/features/tracking/zoneProposals";
+import { db, environment } from "../../../test/mocks/database.ts";
+import { Paths, storedFiles } from "../../../test/mocks/expoFileSystem.ts";
+
+const metersPerE7 = 111_195 / 1e7;
+const home = { latitudeE7: 451_885_000, longitudeE7: 57_245_000 };
+
+function fixAt(t: number, meters: number): Fix {
+  return {
+    type: "fix",
+    t,
+    fixAgeMs: 0,
+    latitudeE7: home.latitudeE7 + Math.round(meters / metersPerE7),
+    longitudeE7: home.longitudeE7,
+    altitudeEllipsoidMm: 250_000,
+    altitudeMslMm: null,
+    horizontalAccuracyDm: 40,
+    verticalAccuracyDm: null,
+    speedCmS: 300,
+    speedAccuracyCmS: 50,
+    bearingCentiDeg: 0,
+    bearingAccuracyCentiDeg: null,
+    simulated: false,
+  };
+}
+
+const write = (summary: string, mutations: readonly Mutation[]): Id => commit(db(), environment, { actor: { author: "user", connectionId: null }, summary, revertsId: null, mutations });
+const writer = { write };
+
+interface Recorded {
+  readonly sessionId: Id;
+  readonly recordingId: Id;
+  readonly journal: Uint8Array;
+}
+
+/** A finished recording as the native module journals it: 3 m/s north from home for `seconds`. */
+function journalOf(sessionId: Id, startedAt: EpochMs, seconds: number): Uint8Array {
+  const fixes: JournalRecord[] = Array.from({ length: seconds }, (_, index) => fixAt((index + 1) * 1000, (index + 1) * 3));
+  const parts = [
+    encodeJournalHeader({ sessionId, startedAt, monotonicOriginNs: 0n, platform: "android", device: "Pixel 9 Pro" }),
+    encodeJournalBatch(0, [{ type: "mark", kind: "start", t: 0 }]),
+    encodeJournalBatch(1, [...fixes, { type: "mark", kind: "stop", t: seconds * 1000 }]),
+  ];
+  const bytes = new Uint8Array(parts.reduce((total, part) => total + part.length, 0));
+  let offset = 0;
+  for (const part of parts) {
+    bytes.set(part, offset);
+    offset += part.length;
+  }
+  return bytes;
+}
+
+async function recorded(seconds: number, saved: boolean): Promise<Recorded> {
+  const plan = planRecordingStart(db(), environment, { sport: "run", values: {}, gearId: null, slot: null, timeZone: "Europe/Paris" });
+  const startedAt = (environment.now() - (seconds + 60) * 1000) as EpochMs;
+  const journal = journalOf(plan.sessionId, startedAt, seconds);
+  storedFiles.set(journalUri(plan.sessionId), journal);
+  write("Sortie démarrée", recordingStartMutations(plan, { startedAt, device: "Pixel 9 Pro" }));
+  if (saved) {
+    const { track } = journalTrackOf(journal, startedAt);
+    const processed = processTrack(track, plan.profile, { laps: { kind: "recorded", autoLap: null }, trim: { startMs: 0, endMs: null } });
+    const stored = await writeTrack(plan.recordingId, encodeTrack(track));
+    write("Sortie", planRecordingSave(db(), environment, { sessionId: plan.sessionId, track, processed, stored }));
+  }
+  return { sessionId: plan.sessionId, recordingId: plan.recordingId, journal };
+}
+
+const recordingRow = (sessionId: Id) => db().select().from(recording).where(eq(recording.sessionId, sessionId)).get();
+
+beforeEach(() => {
+  db()
+    .insert(settings)
+    .values({ singleton: 1, theme: "dark", massUnit: "kg", agentCanReadBody: false, agentCanWrite: false, agentCanReadPhotos: false, reminderWeekdays: 0, reminderMinutes: 1110, remindersExportedAt: null, agentChangesSeenAt: null, bridgeHost: null, updatedAt: environment.now() })
+    .run();
+});
+
+describe("launch reconciliation", () => {
+  it("deletes orphan journals and the journals of verified tracks, and keeps the open session's (annex C)", async () => {
+    const saved = await recorded(120, true);
+    const orphan = "0190a3f2-7c4e-7d21-9b1a-5f2e8c3d4a99" as Id;
+    storedFiles.set(journalUri(orphan), new Uint8Array([1]));
+    const open = await recorded(60, false);
+    const report = await reconcileRecordingFiles(writer);
+    expect(report).toEqual({ deletedJournals: 2, rebuiltTracks: 0, deletedTracks: 0 });
+    expect(await journalSessionIds()).toEqual([open.sessionId]);
+    expect(readTrackFile(`tracks/${saved.recordingId}.otrk`)).not.toBeNull();
+  });
+
+  it("rebuilds a lost track from the journal in « Trace reconstruite » (REC-082)", async () => {
+    const saved = await recorded(120, true);
+    const before = recordingRow(saved.sessionId);
+    storedFiles.delete(`${Paths.document.uri}/${before?.trackFile ?? ""}`);
+    const report = await reconcileRecordingFiles(writer);
+    expect(report.rebuiltTracks).toBe(1);
+    const after = recordingRow(saved.sessionId);
+    const bytes = readTrackFile(after?.trackFile ?? "");
+    expect(bytes).not.toBeNull();
+    expect(trackDigest(bytes ?? new Uint8Array())).toBe(after?.trackSha256);
+    expect(await journalSessionIds()).toEqual([]);
+  });
+
+  it("sweeps temporary and unreferenced track files but keeps those of trashed sessions (INT-031)", async () => {
+    const trashed = await recorded(60, true);
+    write("Corbeille", [trashMutation("session", trashed.sessionId, environment.now())]);
+    storedFiles.set(`${Paths.document.uri}/tracks/stray.otrk`, new Uint8Array([1]));
+    storedFiles.set(`${Paths.document.uri}/tracks/${trashed.recordingId}.otrk.tmp`, new Uint8Array([1]));
+    const report = await reconcileRecordingFiles(writer);
+    expect(report.deletedTracks).toBe(1);
+    expect(await storedTrackFiles()).toEqual([`tracks/${trashed.recordingId}.otrk`]);
+    expect([...storedFiles.keys()].some((uri) => uri.endsWith(".tmp"))).toBe(false);
+  });
+});
+
+describe("derived rows", () => {
+  it("rebuilds the records and the masked previews in the background until nothing is stale (DAT-012)", async () => {
+    const run = await recorded(200, true);
+    const rebuild = new DerivedRebuild(writer, (error) => {
+      throw error;
+    });
+    await rebuild.request();
+    expect(rebuild.getState()).toEqual({ pending: 0, running: false });
+    expect(db().select().from(bestEffort).where(eq(bestEffort.sessionId, run.sessionId)).all().map((row) => row.effort)).toContain("run:distance:400");
+    const plain = recordingRow(run.sessionId)?.previewPolyline;
+    write("Zone", [{ kind: "insert", table: "privacy_zone", row: { id: environment.newId(), label: "Maison", ...home, radiusMeters: 200, maskScalePermille: 1000, deletedAt: null } }]);
+    expect(staleDerivationCount(db(), maskInputsOf(db()))).toBe(1);
+    await rebuild.request();
+    expect(staleDerivationCount(db(), maskInputsOf(db()))).toBe(0);
+    expect(recordingRow(run.sessionId)?.previewPolyline).not.toBe(plain);
+  });
+
+  it("skips a recording whose track is gone instead of looping", async () => {
+    const run = await recorded(60, true);
+    storedFiles.delete(`${Paths.document.uri}/tracks/${run.recordingId}.otrk`);
+    const rebuild = new DerivedRebuild(writer, (error) => {
+      throw error;
+    });
+    await rebuild.request();
+    expect(db().select().from(recordingDerivation).all()).toEqual([]);
+    expect(rebuild.getState().running).toBe(false);
+  });
+});
+
+describe("zone proposal", () => {
+  it("offers a recurring start once, accepted or declined (PRV-014)", async () => {
+    const runs: Recorded[] = [];
+    for (let index = 0; index < 5; index += 1) runs.push(await recorded(60, true));
+    await new DerivedRebuild(writer, (error) => {
+      throw error;
+    }).request();
+    const last = runs.at(-1)?.sessionId as Id;
+    const proposal = zoneProposalFor(db(), last);
+    if (proposal === null) throw new Error("No proposal");
+    const plan = zoneFromProposal(proposal, "Maison");
+    write("Zone ajoutée", [plan.mutation]);
+    settleZoneProposal(proposal);
+    expect(zoneProposalFor(db(), last)).toBeNull();
+    expect(db().select().from(session).all()).toHaveLength(5);
+  });
+});

@@ -236,3 +236,12 @@ export function replacedSnapshots(db: ObnixeDatabase): readonly Backup[] {
 export function expiredReplacedSnapshots(db: ObnixeDatabase, now: EpochMs): readonly Backup[] {
   return replacedSnapshots(db).filter((row) => row.createdAt < now - trashRetentionMs);
 }
+
+/** `DAT-033`: the database copies taken before a migration are kept 30 days. */
+export function expiredSafetyCopies(db: ObnixeDatabase, now: EpochMs): readonly Backup[] {
+  return db
+    .select()
+    .from(backup)
+    .where(and(eq(backup.kind, "pre_migration"), isNotNull(backup.snapshotFile), lt(backup.createdAt, (now - trashRetentionMs) as EpochMs)))
+    .all();
+}

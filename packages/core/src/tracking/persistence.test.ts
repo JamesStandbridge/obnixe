@@ -245,7 +245,7 @@ describe("track files in backups and trash", () => {
     const snapshot = buildSnapshot(context.db, context.env.now(), [], [{ recordingId: plan.recordingId as Id, bytes }]);
     const unpacked = unpackSnapshot(packSnapshot(snapshot), testUpgrader);
     expect(unpacked.tracks).toEqual([{ recordingId: plan.recordingId, bytes }]);
-    expect(restorableTracks(unpacked, null)).toEqual([{ file: `tracks/${plan.recordingId}.otrk`, bytes }]);
+    expect(restorableTracks(unpacked, null)).toEqual([{ recordingId: plan.recordingId, bytes }]);
     expect(restorableTracks({ ...unpacked, tracks: [{ recordingId: plan.recordingId as Id, bytes: bytes.slice(1) }] }, null)).toEqual([]);
     expect(restorableTracks(unpacked, new Set())).toEqual([]);
   });
