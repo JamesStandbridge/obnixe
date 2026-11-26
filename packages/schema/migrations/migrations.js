@@ -5,6 +5,7 @@ import m0002 from './0002_gps_recording.sql';
 import m0003 from './0003_trail_sport.sql';
 import m0004 from './0004_recording_derivation.sql';
 import m0005 from './0005_mask_in_app.sql';
+import m0006 from './0006_weather_fetch.sql';
 
   export default {
     journal,
@@ -14,7 +15,8 @@ m0001,
 m0002,
 m0003,
 m0004,
-m0005
+m0005,
+m0006
     }
   }
   

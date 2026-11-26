@@ -1,10 +1,11 @@
-import { StyleSheet, View } from "react-native";
+import { Linking, StyleSheet, View } from "react-native";
 import { router } from "expo-router";
-import type { EffortRank, HeartRateZone, HeartRateZoneReport, SplitSummary } from "@obnixe/core";
-import type { BestEffortKey, CadenceSource, ElevationSource, EnergyMethod, Recording, SensorSource } from "@obnixe/schema";
+import type { ActivityWeather, EffortRank, HeartRateZone, HeartRateZoneReport, SplitSummary } from "@obnixe/core";
+import type { BestEffortKey, CadenceSource, ElevationSource, EnergyMethod, Recording, SensorSource, Session } from "@obnixe/schema";
 import { distanceText, effortFigure, effortTitle, elapsedText, paceFigure, paceSeconds, rateFigure } from "@/features/recordings/format";
 import { trackPalettes } from "@/features/recordings/palette";
 import type { RecordedActivity } from "@/features/recordings/useRecordedActivity";
+import { weatherText } from "@/features/recordings/weatherText";
 import { formatInteger, formatNumber } from "@/format/numbers";
 import { LinkButton } from "@/ui/Button";
 import { Tag } from "@/ui/Controls";
@@ -242,6 +243,65 @@ export function EnergySection({ recording }: EnergySectionProps) {
   );
 }
 
+const openMeteoUrl = "https://open-meteo.com/";
+
+interface WeatherSectionProps {
+  readonly weather: ActivityWeather;
+  readonly session: Pick<Session, "startedAt" | "endedAt">;
+}
+
+/** `WTH-002`: the activity's weather in one line, credited to Open-Meteo as its CC BY licence asks. */
+export function WeatherSection({ weather, session }: WeatherSectionProps) {
+  switch (weather.status) {
+    case "none":
+      return null;
+    case "pending":
+      return (
+        <Section title="Météo">
+          <Text variant="small" tone="secondary" style={styles.note}>
+            Demandée à Open-Meteo dès que le téléphone a du réseau.
+          </Text>
+        </Section>
+      );
+    case "unavailable":
+      return (
+        <Section title="Météo">
+          <Text variant="small" tone="secondary" style={styles.note}>
+            Indisponible pour cette activité.
+          </Text>
+        </Section>
+      );
+    case "stored": {
+      const text = weatherText(weather.weather, session.startedAt, session.endedAt ?? session.startedAt);
+      return (
+        <Section title="Météo">
+          <View style={styles.weather}>
+            <Text variant="bodyStrong">{text.headline}</Text>
+            <Text variant="small" tone="secondary">
+              {text.details}
+            </Text>
+            <Text
+              variant="caption"
+              tone="tertiary"
+              accessibilityRole="link"
+              onPress={() => {
+                Linking.openURL(openMeteoUrl).catch((error: unknown) => ErrorUtils.getGlobalHandler()(error, false));
+              }}
+              style={styles.attribution}
+            >
+              Météo : Open-Meteo.com
+            </Text>
+          </View>
+        </Section>
+      );
+    }
+    default: {
+      const unreachable: never = weather;
+      return unreachable;
+    }
+  }
+}
+
 function elevationSourceText(source: ElevationSource): string {
   switch (source) {
     case "barometer":
@@ -304,6 +364,8 @@ export function QualitySection({ activity }: ActivityProps) {
 const styles = StyleSheet.create({
   sectionLink: { marginVertical: -12, marginRight: -10 },
   note: { marginTop: 8, marginBottom: 4 },
+  weather: { marginTop: 10, gap: 4 },
+  attribution: { marginTop: 4, alignSelf: "flex-start" },
   splitHead: { flexDirection: "row", alignItems: "center", gap: 10, paddingTop: 12, paddingBottom: 6, borderBottomWidth: 1 },
   splitRow: { flexDirection: "row", alignItems: "center", gap: 10, minHeight: 40 },
   splitIndex: { width: 34 },

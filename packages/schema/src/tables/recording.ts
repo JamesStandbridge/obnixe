@@ -142,6 +142,22 @@ export const recordingDerivation = sqliteTable(
   ],
 );
 
+/**
+ * The deferred weather request of a saved recording after a failed attempt, outside the journal and the backups (`WTH-003`):
+ * how many attempts failed and when the next one may run, `null` once the request is given up.
+ */
+export const weatherFetch = sqliteTable(
+  "weather_fetch",
+  {
+    sessionId: ref("session_id")
+      .primaryKey()
+      .references(() => session.id, { onDelete: "cascade" }),
+    failedAttempts: integer("failed_attempts").notNull(),
+    retryAt: timestamp("retry_at"),
+  },
+  (t) => [check("weather_fetch_attempts", sql`${t.failedAttempts} >= 1`)],
+);
+
 /** Recurring places already offered as a privacy zone, accepted or not: each place is proposed only once (`PRV-014`). */
 export const zoneProposal = sqliteTable("zone_proposal", {
   id: id(),

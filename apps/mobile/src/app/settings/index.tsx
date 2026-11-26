@@ -133,7 +133,7 @@ export default function Settings() {
 
         <MapSettingsSection cacheMegabytes={current?.mapCacheMegabytes ?? 200} />
 
-        <PrivacySettingsSection hideTrackEndsMeters={current?.hideTrackEndsMeters ?? 0} exportPrivacy={current?.exportPrivacy ?? true} maskInApp={current?.maskInApp ?? false} />
+        <PrivacySettingsSection hideTrackEndsMeters={current?.hideTrackEndsMeters ?? 0} exportPrivacy={current?.exportPrivacy ?? true} maskInApp={current?.maskInApp ?? false} weatherEnabled={current?.weatherEnabled ?? true} />
 
         <Section title="Unités">
           <Row

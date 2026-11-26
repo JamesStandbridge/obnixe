@@ -43,6 +43,13 @@
       "when": 1795714650348,
       "tag": "0005_mask_in_app",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1795718758584,
+      "tag": "0006_weather_fetch",
+      "breakpoints": true
     }
   ]
 }
