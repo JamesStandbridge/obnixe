@@ -100,7 +100,7 @@ const privacy = `
   <ul>
     <li><strong>Avec ton ordinateur</strong> : le téléphone échange avec le programme obnixe-bridge installé sur ton ordinateur, directement sur ton réseau ou via un relais de rendez-vous hébergé par Fly.io. Ces échanges sont chiffrés de bout en bout : le relais ne peut pas les lire.</li>
     <li><strong>Accès à distance</strong> : le téléphone reçoit les requêtes de l'agent par le relais Obnixe, hébergé par Cloudflare en qualité de sous-traitant. Les échanges sont chiffrés en transit (HTTPS). Le relais les transmet sans en stocker ni en journaliser le contenu. Cloudflare peut traiter des données techniques de connexion, comme les adresses IP, pour sécuriser son réseau.</li>
-    <li><strong>Traces GPS</strong> : un agent ne lit les positions de tes activités que si tu actives l'autorisation Lire les traces, désactivée par défaut et révocable à tout moment. Tes zones de confidentialité sont toujours appliquées. Sans cette autorisation, l'agent ne voit que les résumés (distance, durée, dénivelé, fréquence cardiaque moyenne).</li>
+    <li><strong>Traces GPS</strong> : un agent que tu as autorisé lit les positions de tes activités tant que l'autorisation Lire les traces est active ; tu peux la couper à tout moment depuis l'écran Agent. Tes zones de confidentialité et le masquage du début et de la fin des traces sont toujours appliqués. Sans cette autorisation, l'agent ne voit que les résumés sans coordonnées (distance, durée, dénivelé, fréquence cardiaque moyenne).</li>
   </ul>
   <p>Les données que tu choisis d'envoyer à un agent sont ensuite traitées par le fournisseur de cet agent (par exemple Anthropic pour Claude) selon sa propre politique de confidentialité.</p>
 

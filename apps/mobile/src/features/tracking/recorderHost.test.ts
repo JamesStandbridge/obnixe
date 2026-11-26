@@ -32,6 +32,8 @@ class FakeTracker implements TrackerPort {
   stopped = false;
   lastT = 0;
   path = "";
+  preparations = 0;
+  cancellations = 0;
 
   addListener<Name extends keyof TrackerEvents>(name: Name, listener: TrackerEvents[Name]): { remove: () => void } {
     const set = this.listeners[name] as Set<TrackerEvents[Name]>;
@@ -43,9 +45,13 @@ class FakeTracker implements TrackerPort {
     return this.state;
   }
 
-  async prepare(): Promise<void> {}
+  async prepare(): Promise<void> {
+    this.preparations += 1;
+  }
 
-  cancelPreparation(): void {}
+  cancelPreparation(): void {
+    this.cancellations += 1;
+  }
 
   async start(request: TrackerStartRequest): Promise<{ startedAt: EpochMs; sources: { location: "replay"; barometer: false; pedometer: false; heartRate: false } }> {
     this.requests.push(request);
@@ -257,6 +263,47 @@ describe("recording", () => {
     expect(meters).toBeGreaterThan(800);
   });
 
+  it("PLT-020 records nothing without the native tracker, as on the web", async () => {
+    const host = new RecorderHost({ tracker: null, writer, feedback });
+    hosts.push(host);
+    expect(await host.prepare()).toEqual({ ok: false, failure: { kind: "unsupported" } });
+    expect(await host.start(start)).toEqual({ ok: false, failure: { kind: "unsupported" } });
+    expect(host.getView().kind).toBe("idle");
+    expect(db().select().from(session).all()).toEqual([]);
+  });
+
+  it("REC-012 warms the receiver up on the preparation screen and NRG-002 stops it when leaving without a start", async () => {
+    const host = newHost();
+    const prepared = await host.prepare();
+    expect(prepared.ok).toBe(true);
+    expect(tracker.preparations).toBe(1);
+    expect(host.getView().kind).toBe("preparing");
+    host.cancelPreparation();
+    expect(tracker.cancellations).toBe(1);
+    expect(host.getView().kind).toBe("idle");
+    host.cancelPreparation();
+    expect(tracker.cancellations).toBe(1);
+  });
+
+  it("PRF-041 publishes the live view at most once a second", async () => {
+    const host = newHost();
+    await started(host);
+    let published = 0;
+    const unsubscribe = host.subscribe(() => {
+      published += 1;
+    });
+    let meters = 0;
+    for (let step = 0; step < 50; step += 1) {
+      await vi.advanceTimersByTimeAsync(100);
+      meters += 0.3;
+      tracker.write([fixAt(tracker.now(), meters)], null, 0);
+      await settle();
+    }
+    unsubscribe();
+    expect(published).toBeGreaterThanOrEqual(4);
+    expect(published).toBeLessThanOrEqual(6);
+  });
+
   it("refuses a second open session and a start without storage (REC-003)", async () => {
     const host = newHost();
     const sessionId = await started(host);
@@ -460,7 +507,7 @@ describe("alerts and sensors", () => {
 });
 
 describe("launch recovery", () => {
-  it("interrupts at the last journaled instant when the tracker died, then resumes with the gap as a pause (REC-081)", async () => {
+  it("interrupts at the last journaled instant when the tracker died, then resumes with the gap as a pause (REC-081, PLT-010)", async () => {
     const first = newHost();
     const sessionId = await started(first);
     const meters = await run(30, 0);

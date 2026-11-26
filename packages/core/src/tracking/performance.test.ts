@@ -44,4 +44,16 @@ describe("performance budgets", () => {
   it("processes a 6 h outing within 800 ms (PRF-021)", () => {
     expect(fastestBatchMs(mountainOuting(6, 2))).toBeLessThanOrEqual(budgetMs.batch6h);
   }, 60_000);
+
+  it("PRF-030 grows linearly with the outing in batch mode and stays flat per sample in stream mode", () => {
+    const oneHour = mountainOuting(1, 3);
+    const fourHours = mountainOuting(4, 3);
+    fastestBatchMs(oneHour);
+    expect(fastestBatchMs(fourHours) / fastestBatchMs(oneHour)).toBeLessThan(8);
+    const timings = runLive(fourHours).timings;
+    const quarter = Math.floor(timings.length / 4);
+    const early = percentile(timings.subarray(quarter, 2 * quarter), 0.5);
+    const late = percentile(timings.subarray(3 * quarter), 0.5);
+    expect(late).toBeLessThan(3 * early + 0.01);
+  }, 60_000);
 });

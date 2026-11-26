@@ -133,7 +133,7 @@ const seeds = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
 
 const truthAt = (scenario: Scenario, fix: Fix): number => scenario.truth.t.indexOf(fix.t);
 
-describe("signal stage scenarios", () => {
+describe("signal stage scenarios (TST-010)", () => {
   it("are reproducible from their seed (TST-002)", () => {
     for (const build of Object.values(stageScenarios)) {
       expect(build(3).samples).toEqual(build(3).samples);

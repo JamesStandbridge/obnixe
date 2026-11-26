@@ -102,7 +102,7 @@ describe("LiveTracker", () => {
     expect(ride.heartRate).toBeNull();
   });
 
-  it("reports only the profile's metrics", () => {
+  it("reports only the profile's metrics (SPT-004)", () => {
     for (const scenario of [coreScenarios.steadyRun(5), coreScenarios.tunnel90s(5)]) {
       const allowed = new Set(profileOf(scenario).metrics);
       const { final, snapshots } = runLive(scenario);

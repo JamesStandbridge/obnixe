@@ -149,7 +149,7 @@ interface History {
 }
 
 describe("get_history", () => {
-  it("summarizes recorded activities without positions and leaves the other sessions without recording", () => {
+  it("summarizes recorded activities without positions and leaves the other sessions without recording (INT-040)", () => {
     const run = recorded();
     make.write([{ kind: "insert", table: "lap", row: { id: context.env.newId(), sessionId: run.id, position: 0, trigger: "manual", startOffsetMs: 0, endOffsetMs: 1_200_000 } }]);
     const strength = make.session({ localDate: "2026-05-27" as LocalDate });
@@ -366,7 +366,7 @@ describe("sampleTrack", () => {
   });
 });
 
-describe("update_session on a recorded activity", () => {
+describe("update_session on a recorded activity (INT-042)", () => {
   beforeEach(() => setSettings({ agentCanWrite: true }));
 
   function stored(id: Id): Session | undefined {

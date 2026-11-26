@@ -82,7 +82,7 @@ describe("recording rows", () => {
     ]);
   });
 
-  it("refuses a live recording on a sport or an option without a profile", () => {
+  it("refuses a live recording on a sport or an option without a profile (DAT-002)", () => {
     const swim = outing("swim");
     make.write([{ kind: "insert", table: "session", row: swim }]);
     expect(() => make.write([{ kind: "insert", table: "recording", row: newRecording(swim.id) }])).toThrow(UnrecordableSportError);
@@ -109,7 +109,7 @@ describe("recording rows", () => {
     make.write([{ kind: "update", table: "session", key: ride.id, patch: { values: { kind: "gravel", e_bike: true } } }]);
   });
 
-  it("refuses laps outside the recording or without one", () => {
+  it("refuses laps outside the recording or without one (DAT-002)", () => {
     const run = outing("run", { kind: "easy" });
     make.write([{ kind: "insert", table: "session", row: run }]);
     expect(() => make.write([{ kind: "insert", table: "lap", row: newLap(run.id, 0, 0, 1000) }])).toThrow(LapOutsideRecordingError);

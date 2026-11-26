@@ -81,7 +81,7 @@ const accepted: Readonly<Record<RecorderEventType, readonly RecorderPhase[]>> = 
 const committing = new Set(["start", "save", "discard", "interrupt"]);
 
 describe("transition", () => {
-  it("answers every state and event pair with a next state or a typed refusal", () => {
+  it("answers every state and event pair with a next state or a typed refusal (REC-004)", () => {
     for (const phase of phases) {
       for (const state of samples[phase]) {
         expect(state.phase).toBe(phase);
