@@ -30,6 +30,8 @@ export function parseDecimal(text: string, what: string): number {
   return Number(trimmed);
 }
 
+export const centiDegrees = (degrees: number): number => ((Math.round(degrees * 100) % 36_000) + 36_000) % 36_000;
+
 export interface PositionE7 {
   readonly latitudeE7: number;
   readonly longitudeE7: number;

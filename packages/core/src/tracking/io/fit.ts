@@ -1,8 +1,10 @@
-import { decodeUtf8, InvalidUtf8Error } from "../../data/utf8.ts";
+import type { LapTrigger } from "@obnixe/schema";
+import { decodeUtf8, encodeUtf8, InvalidUtf8Error } from "../../data/utf8.ts";
 import { assembleActivity } from "./activity.ts";
-import type { FilePoint, FileTimerEvent, FileTotals, ImportedActivity, PoolSwim } from "./activity.ts";
+import type { ExportPoint, FilePoint, FileTimerEvent, FileTotals, ImportedActivity, PoolSwim } from "./activity.ts";
 import { ImportError } from "./errors.ts";
 import { fitSport, sportOfFit } from "./sports.ts";
+import type { FitSportPair } from "./sports.ts";
 import { contentId } from "./values.ts";
 
 /** Seconds from the Unix epoch to the FIT epoch, 1989-12-31T00:00:00Z. */
@@ -10,9 +12,10 @@ const fitEpochSeconds = 631_065_600;
 const semicircleDegrees = 180 / 2 ** 31;
 const maxSemicircleLatitude = 2 ** 30;
 
-const message = { fileId: 0, sport: 12, session: 18, lap: 19, record: 20, event: 21, deviceInfo: 23, length: 101 } as const;
+const message = { fileId: 0, sport: 12, session: 18, lap: 19, record: 20, event: 21, deviceInfo: 23, activity: 34, length: 101, fieldDescription: 206, developerDataId: 207 } as const;
 const fileTypeActivity = 4;
 const eventTimer = 0;
+const eventKind = { session: 8, lap: 9, activity: 26 } as const;
 const eventType = { start: 0, stop: 1, stopAll: 4, stopDisable: 8, stopDisableAll: 9 } as const;
 const lengthTypeActive = 1;
 const displayMeasureStatute = 1;
@@ -44,6 +47,15 @@ const baseTypes: readonly { readonly size: number; readonly invalid: number | nu
   { size: 8, invalid: null },
 ];
 const stringType = 7;
+const byteType = 13;
+
+/** `developer_data_id.application_id` of the Obnixe record fields, which other software ignores. */
+const obnixeApplicationId = Uint8Array.from([0x6f, 0x62, 0x6e, 0x69, 0x78, 0x65, 0x4a, 0x2e, 0x9c, 0x41, 0x0d, 0x5b, 0x83, 0xe2, 0x17, 0xa6]);
+/**
+ * Developer field numbers of the fix data that standard `record` fields cannot carry and the processing needs to give the
+ * same results when the file is imported again (`IO-001`), all uint16.
+ */
+const obnixeField = { course: 0, horizontalAccuracy: 1, verticalAccuracy: 2, speedAccuracy: 3 } as const;
 
 const crcTable = [0x0000, 0xcc01, 0xd801, 0x1400, 0xf001, 0x3c00, 0x2800, 0xe401, 0xa001, 0x6c00, 0x7800, 0xb401, 0x5000, 0x9c01, 0x8801, 0x4400];
 
@@ -66,10 +78,18 @@ interface FieldDefinition {
   readonly baseType: number;
 }
 
+interface DeveloperFieldDefinition {
+  readonly number: number;
+  readonly offset: number;
+  readonly size: number;
+  readonly developerIndex: number;
+}
+
 interface MessageDefinition {
   readonly global: number;
   readonly littleEndian: boolean;
   readonly fields: readonly FieldDefinition[];
+  readonly developerFields: readonly DeveloperFieldDefinition[];
   readonly size: number;
 }
 
@@ -117,6 +137,19 @@ class FieldValues {
     return value === type.invalid ? null : value;
   }
 
+  bytes(field: number): Uint8Array | null {
+    const definition = this.definition.fields.find((candidate) => candidate.number === field && candidate.baseType === byteType);
+    return definition === undefined ? null : new Uint8Array(this.view.buffer, this.view.byteOffset + this.start + definition.offset, definition.size);
+  }
+
+  /** A uint16 developer field. */
+  developer(developerIndex: number, field: number): number | null {
+    const definition = this.definition.developerFields.find((candidate) => candidate.developerIndex === developerIndex && candidate.number === field);
+    if (definition?.size !== 2) return null;
+    const value = this.view.getUint16(this.start + definition.offset, this.definition.littleEndian);
+    return value === 0xffff ? null : value;
+  }
+
   string(field: number): string | null {
     const definition = this.definition.fields.find((candidate) => candidate.number === field && candidate.baseType === stringType);
     if (definition === undefined) return null;
@@ -154,9 +187,11 @@ interface FitFile {
   readonly timer: FileTimerEvent[];
   readonly lapStarts: number[];
   activeLengths: number;
+  obnixeIndex: number | null;
 }
 
 const epochMs = (fitSeconds: number): number => (fitSeconds + fitEpochSeconds) * 1000;
+const sameBytes = (left: Uint8Array, right: Uint8Array): boolean => left.length === right.length && left.every((byte, index) => byte === right[index]);
 
 function deviceName(manufacturer: number | null, product: number | null, name: string | null): string | null {
   if (name !== null) return name;
@@ -186,6 +221,11 @@ function collect(file: FitFile, global: number, fields: FieldValues, timestamp: 
       file.device ??= deviceName(manufacturer, product, fields.string(8));
       return;
     }
+    case message.developerDataId: {
+      const application = fields.bytes(1);
+      if (application !== null && sameBytes(application, obnixeApplicationId)) file.obnixeIndex = fields.number(3) ?? 0;
+      return;
+    }
     case message.deviceInfo:
       if (fields.number(0) === 0) file.creator ??= deviceName(fields.number(2), fields.number(4), fields.string(27));
       return;
@@ -198,6 +238,8 @@ function collect(file: FitFile, global: number, fields: FieldValues, timestamp: 
       const altitude = fields.number(78) ?? fields.number(2);
       const cadence = fields.number(4);
       const fraction = fields.number(53);
+      const accuracy = fields.number(31);
+      const obnixe = (field: number): number | null => (file.obnixeIndex === null ? null : fields.developer(file.obnixeIndex, field));
       file.points.push({
         time: epochMs(timestamp),
         ...position(fields),
@@ -205,11 +247,11 @@ function collect(file: FitFile, global: number, fields: FieldValues, timestamp: 
         heartRate: fields.number(3),
         cadence: cadence === null ? null : cadence + (fraction ?? 0) / 128,
         speedMmS: fields.number(73) ?? fields.number(6),
-        courseCentiDeg: null,
-        horizontalAccuracyDm: null,
-        verticalAccuracyDm: null,
-        speedAccuracyCmS: null,
-        pressurePa: null,
+        courseCentiDeg: obnixe(obnixeField.course),
+        horizontalAccuracyDm: obnixe(obnixeField.horizontalAccuracy) ?? (accuracy === null || accuracy === 0 ? null : accuracy * 10),
+        verticalAccuracyDm: obnixe(obnixeField.verticalAccuracy),
+        speedAccuracyCmS: obnixe(obnixeField.speedAccuracy),
+        pressurePa: fields.number(91),
       });
       return;
     }
@@ -292,15 +334,20 @@ function decodeFile(bytes: Uint8Array, view: DataView, start: number, file: FitF
         size += fieldSize;
       }
       offset += count * 3;
+      const developerFields: DeveloperFieldDefinition[] = [];
       if ((header & 0x20) !== 0) {
         need(1);
         const developerCount = bytes[offset] ?? 0;
         offset += 1;
         need(developerCount * 3);
-        for (let index = 0; index < developerCount; index += 1) size += bytes[offset + index * 3 + 1] ?? 0;
+        for (let index = 0; index < developerCount; index += 1) {
+          const fieldSize = bytes[offset + index * 3 + 1] ?? 0;
+          developerFields.push({ number: bytes[offset + index * 3] ?? 0, offset: size, size: fieldSize, developerIndex: bytes[offset + index * 3 + 2] ?? 0 });
+          size += fieldSize;
+        }
         offset += developerCount * 3;
       }
-      definitions.set(header & 0x0f, { global, littleEndian, fields, size });
+      definitions.set(header & 0x0f, { global, littleEndian, fields, developerFields, size });
       continue;
     }
     const compressed = (header & 0x80) !== 0;
@@ -331,13 +378,14 @@ function poolSwim(session: FitSession | undefined, activeLengths: number): PoolS
 }
 
 /**
- * Reads a FIT activity file (`IO-050`): header and file CRC, chained files, developer fields (skipped), compressed timestamps,
- * either endianness. Takes positions, altitude (enhanced when present), heart rate, cadence, timer events, laps, the first
- * session's sport and totals, and the pool lengths of a lap swim. Refuses any other FIT file type.
+ * Reads a FIT activity file (`IO-050`): header and file CRC, chained files, developer fields (skipped but the Obnixe ones),
+ * compressed timestamps, either endianness. Takes positions, altitude (enhanced when present), GPS accuracy, pressure, heart
+ * rate, cadence, timer events, laps, the first session's sport and totals, and the pool lengths of a lap swim. Refuses any
+ * other FIT file type.
  */
 export function readFit(bytes: Uint8Array): ImportedActivity {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const file: FitFile = { fileType: null, identity: null, device: null, creator: null, sport: null, subSport: null, sessions: [], points: [], timer: [], lapStarts: [], activeLengths: 0 };
+  const file: FitFile = { fileType: null, identity: null, device: null, creator: null, sport: null, subSport: null, sessions: [], points: [], timer: [], lapStarts: [], activeLengths: 0, obnixeIndex: null };
   let offset = 0;
   while (offset < bytes.length) offset = decodeFile(bytes, view, offset, file);
   if (file.fileType !== fileTypeActivity) throw new ImportError("not_an_activity", file.fileType === null ? "the FIT file has no file_id" : `the FIT file type is ${file.fileType}, not an activity`);
@@ -360,4 +408,300 @@ export function readFit(bytes: Uint8Array): ImportedActivity {
     totals: session?.totals ?? null,
     pool,
   });
+}
+
+/** A lap or the session of an exported activity, at absolute instants. */
+export interface FitStretch {
+  readonly startTime: number;
+  readonly endTime: number;
+  /** Elapsed time outside the manual pauses. */
+  readonly timerMs: number;
+  readonly distanceMm: number;
+  readonly energyKcal: number | null;
+  readonly heartRateAvg: number | null;
+  readonly heartRateMax: number | null;
+}
+
+export interface FitLap extends FitStretch {
+  readonly trigger: LapTrigger;
+}
+
+export interface FitDocument {
+  readonly sport: FitSportPair;
+  /** Timer start at the start and at each resume, stop at each pause and at the end. */
+  readonly timer: readonly FileTimerEvent[];
+  readonly points: readonly ExportPoint[];
+  readonly laps: readonly FitLap[];
+  readonly session: FitStretch;
+}
+
+type FitBaseType = "enum" | "uint8" | "sint8" | "uint16" | "sint32" | "uint32" | "string" | "bytes";
+
+/** Base type byte, size, and the valid range `[min, invalid)` of each base type written. */
+const encodedTypes: Readonly<Record<FitBaseType, { readonly id: number; readonly size: number; readonly min: number; readonly invalid: number }>> = {
+  enum: { id: 0x00, size: 1, min: 0, invalid: 0xff },
+  uint8: { id: 0x02, size: 1, min: 0, invalid: 0xff },
+  sint8: { id: 0x01, size: 1, min: -0x7f, invalid: 0x7f },
+  uint16: { id: 0x84, size: 2, min: 0, invalid: 0xffff },
+  sint32: { id: 0x85, size: 4, min: -0x7fffffff, invalid: 0x7fffffff },
+  uint32: { id: 0x86, size: 4, min: 0, invalid: 0xffffffff },
+  string: { id: 0x07, size: 16, min: 0, invalid: 0 },
+  bytes: { id: 0x0d, size: 16, min: 0, invalid: 0xff },
+};
+
+interface FitFieldLayout {
+  readonly number: number;
+  readonly type: FitBaseType;
+}
+
+interface FitLayout {
+  readonly local: number;
+  readonly global: number;
+  readonly fields: readonly FitFieldLayout[];
+  /** Obnixe developer fields, written after `fields`. */
+  readonly developer?: readonly FitFieldLayout[];
+}
+
+type FitValue = number | string | Uint8Array | null;
+
+const field = (number: number, type: FitBaseType): FitFieldLayout => ({ number, type });
+const timestamp = field(timestampField, "uint32");
+const messageIndex = field(254, "uint16");
+const layouts = {
+  fileId: { local: 0, global: message.fileId, fields: [field(0, "enum"), field(1, "uint16"), field(2, "uint16"), field(4, "uint32"), field(8, "string")] },
+  event: { local: 1, global: message.event, fields: [timestamp, field(0, "enum"), field(1, "enum"), field(4, "uint8")] },
+  record: {
+    local: 2,
+    global: message.record,
+    fields: [timestamp, field(0, "sint32"), field(1, "sint32"), field(5, "uint32"), field(78, "uint32"), field(73, "uint32"), field(3, "uint8"), field(4, "uint8"), field(31, "uint8"), field(91, "uint32")],
+    developer: [field(obnixeField.course, "uint16"), field(obnixeField.horizontalAccuracy, "uint16"), field(obnixeField.verticalAccuracy, "uint16"), field(obnixeField.speedAccuracy, "uint16")],
+  },
+  lap: {
+    local: 3,
+    global: message.lap,
+    fields: [timestamp, messageIndex, field(0, "enum"), field(1, "enum"), field(2, "uint32"), field(7, "uint32"), field(8, "uint32"), field(9, "uint32"), field(11, "uint16"), field(15, "uint8"), field(16, "uint8"), field(24, "enum"), field(25, "enum")],
+  },
+  session: {
+    local: 4,
+    global: message.session,
+    fields: [timestamp, messageIndex, field(0, "enum"), field(1, "enum"), field(2, "uint32"), field(5, "enum"), field(6, "enum"), field(7, "uint32"), field(8, "uint32"), field(9, "uint32"), field(11, "uint16"), field(16, "uint8"), field(17, "uint8"), field(25, "uint16"), field(26, "uint16"), field(28, "enum")],
+  },
+  activity: { local: 5, global: message.activity, fields: [timestamp, field(0, "uint32"), field(1, "uint16"), field(2, "enum"), field(3, "enum"), field(4, "enum")] },
+  developerDataId: { local: 6, global: message.developerDataId, fields: [field(1, "bytes"), field(3, "uint8")] },
+  fieldDescription: { local: 7, global: message.fieldDescription, fields: [field(0, "uint8"), field(1, "uint8"), field(2, "uint8"), field(3, "string"), field(6, "uint8"), field(7, "sint8"), field(8, "string"), field(14, "uint16")] },
+} as const satisfies Record<string, FitLayout>;
+
+interface ObnixeFieldDescription {
+  readonly number: number;
+  readonly name: string;
+  readonly scale: number;
+  readonly units: string;
+}
+
+const obnixeFieldDescriptions: readonly ObnixeFieldDescription[] = [
+  { number: obnixeField.course, name: "obnixe_course", scale: 100, units: "degrees" },
+  { number: obnixeField.horizontalAccuracy, name: "obnixe_hacc", scale: 10, units: "m" },
+  { number: obnixeField.verticalAccuracy, name: "obnixe_vacc", scale: 10, units: "m" },
+  { number: obnixeField.speedAccuracy, name: "obnixe_sacc", scale: 100, units: "m/s" },
+];
+const obnixeDeveloperIndex = 0;
+
+const fitHeaderSize = 14;
+const fitProtocolVersion = 0x20;
+const fitProfileVersion = 21_222;
+const developmentManufacturer = 255;
+const productName = "Obnixe";
+const activityTypeManual = 0;
+const sessionTriggerActivityEnd = 0;
+const maxFitByte = 254;
+
+/** Little-endian FIT data records, each local message type defined before its first message. */
+class FitEncoder {
+  private bytes = new Uint8Array(1 << 16);
+  private view = new DataView(this.bytes.buffer);
+  private length = fitHeaderSize;
+  private readonly defined = new Set<number>();
+
+  write(layout: FitLayout, values: readonly FitValue[]): void {
+    if (!this.defined.has(layout.local)) this.define(layout);
+    this.byte(layout.local);
+    [...layout.fields, ...(layout.developer ?? [])].forEach((fieldLayout, index) => this.value(fieldLayout.type, values[index] ?? null));
+  }
+
+  finish(): Uint8Array {
+    const dataSize = this.length - fitHeaderSize;
+    this.view.setUint8(0, fitHeaderSize);
+    this.view.setUint8(1, fitProtocolVersion);
+    this.view.setUint16(2, fitProfileVersion, true);
+    this.view.setUint32(4, dataSize, true);
+    this.bytes.set([0x2e, 0x46, 0x49, 0x54], 8);
+    this.view.setUint16(12, fitCrc(this.bytes, 0, 12), true);
+    const crc = fitCrc(this.bytes, 0, this.length);
+    this.reserve(2);
+    this.view.setUint16(this.length, crc, true);
+    this.length += 2;
+    return this.bytes.slice(0, this.length);
+  }
+
+  private define(layout: FitLayout): void {
+    this.defined.add(layout.local);
+    const developer = layout.developer ?? [];
+    this.byte(0x40 | (developer.length > 0 ? 0x20 : 0) | layout.local);
+    this.byte(0);
+    this.byte(0);
+    this.reserve(2);
+    this.view.setUint16(this.length, layout.global, true);
+    this.length += 2;
+    this.byte(layout.fields.length);
+    for (const fieldLayout of layout.fields) {
+      const type = encodedTypes[fieldLayout.type];
+      this.byte(fieldLayout.number);
+      this.byte(type.size);
+      this.byte(type.id);
+    }
+    if (developer.length === 0) return;
+    this.byte(developer.length);
+    for (const fieldLayout of developer) {
+      this.byte(fieldLayout.number);
+      this.byte(encodedTypes[fieldLayout.type].size);
+      this.byte(obnixeDeveloperIndex);
+    }
+  }
+
+  private value(typeName: FitBaseType, value: FitValue): void {
+    const type = encodedTypes[typeName];
+    this.reserve(type.size);
+    if (typeName === "string" || typeName === "bytes") {
+      const content = typeof value === "string" ? encodeUtf8(value).subarray(0, type.size - 1) : value instanceof Uint8Array ? value.subarray(0, type.size) : new Uint8Array();
+      this.bytes.fill(typeName === "string" ? 0 : type.invalid, this.length, this.length + type.size);
+      this.bytes.set(content, this.length);
+      this.length += type.size;
+      return;
+    }
+    const rounded = typeof value === "number" && Number.isFinite(value) ? Math.round(value) : null;
+    const encoded = rounded !== null && rounded >= type.min && rounded < type.invalid ? rounded : type.invalid;
+    switch (typeName) {
+      case "enum":
+      case "uint8":
+        this.view.setUint8(this.length, encoded);
+        break;
+      case "sint8":
+        this.view.setInt8(this.length, encoded);
+        break;
+      case "uint16":
+        this.view.setUint16(this.length, encoded, true);
+        break;
+      case "sint32":
+        this.view.setInt32(this.length, encoded, true);
+        break;
+      case "uint32":
+        this.view.setUint32(this.length, encoded, true);
+        break;
+      default: {
+        const unhandled: never = typeName;
+        throw new Error(`No encoding for ${String(unhandled)}`);
+      }
+    }
+    this.length += type.size;
+  }
+
+  private byte(value: number): void {
+    this.reserve(1);
+    this.view.setUint8(this.length, value);
+    this.length += 1;
+  }
+
+  private reserve(size: number): void {
+    if (this.length + size <= this.bytes.length) return;
+    const grown = new Uint8Array(Math.max(this.bytes.length * 2, this.length + size));
+    grown.set(this.bytes.subarray(0, this.length));
+    this.bytes = grown;
+    this.view = new DataView(grown.buffer);
+  }
+}
+
+/** FIT times are whole seconds since the FIT epoch. */
+const fitTime = (epochMs: number): number => Math.round(epochMs / 1000) - fitEpochSeconds;
+const semicircles = (e7: number): number => Math.round((e7 / 1e7 / 180) * 2 ** 31);
+const fitByte = (value: number | null): number | null => (value === null ? null : Math.min(value, maxFitByte));
+
+function fitLapTrigger(trigger: LapTrigger): number {
+  switch (trigger) {
+    case "manual":
+    case "workout":
+    case "import":
+      return 0;
+    case "duration":
+      return 1;
+    case "distance":
+      return 2;
+    default: {
+      const unhandled: never = trigger;
+      throw new Error(`No FIT lap trigger for ${String(unhandled)}`);
+    }
+  }
+}
+
+function recordValues(point: ExportPoint, second: number): readonly FitValue[] {
+  return [
+    second,
+    semicircles(point.latitudeE7),
+    semicircles(point.longitudeE7),
+    point.distanceMm / 10,
+    point.altitudeMm === null ? null : (point.altitudeMm / 1000 + 500) * 5,
+    point.speedMmS,
+    fitByte(point.heartRate),
+    fitByte(point.cadence),
+    point.horizontalAccuracyDm === null ? null : fitByte(Math.max(1, Math.round(point.horizontalAccuracyDm / 10))),
+    point.pressurePa,
+    point.courseCentiDeg,
+    point.horizontalAccuracyDm,
+    point.verticalAccuracyDm,
+    point.speedAccuracyCmS,
+  ];
+}
+
+function stretchValues(stretch: FitStretch): readonly FitValue[] {
+  return [fitTime(stretch.startTime), stretch.endTime - stretch.startTime, stretch.timerMs, stretch.distanceMm / 10, stretch.energyKcal, fitByte(stretch.heartRateAvg), fitByte(stretch.heartRateMax)];
+}
+
+/**
+ * A FIT activity file (`IO-003`): `file_id` of type activity, timer `event` start and stop around each pause, one `record` per
+ * point (semicircles, `enhanced_altitude`, `distance`, `enhanced_speed`, heart rate, cadence, GPS accuracy and pressure, and
+ * the course and fix accuracies as Obnixe developer fields), the `lap` messages, one `session` with the annex D sport and sub
+ * sport, and `activity`, with valid header and file CRCs. Points falling in the second of the previous one are left out.
+ */
+export function writeFit(document: FitDocument): Uint8Array {
+  const encoder = new FitEncoder();
+  const { session, sport } = document;
+  encoder.write(layouts.fileId, [fileTypeActivity, developmentManufacturer, 0, fitTime(session.startTime), productName]);
+  encoder.write(layouts.developerDataId, [obnixeApplicationId, obnixeDeveloperIndex]);
+  for (const description of obnixeFieldDescriptions) {
+    encoder.write(layouts.fieldDescription, [obnixeDeveloperIndex, description.number, encodedTypes.uint16.id, description.name, description.scale, 0, description.units, message.record]);
+  }
+  const events = document.timer.map((event) => ({ second: fitTime(event.time), kind: event.kind }));
+  let next = 0;
+  const writeEvents = (before: number | null): void => {
+    for (; next < events.length; next += 1) {
+      const event = events[next];
+      if (event === undefined || (before !== null && (event.second > before || (event.second === before && event.kind === "stop")))) return;
+      encoder.write(layouts.event, [event.second, eventTimer, event.kind === "start" ? eventType.start : eventType.stopAll, 0]);
+    }
+  };
+  let last = Number.NEGATIVE_INFINITY;
+  for (const point of document.points) {
+    const second = fitTime(point.time);
+    if (second <= last) continue;
+    writeEvents(second);
+    encoder.write(layouts.record, recordValues(point, second));
+    last = second;
+  }
+  writeEvents(null);
+  document.laps.forEach((lap, index) => {
+    encoder.write(layouts.lap, [fitTime(lap.endTime), index, eventKind.lap, eventType.stop, ...stretchValues(lap), fitLapTrigger(lap.trigger), sport.sport]);
+  });
+  const end = fitTime(session.endTime);
+  encoder.write(layouts.session, [end, 0, eventKind.session, eventType.stop, fitTime(session.startTime), sport.sport, sport.subSport, ...stretchValues(session).slice(1), 0, document.laps.length, sessionTriggerActivityEnd]);
+  encoder.write(layouts.activity, [end, session.timerMs, 1, activityTypeManual, eventKind.activity, eventType.stop]);
+  return encoder.finish();
 }

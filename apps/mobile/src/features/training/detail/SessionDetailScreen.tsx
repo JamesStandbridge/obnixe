@@ -32,7 +32,7 @@ import type { Id, PainPhase, ProgramSlot, Session } from "@obnixe/schema";
 import { db, environment } from "@/data/database";
 import { undo, useUndoableWrite, write } from "@/data/write";
 import { gearLabel } from "@/features/activity/presentation";
-import { ExportGpxAction } from "@/features/activityFiles/ExportGpxAction";
+import { ExportTrackActions } from "@/features/activityFiles/ExportTrackActions";
 import { GearSheet } from "@/features/activity/LogSheets";
 import { loadRecorded, RecordedLeading, RecordedTrailing } from "@/features/recordings/RecordedActivityView";
 import type { RecordedData } from "@/features/recordings/RecordedActivityView";
@@ -554,7 +554,7 @@ function Detail({ data, recorded }: DetailProps) {
           <>
             <RecordedTrailing state={recorded.state} />
             <Section title="Fichier">
-              <ExportGpxAction sessionId={session.id} last />
+              <ExportTrackActions sessionId={session.id} />
             </Section>
           </>
         )}

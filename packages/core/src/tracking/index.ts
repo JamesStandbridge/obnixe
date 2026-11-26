@@ -11,6 +11,7 @@ export * from "./feed.ts";
 export * from "./geo.ts";
 export * from "./io/activity.ts";
 export * from "./io/archive.ts";
+export * from "./io/bulkExport.ts";
 export * from "./io/errors.ts";
 export * from "./io/export.ts";
 export * from "./io/fit.ts";

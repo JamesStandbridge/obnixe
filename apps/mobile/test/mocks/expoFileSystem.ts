@@ -24,6 +24,34 @@ export interface RelocationOptions {
   readonly overwrite?: boolean;
 }
 
+export enum FileMode {
+  ReadWrite = "rw",
+  ReadOnly = "r",
+  WriteOnly = "w",
+  Append = "wa",
+  Truncate = "wt",
+}
+
+export class FileHandle {
+  private closed = false;
+
+  constructor(private readonly uri: string) {}
+
+  async writeBytes(bytes: Uint8Array): Promise<void> {
+    if (this.closed) throw new Error(`Handle of ${this.uri} is closed`);
+    const current = storedFiles.get(this.uri) ?? new Uint8Array();
+    const next = new Uint8Array(current.length + bytes.length);
+    next.set(current);
+    next.set(bytes, current.length);
+    storedFiles.set(this.uri, next);
+  }
+
+  close(): void {
+    if (this.closed) throw new Error(`Handle of ${this.uri} is already closed`);
+    this.closed = true;
+  }
+}
+
 export class Directory {
   readonly uri: string;
 
@@ -89,6 +117,14 @@ export class File {
   async write(content: Uint8Array | string): Promise<void> {
     if (!this.exists) this.create();
     storedFiles.set(this.uri, typeof content === "string" ? new TextEncoder().encode(content) : content.slice());
+  }
+
+  /** Only the modes the app uses: `Truncate` empties the file, writes append. */
+  open(mode: FileMode): FileHandle {
+    if (!this.exists) throw new Error(`No file ${this.uri}`);
+    if (mode !== FileMode.Truncate) throw new Error(`Unsupported mode ${mode}`);
+    storedFiles.set(this.uri, new Uint8Array());
+    return new FileHandle(this.uri);
   }
 
   async bytes(): Promise<Uint8Array> {

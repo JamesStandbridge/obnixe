@@ -1,4 +1,5 @@
 import { decodeUtf8, InvalidUtf8Error } from "../../data/utf8.ts";
+import type { ExportPoint } from "./activity.ts";
 import { ImportError } from "./errors.ts";
 
 /** Attributes of an element by local name. */
@@ -149,6 +150,28 @@ export function parseXml(source: string, handler: XmlHandler): void {
   }
   if (!rootSeen) throw new XmlSyntaxError("no root element", source.length);
   if (open.length > 0) throw new XmlSyntaxError(`<${open[open.length - 1] ?? ""}> is not closed`, source.length, true);
+}
+
+/** Namespace of the Obnixe point extensions in GPX and TCX exports, which other software ignores. */
+export const obnixeNamespace = "https://obnixe.app/xmlschemas/gpx/1";
+
+/** The fix accuracies and the pressure in pascals (`IO-001`), as `obnixe:` extension elements. */
+export function obnixeElements(point: ExportPoint): readonly string[] {
+  const elements: string[] = [];
+  if (point.horizontalAccuracyDm !== null) elements.push(`<obnixe:hacc>${(point.horizontalAccuracyDm / 10).toFixed(1)}</obnixe:hacc>`);
+  if (point.verticalAccuracyDm !== null) elements.push(`<obnixe:vacc>${(point.verticalAccuracyDm / 10).toFixed(1)}</obnixe:vacc>`);
+  if (point.speedAccuracyCmS !== null) elements.push(`<obnixe:sacc>${(point.speedAccuracyCmS / 100).toFixed(2)}</obnixe:sacc>`);
+  if (point.pressurePa !== null) elements.push(`<obnixe:pressure>${point.pressurePa}</obnixe:pressure>`);
+  return elements;
+}
+
+export const escapeXml = (text: string): string => text.replace(/[<>&"']/g, (character) => `&#${character.charCodeAt(0)};`);
+
+/** A 1e-7 degree integer as an exact decimal with 7 places. */
+export function degreesOf(e7: number): string {
+  const magnitude = Math.abs(e7);
+  const fraction = String(magnitude % 10_000_000).padStart(7, "0");
+  return `${e7 < 0 ? "-" : ""}${Math.floor(magnitude / 10_000_000)}.${fraction}`;
 }
 
 /** Decodes a UTF-8 file and reads it, refusing a cut document as `truncated` and any other encoding or syntax error as `malformed`. */

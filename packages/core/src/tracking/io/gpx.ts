@@ -1,9 +1,9 @@
 import { assembleActivity } from "./activity.ts";
-import type { FilePoint, ImportedActivity } from "./activity.ts";
+import type { ExportPoint, FilePoint, ImportedActivity } from "./activity.ts";
 import { ImportError } from "./errors.ts";
 import { sportOfGpxType } from "./sports.ts";
-import { contentId, parseDecimal, parseTime, positionE7 } from "./values.ts";
-import { readXmlFile } from "./xml.ts";
+import { centiDegrees, contentId, parseDecimal, parseTime, positionE7 } from "./values.ts";
+import { degreesOf, escapeXml, obnixeElements, obnixeNamespace, readXmlFile } from "./xml.ts";
 import type { XmlAttributes, XmlHandler } from "./xml.ts";
 
 interface PointDraft {
@@ -20,10 +20,6 @@ interface PointDraft {
   speedAccuracyCmS: number | null;
   pressurePa: number | null;
 }
-
-const obnixeNamespace = "https://obnixe.app/xmlschemas/gpx/1";
-
-const centiDegrees = (degrees: number): number => ((Math.round(degrees * 100) % 36_000) + 36_000) % 36_000;
 
 /** GPX 1.0 and 1.1 track reader: every `trk` and `trkseg` in document order, each new part after the first one a pause. */
 class GpxReader implements XmlHandler {
@@ -159,50 +155,21 @@ export function readGpx(bytes: Uint8Array): ImportedActivity {
   });
 }
 
-export interface GpxPoint {
-  readonly latitudeE7: number;
-  readonly longitudeE7: number;
-  /** Orthometric altitude. */
-  readonly altitudeMm: number | null;
-  readonly time: number;
-  readonly heartRate: number | null;
-  readonly cadence: number | null;
-  readonly speedMmS: number | null;
-  readonly courseCentiDeg: number | null;
-  readonly horizontalAccuracyDm: number | null;
-  readonly verticalAccuracyDm: number | null;
-  readonly speedAccuracyCmS: number | null;
-  readonly pressurePa: number | null;
-}
-
 export interface GpxDocument {
   readonly name: string | null;
   readonly time: number;
   /** `trk/type`: the sport key (annex D). */
   readonly type: string;
-  readonly segments: readonly (readonly GpxPoint[])[];
+  readonly segments: readonly (readonly ExportPoint[])[];
 }
 
-const escapeXml = (text: string): string => text.replace(/[<>&"']/g, (character) => `&#${character.charCodeAt(0)};`);
-
-/** A 1e-7 degree integer as an exact decimal with 7 places. */
-function degreesOf(e7: number): string {
-  const magnitude = Math.abs(e7);
-  const fraction = String(magnitude % 10_000_000).padStart(7, "0");
-  return `${e7 < 0 ? "-" : ""}${Math.floor(magnitude / 10_000_000)}.${fraction}`;
-}
-
-function extensionsOf(point: GpxPoint): string {
+function extensionsOf(point: ExportPoint): string {
   const garmin: string[] = [];
   if (point.heartRate !== null) garmin.push(`<gpxtpx:hr>${point.heartRate}</gpxtpx:hr>`);
   if (point.cadence !== null) garmin.push(`<gpxtpx:cad>${point.cadence}</gpxtpx:cad>`);
   if (point.speedMmS !== null) garmin.push(`<gpxtpx:speed>${(point.speedMmS / 1000).toFixed(3)}</gpxtpx:speed>`);
   if (point.courseCentiDeg !== null) garmin.push(`<gpxtpx:course>${(point.courseCentiDeg / 100).toFixed(2)}</gpxtpx:course>`);
-  const extensions = garmin.length === 0 ? [] : [`<gpxtpx:TrackPointExtension>${garmin.join("")}</gpxtpx:TrackPointExtension>`];
-  if (point.horizontalAccuracyDm !== null) extensions.push(`<obnixe:hacc>${(point.horizontalAccuracyDm / 10).toFixed(1)}</obnixe:hacc>`);
-  if (point.verticalAccuracyDm !== null) extensions.push(`<obnixe:vacc>${(point.verticalAccuracyDm / 10).toFixed(1)}</obnixe:vacc>`);
-  if (point.speedAccuracyCmS !== null) extensions.push(`<obnixe:sacc>${(point.speedAccuracyCmS / 100).toFixed(2)}</obnixe:sacc>`);
-  if (point.pressurePa !== null) extensions.push(`<obnixe:pressure>${point.pressurePa}</obnixe:pressure>`);
+  const extensions = [...(garmin.length === 0 ? [] : [`<gpxtpx:TrackPointExtension>${garmin.join("")}</gpxtpx:TrackPointExtension>`]), ...obnixeElements(point)];
   return extensions.length === 0 ? "" : `<extensions>${extensions.join("")}</extensions>`;
 }
 

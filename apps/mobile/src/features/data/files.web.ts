@@ -115,14 +115,41 @@ export async function readOpenedFile(uri: string): Promise<PickedFile> {
 
 export function releaseOpenedFile(_uri: string): void {}
 
-export async function shareFile(shared: SharedFile): Promise<void> {
-  const part = typeof shared.bytes === "string" ? shared.bytes : new Uint8Array(shared.bytes);
-  const url = URL.createObjectURL(new Blob([part], { type: shared.mimeType }));
+function download(name: string, blob: Blob): void {
+  const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = shared.name;
+  anchor.download = name;
   anchor.click();
   URL.revokeObjectURL(url);
+}
+
+export async function shareFile(shared: SharedFile): Promise<void> {
+  const part = typeof shared.bytes === "string" ? shared.bytes : new Uint8Array(shared.bytes);
+  download(shared.name, new Blob([part], { type: shared.mimeType }));
+}
+
+export interface StreamedFile {
+  write(chunks: readonly Uint8Array[]): Promise<void>;
+  share(): Promise<void>;
+  discard(): void;
+}
+
+/** The browser keeps the chunks in a `Blob`, which it may page to disk, until the download. */
+export function createStreamedFile(name: string, mimeType: string): StreamedFile {
+  let parts: Blob[] = [];
+  return {
+    write: async (chunks) => {
+      parts.push(new Blob(chunks.map((chunk) => new Uint8Array(chunk))));
+    },
+    share: async () => {
+      download(name, new Blob(parts, { type: mimeType }));
+      parts = [];
+    },
+    discard: () => {
+      parts = [];
+    },
+  };
 }
 
 export async function readPhoto(file: string): Promise<Uint8Array | null> {
