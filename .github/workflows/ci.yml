@@ -29,9 +29,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
-      OBNIXE_ANDROID_SDK: ${{ github.workspace }}/../android-sdk
       OBNIXE_ANDROID_PACKAGES: platforms;android-37.0 build-tools;36.0.0 build-tools;37.0.0 ndk;27.1.12297006 cmake;3.22.1
     steps:
+      - run: echo "OBNIXE_ANDROID_SDK=$HOME/android-sdk" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
