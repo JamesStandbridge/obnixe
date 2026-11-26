@@ -52,6 +52,16 @@ export async function ensureActivityPermission(profile: ResolvedProfile): Promis
   return (await tracker.requestPermission("activity")).grant === "granted";
 }
 
+/**
+ * `REC-071`: Android 13 and later hide the recording notification until `POST_NOTIFICATIONS` is granted. Asked once, at the
+ * first recording; a refusal never blocks it.
+ */
+export async function ensureNotificationPermission(): Promise<void> {
+  if (tracker === null) return;
+  const status = await tracker.getPermission("notifications");
+  if (status.grant === "undetermined") await tracker.requestPermission("notifications");
+}
+
 /** `PRV-006`: asked on the first press of *Connecter une source cardiaque* only; a refusal never blocks the recording. */
 export async function requestBluetooth(): Promise<boolean> {
   if (tracker === null) return false;
