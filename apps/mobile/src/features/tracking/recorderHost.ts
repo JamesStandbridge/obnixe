@@ -2,11 +2,11 @@ import { eq } from "drizzle-orm";
 import {
   LiveTracker,
   OpenSessionExistsError,
+  activePrivacyMask,
   discardUndoMs,
   encodeTrack,
   heartRateZoneOf,
   heartRateZones,
-  maskInputsOf,
   maxHeartRateOf,
   openLiveRecording,
   planInterruption,
@@ -657,7 +657,7 @@ export class RecorderHost {
       `Sortie de ${formatNumber(kilometers)} km`,
       planRecordingSave(db(), environment, { sessionId: active.sessionId, track: summary.track, processed: summary.processed, stored }),
     );
-    storeDerivation(db(), active.sessionId, summary.track, summary.processed, maskInputsOf(db()));
+    storeDerivation(db(), active.sessionId, summary.track, summary.processed, activePrivacyMask(db()));
     return { sessionId: active.sessionId, changesetId, zoneProposal: zoneProposalFor(db(), active.sessionId) };
   }
 

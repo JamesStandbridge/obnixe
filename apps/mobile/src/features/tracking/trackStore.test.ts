@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decodeTrack, encodeTrack, toSampleColumns, trackDigest } from "@obnixe/core";
+import { decodeTrack, encodeTrack, toSampleColumns, trackDigest, trackFilePath } from "@obnixe/core";
 import type { Track } from "@obnixe/core";
 import type { EpochMs, Id } from "@obnixe/schema";
 import {
@@ -12,7 +12,6 @@ import {
   readTrackFile,
   storedTrackFiles,
   sweepTemporaryTracks,
-  trackFileOf,
   writeTrack,
 } from "@/features/tracking/trackStore";
 import { Paths, storedFiles } from "../../../test/mocks/expoFileSystem.ts";
@@ -36,13 +35,13 @@ describe("track store", () => {
   it("writes tracks where the agent reader finds them, under the document directory (DAT-020)", async () => {
     const bytes = encodeTrack(track);
     const stored = await writeTrack(recordingId, bytes);
-    expect(stored).toEqual({ file: `tracks/${recordingId}.otrk`, sha256: trackDigest(bytes), bytes: bytes.length });
+    expect(stored).toEqual({ file: trackFilePath(recordingId), sha256: trackDigest(bytes), bytes: bytes.length });
     expect(storedFiles.has(`${Paths.document.uri}/tracks/${recordingId}.otrk`)).toBe(true);
     const read = readTrackFile(stored.file);
     expect(read).toEqual(bytes);
     expect(decodeTrack(read ?? new Uint8Array())).toEqual(track);
     expect(await readTrack(stored.file)).toEqual(bytes);
-    expect(await storedTrackFiles()).toEqual([trackFileOf(recordingId)]);
+    expect(await storedTrackFiles()).toEqual([trackFilePath(recordingId)]);
   });
 
   it("replaces an existing track and leaves no temporary file", async () => {

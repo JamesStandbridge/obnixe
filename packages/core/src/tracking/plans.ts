@@ -13,8 +13,9 @@ import type { Mutation, NewRow } from "../writer.ts";
 import { activityWindow, processTrack } from "./batch.ts";
 import type { ProcessedTrack, TrackTrim } from "./batch.ts";
 import type { Track } from "./codec/track.ts";
-import { maskedPreview, maskInputsOf } from "./derived.ts";
-import type { MaskInputs } from "./derived.ts";
+import { maskedPreview } from "./derived.ts";
+import { activePrivacyMask } from "./privacyZones.ts";
+import type { PrivacyMask } from "./privacyZones.ts";
 import { estimateEnergy } from "./energy.ts";
 import type { EnergyEstimate } from "./energy.ts";
 import { resolveProfile } from "./profile.ts";
@@ -196,7 +197,7 @@ function energyOf(db: ObnixeDatabase, current: Session, track: Track, processed:
 type RecordingPatch = Partial<NewRow<"recording">>;
 
 /** The recording columns a processing rewrites: the summary (`DAT-010`), the energy (`CAL-001`) and the masked preview (`PRV-010`). */
-function recordingPatchOf(db: ObnixeDatabase, current: Session, track: Track, processed: ProcessedTrack, mask: MaskInputs): RecordingPatch {
+function recordingPatchOf(db: ObnixeDatabase, current: Session, track: Track, processed: ProcessedTrack, mask: PrivacyMask): RecordingPatch {
   const energy = energyOf(db, current, track, processed);
   return {
     ...processed.summary,
@@ -228,7 +229,7 @@ function rewrite(db: ObnixeDatabase, env: Environment, live: LiveRecording, trac
   const derived = sessionValuesFromRecording(live.session.values, processed.summary, profile);
   return [
     ...lapsOf(db, live.session.id).map((row): Mutation => ({ kind: "delete", table: "lap", key: row.id })),
-    { kind: "update", table: "recording", key: live.recording.id, patch: { ...recordingPatchOf(db, live.session, track, processed, maskInputsOf(db)), ...extra } },
+    { kind: "update", table: "recording", key: live.recording.id, patch: { ...recordingPatchOf(db, live.session, track, processed, activePrivacyMask(db)), ...extra } },
     { kind: "update", table: "session", key: live.session.id, patch: { values: derived.values, pausedSeconds: derived.pausedSeconds + Math.round(processed.elapsed.startMs / 1000), ...sessionExtra } },
     ...lapInserts(env, live.session.id, processed),
   ];

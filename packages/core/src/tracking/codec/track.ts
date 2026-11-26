@@ -28,9 +28,13 @@ export interface Track {
   readonly marks: readonly TrackerMark[];
 }
 
+/** The folder of every track file, relative to the document directory. */
+export const trackDirectory = "tracks";
+export const trackFileExtension = ".otrk";
+
 /** `recording.track_file`: the track of a recording, relative to the document directory. */
 export function trackFilePath(recordingId: Id): string {
-  return `tracks/${recordingId}.otrk`;
+  return `${trackDirectory}/${recordingId}${trackFileExtension}`;
 }
 
 /** `recording.track_sha256`: lowercase hexadecimal SHA-256 of the `.otrk` bytes. */

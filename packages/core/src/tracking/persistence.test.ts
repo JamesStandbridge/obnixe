@@ -15,7 +15,8 @@ import { processTrack } from "./batch.ts";
 import type { ProcessedTrack } from "./batch.ts";
 import { encodeTrack, trackDigest } from "./codec/track.ts";
 import type { Track } from "./codec/track.ts";
-import { countsInRecords, maskInputsOf, recordZoneProposal, staleDerivationCount, staleDerivations, storeDerivation, zoneProposalFor } from "./derived.ts";
+import { activePrivacyMask } from "./privacyZones.ts";
+import { countsInRecords, maskKey, recordZoneProposal, staleDerivationCount, staleDerivations, storeDerivation, zoneProposalFor } from "./derived.ts";
 import {
   NotRecordableError,
   planInterruption,
@@ -112,18 +113,18 @@ describe("recording save", () => {
   it("masks the preview with the zones in force, not the trashed ones (PRV-010)", () => {
     const fixes = track.samples.fixes;
     const zone = { id: context.env.newId(), label: "Maison", latitudeE7: fixes.latitudeE7[0] ?? 0, longitudeE7: fixes.longitudeE7[0] ?? 0, radiusMeters: 2000, maskScalePermille: 1000, deletedAt: null };
-    const unmasked = maskInputsOf(context.db).key;
+    const unmasked = maskKey(activePrivacyMask(context.db));
     const plain = start();
     save(plain);
     make.write([{ kind: "insert", table: "privacy_zone", row: zone }]);
-    expect(maskInputsOf(context.db).key).not.toBe(unmasked);
+    expect(maskKey(activePrivacyMask(context.db))).not.toBe(unmasked);
     const masked = start();
     save(masked);
     expect(recordingOf(masked.sessionId)?.previewPolyline).not.toBe(recordingOf(plain.sessionId)?.previewPolyline);
     make.write([trashMutation("privacy_zone", zone.id, context.env.now())]);
-    expect(maskInputsOf(context.db).key).toBe(unmasked);
+    expect(maskKey(activePrivacyMask(context.db))).toBe(unmasked);
     context.db.update(settings).set({ hideTrackEndsMeters: 200 }).run();
-    expect(maskInputsOf(context.db).key).not.toBe(unmasked);
+    expect(maskKey(activePrivacyMask(context.db))).not.toBe(unmasked);
   });
 });
 
@@ -131,7 +132,7 @@ describe("derived rows", () => {
   it("stores the eligible best efforts and stays current until a row or the masking changes (DAT-012, PR-003)", () => {
     const plan = start();
     save(plan);
-    const mask = maskInputsOf(context.db);
+    const mask = activePrivacyMask(context.db);
     expect(staleDerivations(context.db, mask, 20).map((stale) => stale.session.id)).toEqual([plan.sessionId]);
     storeDerivation(context.db, plan.sessionId, track, processed, mask);
     expect(context.db.select().from(bestEffort).where(eq(bestEffort.sessionId, plan.sessionId)).all().map((row) => row.effort)).toContain("run:distance:5000");
@@ -141,7 +142,7 @@ describe("derived rows", () => {
     expect(staleDerivationCount(context.db, mask)).toBe(1);
     storeDerivation(context.db, plan.sessionId, track, processed, mask);
     context.db.update(settings).set({ hideTrackEndsMeters: 100 }).run();
-    expect(staleDerivationCount(context.db, maskInputsOf(context.db))).toBe(1);
+    expect(staleDerivationCount(context.db, activePrivacyMask(context.db))).toBe(1);
   });
 
   it("keeps simulated, poorly located and electric bike activities out of the records (PR-002)", () => {

@@ -1,6 +1,6 @@
 import { and, asc, count, eq, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
-import { bestEffort, privacyZone, recording, recordingDerivation, session, zoneProposal } from "@obnixe/schema";
+import { bestEffort, recording, recordingDerivation, session, zoneProposal } from "@obnixe/schema";
 import type { EpochMs, FieldValues, Id, Recording, Session, SportKey } from "@obnixe/schema";
 import type { Environment, ObnixeDatabase } from "../database.ts";
 import { readSettings } from "../settings.ts";
@@ -11,7 +11,8 @@ import { ellipsoidDistance } from "./geo.ts";
 import type { GeoPoint } from "./geo.ts";
 import { maskTrack } from "./privacy.ts";
 import { previewPolyline } from "./simplify.ts";
-import type { MaskZone } from "./privacy.ts";
+import { activePrivacyMask } from "./privacyZones.ts";
+import type { PrivacyMask } from "./privacyZones.ts";
 import type { TrackSeries } from "./stages/derive.ts";
 import { trackingAlgorithmVersion } from "./version.ts";
 import { proposeZone, zoneProposalRules } from "./zoneProposal.ts";
@@ -23,29 +24,15 @@ export const derivationBatchSize = 20;
 /** `PR-002`: below this share of the moving time within 20 m, an activity counts in no record. */
 export const recordsMinGoodFixPermille = 500;
 
-/** What every stored preview is masked with (`PRV-010`, `PRV-011`): the zones in force and the hidden track ends. */
-export interface MaskInputs {
-  readonly zones: readonly MaskZone[];
-  readonly hideEndsMeters: number;
-  /** Changes exactly when the masking of a preview would. */
-  readonly key: string;
-}
-
-export function maskInputsOf(db: ObnixeDatabase): MaskInputs {
-  const zones = db
-    .select({ id: privacyZone.id, latitudeE7: privacyZone.latitudeE7, longitudeE7: privacyZone.longitudeE7, radiusMeters: privacyZone.radiusMeters, maskScalePermille: privacyZone.maskScalePermille })
-    .from(privacyZone)
-    .where(isNull(privacyZone.deletedAt))
-    .orderBy(asc(privacyZone.id))
-    .all();
-  const hideEndsMeters = readSettings(db).hideTrackEndsMeters;
-  const key = [hideEndsMeters, ...zones.map((zone) => `${zone.latitudeE7},${zone.longitudeE7},${zone.radiusMeters},${zone.maskScalePermille}`)].join(";");
-  return { zones, hideEndsMeters, key };
+/** Changes exactly when the masking of a preview would; stored with each derivation. */
+export function maskKey(mask: PrivacyMask): string {
+  const zones = mask.zones.map((zone) => `${zone.latitudeE7},${zone.longitudeE7},${zone.radiusMeters},${zone.maskScalePermille}`).sort();
+  return [mask.hideEndsMeters, ...zones].join(";");
 }
 
 /** The preview never shows a point of a zone or of the hidden ends (`PRV-010`). */
-export function maskedPreview(series: TrackSeries, mask: MaskInputs): string | null {
-  return previewPolyline(series, maskTrack(series, mask.zones, { hideEndsMeters: mask.hideEndsMeters }));
+export function maskedPreview(series: TrackSeries, mask: PrivacyMask): string | null {
+  return previewPolyline(series, maskTrack(series, mask.zones, mask));
 }
 
 export type RecordsRow = Pick<Recording, "simulated" | "goodFixPermille" | "pointCount">;
@@ -56,15 +43,14 @@ export function countsInRecords(row: RecordsRow, sport: SportKey, values: FieldV
   return !(sport === "bike" && values.e_bike === true);
 }
 
-/** A saved live recording whose derived rows no longer match it. */
+/** A saved recording, recorded or imported, whose derived rows no longer match it. */
 export interface StaleDerivation {
   readonly session: Session;
   readonly recording: Recording;
 }
 
-function isStale(mask: MaskInputs): SQL | undefined {
+function isStale(mask: PrivacyMask): SQL | undefined {
   return and(
-    eq(recording.source, "live"),
     isNotNull(recording.trackFile),
     eq(session.status, "completed"),
     or(
@@ -72,16 +58,16 @@ function isStale(mask: MaskInputs): SQL | undefined {
       ne(recordingDerivation.sessionUpdatedAt, session.updatedAt),
       ne(recordingDerivation.recordingUpdatedAt, recording.updatedAt),
       ne(recordingDerivation.algorithmVersion, trackingAlgorithmVersion),
-      ne(recordingDerivation.maskKey, mask.key),
+      ne(recordingDerivation.maskKey, maskKey(mask)),
     ),
   );
 }
 
 /**
- * Saved live recordings, trashed ones included so a restore finds them current, whose best efforts or preview were
+ * Saved recordings, trashed ones included so a restore finds them current, whose best efforts or preview were
  * computed from other rows, another algorithm or other masking inputs, or never.
  */
-export function staleDerivations(db: ObnixeDatabase, mask: MaskInputs, limit: number): readonly StaleDerivation[] {
+export function staleDerivations(db: ObnixeDatabase, mask: PrivacyMask, limit: number): readonly StaleDerivation[] {
   return db
     .select({ session, recording })
     .from(recording)
@@ -93,7 +79,7 @@ export function staleDerivations(db: ObnixeDatabase, mask: MaskInputs, limit: nu
     .all();
 }
 
-export function staleDerivationCount(db: ObnixeDatabase, mask: MaskInputs): number {
+export function staleDerivationCount(db: ObnixeDatabase, mask: PrivacyMask): number {
   return (
     db
       .select({ stale: count() })
@@ -106,7 +92,7 @@ export function staleDerivationCount(db: ObnixeDatabase, mask: MaskInputs): numb
 }
 
 /** The preview update of a rebuilt derivation, `null` when the stored one is already right. */
-export function previewMutationOf(current: Recording, processed: ProcessedTrack, mask: MaskInputs): Mutation | null {
+export function previewMutationOf(current: Recording, processed: ProcessedTrack, mask: PrivacyMask): Mutation | null {
   const preview = maskedPreview(processed.series, mask);
   return preview === current.previewPolyline ? null : { kind: "update", table: "recording", key: current.id, patch: { previewPolyline: preview } };
 }
@@ -125,7 +111,7 @@ function endsOf(track: Track): ActivityEnds | null {
  * Replaces the session's `best_effort` rows (`PR-001`, `PR-002`) and marks its derivation current, outside the journal.
  * Reads the session and recording rows as they are now, so call it after the commit of the preview they show.
  */
-export function storeDerivation(db: ObnixeDatabase, sessionId: Id, track: Track, processed: ProcessedTrack, mask: MaskInputs): void {
+export function storeDerivation(db: ObnixeDatabase, sessionId: Id, track: Track, processed: ProcessedTrack, mask: PrivacyMask): void {
   db.transaction((tx) => {
     const current = tx.select({ session, recording }).from(recording).innerJoin(session, eq(session.id, recording.sessionId)).where(eq(recording.sessionId, sessionId)).get();
     if (current === undefined) return;
@@ -140,7 +126,7 @@ export function storeDerivation(db: ObnixeDatabase, sessionId: Id, track: Track,
       sessionUpdatedAt: current.session.updatedAt,
       recordingUpdatedAt: current.recording.updatedAt,
       algorithmVersion: processed.algorithmVersion,
-      maskKey: mask.key,
+      maskKey: maskKey(mask),
       startLatitudeE7: ends === null ? null : Math.round(ends.start.latitude * 1e7),
       startLongitudeE7: ends === null ? null : Math.round(ends.start.longitude * 1e7),
       endLatitudeE7: ends === null ? null : Math.round(ends.end.latitude * 1e7),
@@ -186,7 +172,7 @@ export function zoneProposalFor(db: ObnixeDatabase, sessionId: Id): ZoneProposal
     .from(zoneProposal)
     .all()
     .map((row) => pointOf(row.latitudeE7, row.longitudeE7));
-  const proposal = proposeZone(activities, maskInputsOf(db).zones, declined);
+  const proposal = proposeZone(activities, activePrivacyMask(db).zones, declined);
   if (proposal === null) return null;
   const ownEnds: ActivityEnds = { start: pointOf(own.startLatitudeE7, own.startLongitudeE7), end: pointOf(own.endLatitudeE7, own.endLongitudeE7) };
   return near(ownEnds.start, proposal.center) || near(ownEnds.end, proposal.center) ? proposal : null;

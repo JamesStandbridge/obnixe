@@ -1,15 +1,14 @@
 import { Directory, File, Paths } from "expo-file-system";
-import { trackDigest } from "@obnixe/core";
+import { trackDigest, trackDirectory, trackFileExtension, trackFilePath } from "@obnixe/core";
 import type { StoredTrack } from "@obnixe/core";
 import type { Id } from "@obnixe/schema";
 
 /*
- * Raw journals live in `recordings/<sessionId>.ojr`, track files in `tracks/<recordingId>.otrk` under the document
- * directory; `recording.track_file` holds that relative path (annex C).
+ * Raw journals live in `recordings/<sessionId>.ojr` under the document directory, track files at `trackFilePath`,
+ * the relative path `recording.track_file` holds (annex C).
  */
 
 const journalExtension = ".ojr";
-const trackExtension = ".otrk";
 const temporaryExtension = ".tmp";
 
 export class TrackWriteError extends Error {
@@ -19,7 +18,7 @@ export class TrackWriteError extends Error {
 }
 
 const journals = (): Directory => new Directory(Paths.document, "recordings");
-const tracks = (): Directory => new Directory(Paths.document, "tracks");
+const tracks = (): Directory => new Directory(Paths.document, trackDirectory);
 
 function ensure(directory: Directory): Directory {
   directory.create({ idempotent: true, intermediates: true });
@@ -50,18 +49,14 @@ export async function deleteJournal(sessionId: Id): Promise<void> {
   if (file.exists) file.delete();
 }
 
-export function trackFileOf(recordingId: Id): string {
-  return `tracks/${recordingId}${trackExtension}`;
-}
-
 /**
  * `DAT-020`: written to a temporary file, read back and hashed, then renamed over the final name. expo-file-system
  * exposes no fsync; the read back is the durability check available to JavaScript.
  */
 export async function writeTrack(recordingId: Id, bytes: Uint8Array): Promise<StoredTrack> {
-  const file = trackFileOf(recordingId);
-  const directory = ensure(tracks());
-  const temporary = new File(directory, `${recordingId}${trackExtension}${temporaryExtension}`);
+  const file = trackFilePath(recordingId);
+  ensure(tracks());
+  const temporary = new File(Paths.document, `${file}${temporaryExtension}`);
   if (temporary.exists) temporary.delete();
   temporary.create();
   await temporary.write(bytes);
@@ -70,7 +65,7 @@ export async function writeTrack(recordingId: Id, bytes: Uint8Array): Promise<St
     temporary.delete();
     throw new TrackWriteError(file);
   }
-  await temporary.move(new File(directory, `${recordingId}${trackExtension}`), { overwrite: true });
+  await temporary.move(new File(Paths.document, file), { overwrite: true });
   return { file, sha256, bytes: bytes.length };
 }
 
@@ -90,7 +85,7 @@ export async function deleteTrack(file: string): Promise<void> {
 }
 
 export async function storedTrackFiles(): Promise<readonly string[]> {
-  return names(tracks(), trackExtension).map((name) => `tracks/${name}`);
+  return names(tracks(), trackFileExtension).map((name) => trackFilePath(name.slice(0, -trackFileExtension.length) as Id));
 }
 
 export async function sweepTemporaryTracks(): Promise<void> {

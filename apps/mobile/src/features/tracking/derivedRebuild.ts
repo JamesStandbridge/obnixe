@@ -1,8 +1,8 @@
 import {
   TrackDecodeError,
+  activePrivacyMask,
   decodeTrack,
   derivationBatchSize,
-  maskInputsOf,
   previewMutationOf,
   profileOfSession,
   reprocessRecording,
@@ -10,7 +10,7 @@ import {
   staleDerivations,
   storeDerivation,
 } from "@obnixe/core";
-import type { MaskInputs, Mutation, ProcessedTrack, StaleDerivation, Track } from "@obnixe/core";
+import type { Mutation, PrivacyMask, ProcessedTrack, StaleDerivation, Track } from "@obnixe/core";
 import type { Id } from "@obnixe/schema";
 import { db } from "@/data/database";
 import type { RecorderWriter } from "@/features/tracking/recorderHost";
@@ -79,7 +79,7 @@ export class DerivedRebuild {
   private async pass(): Promise<void> {
     const skipped = new Set<Id>();
     for (;;) {
-      const mask = maskInputsOf(db());
+      const mask = activePrivacyMask(db());
       const pending = staleDerivationCount(db(), mask) - skipped.size;
       this.set({ pending: Math.max(0, pending), running: pending > 0 });
       if (pending <= 0) return;
@@ -112,7 +112,7 @@ export class DerivedRebuild {
     return { stale, track, processed };
   }
 
-  private store(rebuilt: readonly Rebuilt[], mask: MaskInputs): void {
+  private store(rebuilt: readonly Rebuilt[], mask: PrivacyMask): void {
     const previews = rebuilt.flatMap((item): Mutation[] => {
       const mutation = previewMutationOf(item.stale.recording, item.processed, mask);
       return mutation === null ? [] : [mutation];

@@ -1,15 +1,13 @@
-import { trackDigest } from "@obnixe/core";
+import { trackDigest, trackDirectory, trackFileExtension, trackFilePath } from "@obnixe/core";
 import type { StoredTrack } from "@obnixe/core";
 import type { Id } from "@obnixe/schema";
 
 /*
  * `PLT-021`: the web build shows, imports and exports activities but never records, so it has no raw journal; track
- * files live in the origin private file system under the same `tracks/<recordingId>.otrk` paths as on the phone.
+ * files live in the origin private file system under the same `trackFilePath` paths as on the phone.
  */
 
-const trackExtension = ".otrk";
 const temporaryExtension = ".tmp";
-const tracksFolder = "tracks";
 
 export class TrackWriteError extends Error {
   constructor(readonly file: string) {
@@ -19,11 +17,11 @@ export class TrackWriteError extends Error {
 
 async function tracks(): Promise<FileSystemDirectoryHandle> {
   const root = await navigator.storage.getDirectory();
-  return root.getDirectoryHandle(tracksFolder, { create: true });
+  return root.getDirectoryHandle(trackDirectory, { create: true });
 }
 
 function nameOf(file: string): string | null {
-  const prefix = `${tracksFolder}/`;
+  const prefix = `${trackDirectory}/`;
   return file.startsWith(prefix) && !file.slice(prefix.length).includes("/") ? file.slice(prefix.length) : null;
 }
 
@@ -77,15 +75,11 @@ export async function journalSessionIds(): Promise<readonly Id[]> {
 
 export async function deleteJournal(_sessionId: Id): Promise<void> {}
 
-export function trackFileOf(recordingId: Id): string {
-  return `${tracksFolder}/${recordingId}${trackExtension}`;
-}
-
 /** OPFS has no rename for a file handle in every browser: the verified temporary copy is rewritten under the final name. */
 export async function writeTrack(recordingId: Id, bytes: Uint8Array): Promise<StoredTrack> {
-  const file = trackFileOf(recordingId);
+  const file = trackFilePath(recordingId);
   const folder = await tracks();
-  const name = `${recordingId}${trackExtension}`;
+  const name = `${recordingId}${trackFileExtension}`;
   const temporary = `${name}${temporaryExtension}`;
   const sha256 = trackDigest(bytes);
   await writeEntry(folder, temporary, bytes);
@@ -115,7 +109,7 @@ export async function deleteTrack(file: string): Promise<void> {
 }
 
 export async function storedTrackFiles(): Promise<readonly string[]> {
-  return (await entryNames(trackExtension)).map((name) => `${tracksFolder}/${name}`);
+  return (await entryNames(trackFileExtension)).map((name) => trackFilePath(name.slice(0, -trackFileExtension.length) as Id));
 }
 
 export async function sweepTemporaryTracks(): Promise<void> {

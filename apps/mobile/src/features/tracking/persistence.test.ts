@@ -1,14 +1,17 @@
 import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  activePrivacyMask,
   commit,
+  computeImport,
   encodeJournalBatch,
   encodeJournalHeader,
   encodeTrack,
-  maskInputsOf,
+  planImport,
   planRecordingSave,
   planRecordingStart,
   processTrack,
+  readActivityFile,
   recordingStartMutations,
   staleDerivationCount,
   trackDigest,
@@ -146,9 +149,9 @@ describe("derived rows", () => {
     expect(db().select().from(bestEffort).where(eq(bestEffort.sessionId, run.sessionId)).all().map((row) => row.effort)).toContain("run:distance:400");
     const plain = recordingRow(run.sessionId)?.previewPolyline;
     write("Zone", [{ kind: "insert", table: "privacy_zone", row: { id: environment.newId(), label: "Maison", ...home, radiusMeters: 200, maskScalePermille: 1000, deletedAt: null } }]);
-    expect(staleDerivationCount(db(), maskInputsOf(db()))).toBe(1);
+    expect(staleDerivationCount(db(), activePrivacyMask(db()))).toBe(1);
     await rebuild.request();
-    expect(staleDerivationCount(db(), maskInputsOf(db()))).toBe(0);
+    expect(staleDerivationCount(db(), activePrivacyMask(db()))).toBe(0);
     expect(recordingRow(run.sessionId)?.previewPolyline).not.toBe(plain);
   });
 
@@ -161,6 +164,29 @@ describe("derived rows", () => {
     await rebuild.request();
     expect(db().select().from(recordingDerivation).all()).toEqual([]);
     expect(rebuild.getState().running).toBe(false);
+  });
+});
+
+describe("imported tracks", () => {
+  it("land where the track store reads them, are kept by the reconciliation and get their records (PR-003)", async () => {
+    const startedAt = Date.UTC(2026, 9, 1, 7);
+    const points = Array.from({ length: 240 }, (_, index) => {
+      const latitude = (home.latitudeE7 + Math.round((index * 3) / metersPerE7)) / 1e7;
+      return `<trkpt lat="${latitude.toFixed(7)}" lon="${(home.longitudeE7 / 1e7).toFixed(7)}"><ele>250</ele><time>${new Date(startedAt + index * 1000).toISOString()}</time></trkpt>`;
+    });
+    const gpx = `<?xml version="1.0"?><gpx version="1.1" creator="test" xmlns="http://www.topografix.com/GPX/1/1"><trk><type>running</type><trkseg>${points.join("")}</trkseg></trk></gpx>`;
+    const computation = computeImport(readActivityFile(new TextEncoder().encode(gpx)), { sport: "run", values: {} });
+    const plan = planImport(db(), environment, { computation, timeZone: "Europe/Paris", replaceSessionId: null });
+    if (plan.track === null) throw new Error("No track");
+    const stored = await writeTrack(plan.recordingId, plan.track.bytes);
+    expect(stored).toEqual({ file: plan.track.path, sha256: plan.track.sha256, bytes: plan.track.bytes.length });
+    commit(db(), environment, plan.request);
+    expect((await reconcileRecordingFiles(writer)).deletedTracks).toBe(0);
+    expect(readTrackFile(plan.track.path)).toEqual(plan.track.bytes);
+    await new DerivedRebuild(writer, (error) => {
+      throw error;
+    }).request();
+    expect(db().select().from(recordingDerivation).where(eq(recordingDerivation.sessionId, plan.sessionId)).get()).toBeDefined();
   });
 });
 
