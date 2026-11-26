@@ -8,8 +8,8 @@ import { maskTrack } from "../privacy.ts";
 import type { PrivacyMask } from "../privacyZones.ts";
 import { orthometricAltitude } from "../stages/altitude.ts";
 import { bridgeMaximumMs, intervalCodes, PauseLedger } from "../stages/derive.ts";
-import type { HeartRateColumns, PressureColumns, StepColumns } from "../types.ts";
-import { heartRateHoldMs, isHeartRateReading } from "../zones.ts";
+import type { PressureColumns, StepColumns } from "../types.ts";
+import { heartRateReader } from "../zones.ts";
 import type { TimeSpan } from "../zones.ts";
 import { writeGpx } from "./gpx.ts";
 import type { GpxPoint } from "./gpx.ts";
@@ -84,21 +84,6 @@ function exportedFixes(input: GpxExportInput): readonly ExportedFix[] {
     cut = false;
   }
   return exported;
-}
-
-/** The last valid reading at most `heartRateHoldMs` old, for increasing times. */
-function heartRateReader(heartRate: HeartRateColumns): (t: number) => number | null {
-  let next = 0;
-  let held: number | null = null;
-  let heldAt = 0;
-  return (t) => {
-    for (; next < heartRate.length && (heartRate.t[next] ?? 0) <= t; next += 1) {
-      const bpm = heartRate.bpm[next] ?? 0;
-      held = isHeartRateReading(bpm) ? bpm : null;
-      heldAt = heartRate.t[next] ?? 0;
-    }
-    return held !== null && t - heldAt <= heartRateHoldMs ? held : null;
-  };
 }
 
 /** The last pressure at most `pressureHoldMs` old, for increasing times. */
