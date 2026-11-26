@@ -1,12 +1,14 @@
 import { memo, useEffect, useRef } from "react";
 import type { ReactNode } from "react";
-import { Pressable, StyleSheet, TextInput, View } from "react-native";
+import { PixelRatio, Pressable, StyleSheet, TextInput, View } from "react-native";
 import type { StyleProp, TextInputProps, TextStyle, ViewStyle } from "react-native";
 import Animated, { cancelAnimation, Easing, useAnimatedProps, useAnimatedStyle, useFrameCallback, useSharedValue, withTiming } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import { impactAsync, ImpactFeedbackStyle, notificationAsync, NotificationFeedbackType } from "expo-haptics";
 import type { SignalLevel } from "@obnixe/core";
 import type { EpochMs } from "@obnixe/schema";
+import { fitBounds, metricSizes } from "@/features/recording/metricSizes";
+import type { MetricSizeKey } from "@/features/recording/metricSizes";
 import type { MetricText } from "@/features/recording/metrics";
 import { Icon } from "@/ui/icons/Icon";
 import type { IconName } from "@/ui/icons/Icon";
@@ -97,15 +99,16 @@ export function SignalBars({ level, size = 18 }: SignalBarsProps) {
 interface MetricTileProps {
   readonly caption: string;
   readonly text: MetricText;
-  readonly size: number;
-  /** Lowest scale when the value has to shrink to fit: keeps `UX-001` minimums. */
-  readonly minimumScale: number;
+  readonly scale: MetricSizeKey;
   readonly accent?: string;
   readonly style?: StyleProp<ViewStyle>;
 }
 
-export function MetricTile({ caption, text, size, minimumScale, accent, style }: MetricTileProps) {
+export function MetricTile({ caption, text, scale, accent, style }: MetricTileProps) {
   const { colors } = useTheme();
+  const metric = metricSizes[scale];
+  const { size } = metric;
+  const { minimumFontScale, minimumFontSize } = fitBounds(metric, PixelRatio.get());
   return (
     <View style={[styles.tile, style]} accessible accessibilityLabel={`${caption}, ${text.value}${text.unit === "" ? "" : ` ${text.unit}`}`}>
       <View style={styles.tileHead}>
@@ -118,7 +121,8 @@ export function MetricTile({ caption, text, size, minimumScale, accent, style }:
         <Text
           numberOfLines={1}
           adjustsFontSizeToFit
-          minimumFontScale={minimumScale}
+          minimumFontScale={minimumFontScale}
+          {...{ minimumFontSize }}
           maxFontSizeMultiplier={1}
           style={[styles.value, { fontSize: size, lineHeight: Math.round(size * 1.02), color: colors.text, letterSpacing: size > 60 ? -2 : -0.8 }]}
         >

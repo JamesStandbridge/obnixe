@@ -210,7 +210,7 @@ export function LiveScreen({ recording }: LiveScreenProps) {
           )}
           {workout === null ? (
             <View style={[styles.mainTile, { borderBottomColor: colors.line }, phase === "paused" && styles.dimmed]}>
-              <MetricTile caption={metricCaptions[readout.main]} text={text(readout.main)} size={120} minimumScale={0.55} accent={colors.sport[profile.sport]} />
+              <MetricTile caption={metricCaptions[readout.main]} text={text(readout.main)} scale="main" accent={colors.sport[profile.sport]} />
             </View>
           ) : (
             <View style={[styles.guided, { borderBottomColor: colors.line }, phase === "paused" && styles.dimmed]}>
@@ -223,8 +223,7 @@ export function LiveScreen({ recording }: LiveScreenProps) {
                 key={key}
                 caption={metricCaptions[key]}
                 text={text(key)}
-                size={56}
-                minimumScale={0.72}
+                scale="secondary"
                 style={[styles.cell, { borderTopColor: index < 2 ? "transparent" : colors.line }, index === readout.secondary.length - 1 && readout.secondary.length % 2 === 1 ? styles.cellWide : null]}
               />
             ))}
@@ -259,7 +258,7 @@ export function LiveScreen({ recording }: LiveScreenProps) {
           <View style={styles.mapCards} pointerEvents="none">
             <View style={[styles.mapCard, { backgroundColor: colors.bg, borderColor: colors.line }]}>
               {[readout.main, ...readout.secondary.slice(0, 2)].map((key) => (
-                <MetricTile key={key} caption={metricCaptions[key]} text={text(key)} size={30} minimumScale={0.8} style={styles.mapTile} />
+                <MetricTile key={key} caption={metricCaptions[key]} text={text(key)} scale="compact" style={styles.mapTile} />
               ))}
             </View>
             {live.route?.offRoute === true ? (
@@ -487,9 +486,9 @@ function LapsPage({ current, laps, profile }: LapsPageProps) {
           {`${live.title} · en cours`}
         </Text>
         <View style={styles.currentFigures}>
-          <MetricTile caption="Durée" text={{ value: live.duration, unit: "" }} size={40} minimumScale={0.8} style={styles.lapTile} />
-          <MetricTile caption="Distance" text={live.distance} size={40} minimumScale={0.8} style={styles.lapTile} />
-          <MetricTile caption={profile.primary === "pace" ? "Allure" : "Vitesse"} text={live.rate} size={40} minimumScale={0.8} style={styles.lapTile} />
+          <MetricTile caption="Durée" text={{ value: live.duration, unit: "" }} scale="compact" style={styles.lapTile} />
+          <MetricTile caption="Distance" text={live.distance} scale="compact" style={styles.lapTile} />
+          <MetricTile caption={profile.primary === "pace" ? "Allure" : "Vitesse"} text={live.rate} scale="compact" style={styles.lapTile} />
         </View>
       </View>
       {laps.length === 0 ? (

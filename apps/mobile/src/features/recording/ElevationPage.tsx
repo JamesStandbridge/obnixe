@@ -41,12 +41,12 @@ export function ElevationPage({ points, sport, altitude, ascent, descent, route 
   return (
     <View style={styles.root}>
       <View style={styles.figures}>
-        <MetricTile caption="Altitude" text={altitude} size={40} minimumScale={0.8} style={styles.figure} />
-        <MetricTile caption="D+" text={ascent} size={40} minimumScale={0.8} style={styles.figure} />
+        <MetricTile caption="Altitude" text={altitude} scale="compact" style={styles.figure} />
+        <MetricTile caption="D+" text={ascent} scale="compact" style={styles.figure} />
         {route === null ? (
-          <MetricTile caption="D−" text={descent} size={40} minimumScale={0.8} style={styles.figure} />
+          <MetricTile caption="D−" text={descent} scale="compact" style={styles.figure} />
         ) : (
-          <MetricTile caption="D+ restant" text={route.remainingAscent} size={40} minimumScale={0.8} style={styles.figure} />
+          <MetricTile caption="D+ restant" text={route.remainingAscent} scale="compact" style={styles.figure} />
         )}
       </View>
       <View style={[styles.chart, { borderColor: colors.line }]} onLayout={onLayout}>
