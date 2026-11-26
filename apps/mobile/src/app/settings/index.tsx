@@ -14,6 +14,7 @@ import { storageBytes } from "@/features/data/files";
 import { megabytes, weekdayList } from "@/features/data/format";
 import { formatTimeOfDay } from "@/format/dates";
 import { BackButton, Chevron } from "@/features/data/parts";
+import { MapSettingsSection } from "@/features/maps/MapSettingsSection";
 import { MassUnitSheet, RemindersSheet, massUnitLabels } from "@/features/data/PreferenceSheets";
 import { RestAlertsRow } from "@/features/data/RestAlertsRow";
 import { updateSettings } from "@/data/settings";
@@ -124,6 +125,8 @@ export default function Settings() {
             <Segmented options={themeOptions} value={current?.theme ?? "dark"} onChange={(theme) => updateSettings({ theme })} />
           </View>
         </Section>
+
+        <MapSettingsSection cacheMegabytes={current?.mapCacheMegabytes ?? 200} />
 
         <Section title="Unités">
           <Row

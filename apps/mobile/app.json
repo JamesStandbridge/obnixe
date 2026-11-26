@@ -75,7 +75,9 @@
             "usesCleartextTraffic": true
           }
         }
-      ]
+      ],
+      "@maplibre/maplibre-react-native",
+      "./plugins/withMapAssets.js"
     ],
     "experiments": {
       "typedRoutes": true

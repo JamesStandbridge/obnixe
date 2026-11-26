@@ -56,6 +56,35 @@ const glyphs = {
     ),
   },
   agent: { viewBox: 22, render: (color) => <Path d="M8 3.5v4M14 3.5v4M5.5 7.5h11v3a5.5 5.5 0 0 1-11 0zM11 16v2.5" {...stroke(color, 1.7)} /> },
+  locate: {
+    viewBox: 22,
+    render: (color) => (
+      <>
+        <Circle cx={11} cy={11} r={6} {...stroke(color, 1.7)} />
+        <Circle cx={11} cy={11} r={2} fill={color} />
+        <Path d="M11 2.5V5M11 17v2.5M2.5 11H5M17 11h2.5" {...stroke(color, 1.7)} />
+      </>
+    ),
+  },
+  north: {
+    viewBox: 22,
+    render: (color) => (
+      <>
+        <Path d="m11 3.5 4.5 13-4.5-2.8-4.5 2.8z" {...stroke(color, 1.7)} />
+        <Path d="m11 3.5 4.5 13-4.5-2.8z" fill={color} />
+      </>
+    ),
+  },
+  info: {
+    viewBox: 22,
+    render: (color) => (
+      <>
+        <Circle cx={11} cy={11} r={7.5} {...stroke(color, 1.7)} />
+        <Path d="M11 10v5" {...stroke(color, 1.8)} />
+        <Circle cx={11} cy={7.2} r={1.1} fill={color} />
+      </>
+    ),
+  },
   more: {
     viewBox: 22,
     render: (color) => (
