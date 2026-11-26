@@ -45,7 +45,9 @@ function BigButton({ label, accessibilityLabel, icon, tone, onPress, disabled, s
         {({ pressed }) =>
           tone === "act" ? (
             <BevelView fill={pressed ? colors.actPress : colors.actBg} cut={bevels.button} corner="bottomRight" style={styles.big}>
-              <Icon name={icon} size={22} color={ink} />
+              <View>
+                <Icon name={icon} size={22} color={ink} />
+              </View>
               <Text style={[styles.bigLabel, { color: ink }]}>{label}</Text>
             </BevelView>
           ) : (
@@ -79,7 +81,7 @@ export function LiveControls({ phase, locked, busy, onLap, onPause, onResume, on
       <View style={styles.row}>
         <HoldButton
           label="Déverrouiller"
-          hint="Maintenir appuyé"
+          hint="Appui long"
           icon="unlock"
           tone="neutral"
           onHeld={onUnlock}
@@ -93,7 +95,7 @@ export function LiveControls({ phase, locked, busy, onLap, onPause, onResume, on
   const stop = (
     <HoldButton
       label="Terminer"
-      hint="Maintenir appuyé"
+      hint="Appui long"
       icon="stop"
       tone="stop"
       disabled={busy || phase === "preparing"}

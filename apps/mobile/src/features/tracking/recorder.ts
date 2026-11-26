@@ -75,6 +75,7 @@ export function useDerivedRebuildState(): DerivedRebuildState {
 
 /** `NRG-001`: feeds the battery level to the recorder, at every level change and while it records. */
 export function watchBattery(): () => void {
+  if (tracker === null) return () => undefined;
   let level = -1;
   const push = (): void => recorder.setBatteryLevel(level);
   getBatteryLevelAsync().then((value) => {

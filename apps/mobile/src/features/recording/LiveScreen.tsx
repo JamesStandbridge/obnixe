@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BackHandler, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from "react-native";
+import { BackHandler, Platform, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from "react-native";
 import type { NativeScrollEvent, NativeSyntheticEvent, ScrollViewInstance } from "react-native";
 import Animated, { FadeInDown, FadeOutUp, LinearTransition, useAnimatedStyle } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -82,7 +82,7 @@ export function LiveScreen({ recording }: LiveScreenProps) {
   }, [reached]);
 
   useEffect(() => {
-    if (!locked) return undefined;
+    if (!locked || Platform.OS !== "android") return undefined;
     const subscription = BackHandler.addEventListener("hardwareBackPress", () => true);
     return () => subscription.remove();
   }, [locked]);
@@ -117,7 +117,7 @@ export function LiveScreen({ recording }: LiveScreenProps) {
         <View style={styles.headerRow}>
           <StateChip phase={phase} sport={colors.sport[profile.sport]} />
           <View style={styles.timer} accessible accessibilityLabel={`Chronomètre ${formatLongClock((clock?.timerMs ?? 0) / 1000)}`}>
-            <Chronometer baseAt={recording.timerBaseAt} frozenMs={recording.timerBaseAt === null ? (clock?.timerMs ?? 0) : 0} />
+            <Chronometer baseAt={recording.timerBaseAt} frozenMs={recording.timerBaseAt === null ? (clock?.timerMs ?? 0) : 0} style={styles.chronometer} />
           </View>
           <SignalBars level={live.signal.level} />
           <IconButton icon="sun" label="Mode plein soleil" pressed={palette === "sunlight"} onPress={() => updateSettings({ theme: palette === "sunlight" ? "dark" : "sunlight" })} />
@@ -145,7 +145,7 @@ export function LiveScreen({ recording }: LiveScreenProps) {
       </View>
 
       <View style={styles.banners}>
-        {phase === "auto_paused" ? <Banner key="auto" tone="warn" title="Pause automatique" detail="Reprend dès que tu bouges" /> : null}
+        {phase === "auto_paused" ? <Banner key="auto" tone="warn" title="Pause auto" detail="Le chronomètre reprend dès que tu bouges" /> : null}
         {pausedFor === null ? null : <Banner key="paused" tone="warn" title="En pause" detail={`Depuis ${formatLongClock(pausedFor / 1000)}`} />}
         {recording.issues.map((issue) => (
           <IssueBanner key={issue} issue={issue} />
@@ -191,7 +191,7 @@ export function LiveScreen({ recording }: LiveScreenProps) {
             </View>
           )}
           <View style={[styles.mainTile, { borderBottomColor: colors.line }, phase === "paused" && styles.dimmed]}>
-            <MetricTile caption={metricCaptions[readout.main]} text={text(readout.main)} size={112} minimumScale={0.6} accent={colors.sport[profile.sport]} />
+            <MetricTile caption={metricCaptions[readout.main]} text={text(readout.main)} size={120} minimumScale={0.55} accent={colors.sport[profile.sport]} />
           </View>
           <View style={[styles.grid, phase === "paused" && styles.dimmed]}>
             {readout.secondary.map((key, index) => (
@@ -199,9 +199,9 @@ export function LiveScreen({ recording }: LiveScreenProps) {
                 key={key}
                 caption={metricCaptions[key]}
                 text={text(key)}
-                size={48}
-                minimumScale={0.7}
-                style={[styles.cell, { borderTopColor: colors.line }, index === readout.secondary.length - 1 && readout.secondary.length % 2 === 1 ? styles.cellWide : null]}
+                size={56}
+                minimumScale={0.72}
+                style={[styles.cell, { borderTopColor: index < 2 ? "transparent" : colors.line }, index === readout.secondary.length - 1 && readout.secondary.length % 2 === 1 ? styles.cellWide : null]}
               />
             ))}
           </View>
@@ -463,7 +463,7 @@ interface LockShieldProps {
 function LockShield({ top, bottom }: LockShieldProps) {
   const { colors } = useTheme();
   return (
-    <View style={[styles.shield, { paddingTop: top + 64, bottom }]} onStartShouldSetResponder={() => true}>
+    <View style={[styles.shield, { paddingTop: top + 104, bottom }]} onStartShouldSetResponder={() => true}>
       <View style={[styles.lockBadge, { backgroundColor: colors.surface2 }]} accessible accessibilityLabel="Écran verrouillé">
         <Icon name="lock" size={14} color={colors.text} />
         <Text variant="caption">Verrouillé</Text>
@@ -476,7 +476,8 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   header: { paddingHorizontal: layout.gutter },
   headerRow: { flexDirection: "row", alignItems: "center", gap: 6, minHeight: 48 },
-  timer: { flex: 1, alignItems: "center" },
+  timer: { flex: 1, minWidth: 0 },
+  chronometer: { alignSelf: "stretch", textAlign: "center" },
   tabs: { flexDirection: "row", gap: 4, marginTop: 2 },
   tab: { flex: 1, minHeight: 40, alignItems: "center", justifyContent: "center", borderBottomWidth: 3 },
   banners: { paddingHorizontal: layout.gutter, gap: 6, paddingTop: 6 },
@@ -489,9 +490,9 @@ const styles = StyleSheet.create({
   targetHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   targetTrack: { height: 8, borderRadius: 4, overflow: "hidden" },
   targetFill: { height: 8, borderRadius: 4 },
-  mainTile: { paddingTop: 18, paddingBottom: 14, borderBottomWidth: 1 },
-  grid: { flexDirection: "row", flexWrap: "wrap", columnGap: 16 },
-  cell: { width: "47%", flexGrow: 1, paddingVertical: 12, borderTopWidth: 0, marginTop: 2 },
+  mainTile: { flex: 1, minHeight: 150, justifyContent: "center", paddingVertical: 12, borderBottomWidth: 1 },
+  grid: { flex: 1.4, flexDirection: "row", flexWrap: "wrap", alignContent: "stretch", columnGap: 16 },
+  cell: { width: "47%", flexGrow: 1, justifyContent: "center", paddingVertical: 10, borderTopWidth: 1 },
   cellWide: { width: "100%" },
   dimmed: { opacity: 0.55 },
   mapPage: { paddingHorizontal: 0 },
