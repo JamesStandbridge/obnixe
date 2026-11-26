@@ -7,6 +7,8 @@ export interface PickedFile {
   readonly bytes: Uint8Array;
 }
 
+const activityFileTypes = [".gpx", ".tcx", ".fit", ".gz", ".zip"];
+
 export interface SharedFile {
   readonly name: string;
   readonly bytes: Uint8Array | string;
@@ -61,6 +63,23 @@ export async function pickBackupFile(): Promise<PickedFile | null> {
   if (asset === undefined || file === undefined) return null;
   return { name: asset.name, size: file.size, bytes: new Uint8Array(await file.arrayBuffer()) };
 }
+
+export async function pickActivityFile(): Promise<PickedFile | null> {
+  const result = await getDocumentAsync({ type: activityFileTypes, multiple: false, base64: false });
+  if (result.canceled) return null;
+  const [asset] = result.assets;
+  const file = asset?.file;
+  if (asset === undefined || file === undefined) return null;
+  return { name: asset.name, size: file.size, bytes: new Uint8Array(await file.arrayBuffer()) };
+}
+
+export async function readOpenedFile(uri: string): Promise<PickedFile> {
+  const response = await fetch(uri);
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  return { name: new URL(uri).pathname.split("/").pop() ?? uri, size: bytes.length, bytes };
+}
+
+export function releaseOpenedFile(_uri: string): void {}
 
 export async function shareFile(shared: SharedFile): Promise<void> {
   const part = typeof shared.bytes === "string" ? shared.bytes : new Uint8Array(shared.bytes);
