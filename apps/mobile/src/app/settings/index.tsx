@@ -32,7 +32,7 @@ import { Text } from "@/ui/Text";
 import { useTheme } from "@/ui/theme";
 import { fonts } from "@/ui/tokens";
 
-type OpenSheet = "sports" | "zones" | "unit" | "reminders" | "trash" | "aside" | "archive" | null;
+type OpenSheet = "sports" | "zones" | "unit" | "reminders" | "trash" | "aside" | "exportArchive" | null;
 
 const themeOptions: readonly { readonly value: Theme; readonly label: string }[] = [
   { value: "dark", label: "Sombre" },
@@ -80,7 +80,7 @@ export default function Settings() {
           <Row title="Importer une sauvegarde" trailing={<Chevron />} onPress={() => router.push("/import")} />
           <Row title="Importer une activité" detail="GPX, TCX ou FIT, depuis une montre ou une app" trailing={<Chevron />} onPress={() => router.push("/import-activity")} />
           <Row title="Importer l'archive Garmin Connect" detail="tout l'historique, depuis l'export du compte" trailing={<Chevron />} onPress={() => router.push("/import-archive")} />
-          <Row title="Exporter les activités" detail="archive ZIP de fichiers GPX ou FIT" trailing={<Chevron />} onPress={() => setSheet("archive")} />
+          <Row title="Exporter les activités" detail="archive ZIP de fichiers GPX ou FIT" trailing={<Chevron />} onPress={() => setSheet("exportArchive")} />
           <Row title="Corbeille" detail="30 jours" value={String(trash.items.length + trash.replaced.length)} trailing={<Chevron />} onPress={() => setSheet("trash")} />
           {aside.copies.length === 0 ? null : (
             <Row
@@ -170,7 +170,7 @@ export default function Settings() {
       <ZonesSheet open={sheet === "zones"} onClose={close} />
       <MassUnitSheet open={sheet === "unit"} value={current?.massUnit ?? "kg"} onClose={close} />
       <RemindersSheet open={sheet === "reminders"} weekdays={current?.reminderWeekdays ?? 0} minutes={current?.reminderMinutes ?? 18 * 60 + 30} onClose={close} />
-      <ExportArchiveSheet open={sheet === "archive"} onClose={close} />
+      <ExportArchiveSheet open={sheet === "exportArchive"} onClose={close} />
       <TrashSheet open={sheet === "trash"} massUnit={current?.massUnit ?? "kg"} onClose={close} />
       <AsideSheet open={sheet === "aside"} aside={aside} onClose={close} />
     </>

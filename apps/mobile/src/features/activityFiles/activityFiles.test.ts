@@ -8,7 +8,7 @@ import type { ImportComputation, ImportErrorReason } from "@obnixe/core";
 import { recording, session, settings } from "@obnixe/schema";
 import type { Id, LocalDate } from "@obnixe/schema";
 import { activityFile } from "@/features/activityFiles/exportActivity";
-import { archivePeriods, periodStart, writeArchive } from "@/features/activityFiles/exportArchive";
+import { exportPeriods, periodStart, writeExportArchive } from "@/features/activityFiles/exportArchive";
 import { createStreamedFile } from "@/features/data/files";
 import type { StreamedFile } from "@/features/data/files";
 import { commitImport, decisionOf, defaultResolution, importErrorMessage, importSports, matchedSession, matchImport, previewPath, readActivity, resolutionsOf, sportChoice } from "@/features/activityFiles/importActivity";
@@ -234,7 +234,7 @@ describe("exporting every activity (IO-005)", () => {
     expect(rows.map((row) => row.sessionId)).toEqual([first, second, gone]);
     const file = new MemoryFile();
     const progress: number[] = [];
-    expect(await writeArchive(rows, "fit", false, file, (done) => progress.push(done))).toEqual({ exported: 2, skipped: 1 });
+    expect(await writeExportArchive(rows, "fit", false, file, (done) => progress.push(done))).toEqual({ exported: 2, skipped: 1 });
     expect(progress).toEqual([1, 2, 3]);
     const entries = unzipSync(file.bytes());
     expect(Object.keys(entries)).toEqual(["obnixe-2026-10-01-footing.fit", "obnixe-2026-10-02-footing.fit"]);
@@ -245,7 +245,7 @@ describe("exporting every activity (IO-005)", () => {
 
   it("starts the periods on the right local date", () => {
     const today = "2026-11-27" as LocalDate;
-    expect(archivePeriods.map((period) => periodStart(period, today))).toEqual([null, "2026-01-01", "2025-11-28", "2026-10-29"]);
+    expect(exportPeriods.map((period) => periodStart(period, today))).toEqual([null, "2026-01-01", "2025-11-28", "2026-10-29"]);
   });
 
   it("streams the archive into the export folder", async () => {

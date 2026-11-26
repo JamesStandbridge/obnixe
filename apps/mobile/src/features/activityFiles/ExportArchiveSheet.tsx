@@ -3,8 +3,8 @@ import { StyleSheet, View } from "react-native";
 import { CodedError } from "expo";
 import { archiveFileName, archiveMimeType, exportableSessions, localDateOf } from "@obnixe/core";
 import { db, environment } from "@/data/database";
-import { periodStart, writeArchive } from "@/features/activityFiles/exportArchive";
-import type { ArchiveFormat, ArchivePeriod } from "@/features/activityFiles/exportArchive";
+import { periodStart, writeExportArchive } from "@/features/activityFiles/exportArchive";
+import type { BulkExportFormat, ExportPeriod } from "@/features/activityFiles/exportArchive";
 import { useExportPrivacy } from "@/features/activityFiles/exportPrivacy";
 import { createStreamedFile } from "@/features/data/files";
 import type { StreamedFile } from "@/features/data/files";
@@ -24,12 +24,12 @@ interface ExportArchiveSheetProps {
   readonly onClose: () => void;
 }
 
-const formatOptions: readonly { readonly value: ArchiveFormat; readonly label: string }[] = [
+const formatOptions: readonly { readonly value: BulkExportFormat; readonly label: string }[] = [
   { value: "gpx", label: "GPX" },
   { value: "fit", label: "FIT" },
 ];
 
-const periodOptions: readonly { readonly value: ArchivePeriod; readonly label: string }[] = [
+const periodOptions: readonly { readonly value: ExportPeriod; readonly label: string }[] = [
   { value: "all", label: "Tout" },
   { value: "year", label: "Cette année" },
   { value: "twelveMonths", label: "12 mois" },
@@ -43,8 +43,8 @@ export function ExportArchiveSheet({ open, onClose }: ExportArchiveSheetProps) {
   const notify = useSnackbar();
   const privacy = useExportPrivacy();
   const version = useDatabaseVersion(watchedTables);
-  const [format, setFormat] = useState<ArchiveFormat>("gpx");
-  const [period, setPeriod] = useState<ArchivePeriod>("all");
+  const [format, setFormat] = useState<BulkExportFormat>("gpx");
+  const [period, setPeriod] = useState<ExportPeriod>("all");
   const [includeFullTrack, setIncludeFullTrack] = useState<boolean | null>(null);
   const [done, setDone] = useState<number | null>(null);
   const today = localDateOf(environment.now(), deviceTimeZone());
@@ -63,7 +63,7 @@ export function ExportArchiveSheet({ open, onClose }: ExportArchiveSheetProps) {
     let file: StreamedFile | null = null;
     try {
       file = createStreamedFile(archiveFileName(today), archiveMimeType);
-      const result = await writeArchive(rows, format, fullTrack, file, setDone);
+      const result = await writeExportArchive(rows, format, fullTrack, file, setDone);
       if (result.exported === 0) {
         file.discard();
         notify({ text: "Aucune trace lisible" });

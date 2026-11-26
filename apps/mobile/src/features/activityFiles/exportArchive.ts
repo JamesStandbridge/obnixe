@@ -5,14 +5,14 @@ import { db } from "@/data/database";
 import { maskedActivityFile, TrackUnavailableError } from "@/features/activityFiles/exportActivity";
 import type { StreamedFile } from "@/features/data/files";
 
-export const archiveFormats = ["gpx", "fit"] as const satisfies readonly ExportFormat[];
-export type ArchiveFormat = (typeof archiveFormats)[number];
+export const bulkExportFormats = ["gpx", "fit"] as const satisfies readonly ExportFormat[];
+export type BulkExportFormat = (typeof bulkExportFormats)[number];
 
-export const archivePeriods = ["all", "year", "twelveMonths", "thirtyDays"] as const;
-export type ArchivePeriod = (typeof archivePeriods)[number];
+export const exportPeriods = ["all", "year", "twelveMonths", "thirtyDays"] as const;
+export type ExportPeriod = (typeof exportPeriods)[number];
 
 /** The first local date of the period ending `today`, `null` for every activity. */
-export function periodStart(period: ArchivePeriod, today: LocalDate): LocalDate | null {
+export function periodStart(period: ExportPeriod, today: LocalDate): LocalDate | null {
   switch (period) {
     case "all":
       return null;
@@ -29,7 +29,7 @@ export function periodStart(period: ArchivePeriod, today: LocalDate): LocalDate 
   }
 }
 
-export interface ArchiveResult {
+export interface BulkExportResult {
   readonly exported: number;
   /** Sessions whose track file is gone or unreadable. */
   readonly skipped: number;
@@ -39,7 +39,7 @@ export interface ArchiveResult {
  * `IO-005`: one file per session, masked like a single export (`PRV-011`), compressed and written to `file` before the next
  * session is read.
  */
-export async function writeArchive(sessions: readonly ExportableSession[], format: ArchiveFormat, includeFullTrack: boolean, file: StreamedFile, onProgress: (done: number) => void): Promise<ArchiveResult> {
+export async function writeExportArchive(sessions: readonly ExportableSession[], format: BulkExportFormat, includeFullTrack: boolean, file: StreamedFile, onProgress: (done: number) => void): Promise<BulkExportResult> {
   const archive = new ExportArchive();
   const mask = exportPrivacyMask(db(), includeFullTrack);
   let exported = 0;
