@@ -1,5 +1,7 @@
 import { eq } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/expo-sqlite";
 import { getRandomValues } from "expo-crypto";
+import { openDatabaseSync } from "expo-sqlite";
 import {
   backupFileExtension,
   buildSnapshot,
@@ -15,8 +17,9 @@ import {
   summarizeSnapshot,
   unpackSnapshot,
 } from "@obnixe/core";
-import type { BackupHeader, MergeCounts, PhotoFile, Snapshot, TableRow } from "@obnixe/core";
-import { backup } from "@obnixe/schema";
+import type { BackupHeader, MergeCounts, PhotoFile, Snapshot, SnapshotUpgrader, TableRow } from "@obnixe/core";
+import { backup, schema } from "@obnixe/schema";
+import migrations from "@obnixe/schema/migrations";
 import type { Backup, BackupKind, EpochMs, Id } from "@obnixe/schema";
 import { db, environment } from "@/data/database";
 import { deleteKept, deletePhoto, readKept, readPhoto, shareFile, writeKept, writePhoto } from "@/features/data/files";
@@ -25,6 +28,14 @@ import { fileStamp } from "@/features/data/format";
 
 const fillRandom = (bytes: Uint8Array): void => {
   getRandomValues(bytes);
+};
+
+const upgrader: SnapshotUpgrader = {
+  migrations,
+  openScratch: () => {
+    const sqlite = openDatabaseSync(":memory:");
+    return { db: drizzle(sqlite, { schema }), close: () => sqlite.closeSync() };
+  },
 };
 
 export interface ExportRequest {
@@ -92,7 +103,7 @@ export function inspectBackup(file: PickedFile): ChosenBackup {
 }
 
 export function unlockBackup(chosen: ChosenBackup, passphrase: string, onProgress: (progress: number) => void): Promise<Snapshot> {
-  return openSnapshot(chosen.bytes, { passphrase, onProgress });
+  return openSnapshot(chosen.bytes, { passphrase, onProgress, upgrader });
 }
 
 export type ImportMode = "merge" | "replace";
@@ -157,7 +168,7 @@ export async function restoreReplaced(row: Backup): Promise<void> {
   if (file === null) throw new KeptSnapshotMissingError(String(row.id));
   const bytes = await readKept(file);
   if (bytes === null) throw new KeptSnapshotMissingError(file);
-  await importBackup(unpackSnapshot(bytes), "replace");
+  await importBackup(unpackSnapshot(bytes, upgrader), "replace");
   deleteKept(file);
   db().update(backup).set({ snapshotFile: null }).where(eq(backup.id, row.id)).run();
 }

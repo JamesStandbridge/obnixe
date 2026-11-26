@@ -30,7 +30,7 @@ const themeOptions: readonly { readonly value: Theme; readonly label: string }[]
   { value: "system", label: "Système" },
 ];
 
-const preferredOrder: readonly SportKey[] = ["strength", "run", "climb", "hike", "swim", "bike", "yoga"];
+const preferredOrder: readonly SportKey[] = ["strength", "run", "trail", "climb", "hike", "walk", "swim", "bike", "yoga"];
 const offered = [...preferredOrder, ...sportKeys.filter((sport) => !preferredOrder.includes(sport))].filter((sport) => !("retired" in sports[sport]));
 const pairs: readonly (readonly SportKey[])[] = offered.reduce<SportKey[][]>((rows, sport, index) => {
   if (index % 2 === 0) rows.push([sport]);
