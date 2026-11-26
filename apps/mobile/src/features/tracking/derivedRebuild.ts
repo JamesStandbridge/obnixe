@@ -50,6 +50,7 @@ export class DerivedRebuild {
   private readonly listeners = new Set<() => void>();
   private state: DerivedRebuildState = idle;
   private again = false;
+  private holds = 0;
   private current: Promise<void> | null = null;
 
   constructor(
@@ -66,8 +67,23 @@ export class DerivedRebuild {
 
   readonly getState = (): DerivedRebuildState => this.state;
 
+  /**
+   * Defers the passes while a long write runs, such as an archive import that commits batch after batch (`IO-026`): a running
+   * pass stops at its next batch, and the caller requests one pass once released.
+   */
+  hold(): () => void {
+    this.holds += 1;
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this.holds -= 1;
+    };
+  }
+
   /** Starts a pass, or queues one after the running pass so a change made meanwhile is seen. */
   request(): Promise<void> {
+    if (this.holds > 0) return Promise.resolve();
     if (this.current !== null) {
       this.again = true;
       return this.current;
@@ -84,13 +100,17 @@ export class DerivedRebuild {
     do {
       this.again = false;
       await this.pass();
-    } while (this.again);
+    } while (this.again && this.holds === 0);
   }
 
   private async pass(): Promise<void> {
     const skipped = new Set<Id>();
     const segments = staleSegments(db()).length;
     for (;;) {
+      if (this.holds > 0) {
+        this.set({ ...this.state, running: false });
+        return;
+      }
       const mask = activePrivacyMask(db());
       const pending = staleDerivationCount(db(), mask) - skipped.size;
       this.set({ pending: Math.max(0, pending), segments, running: pending > 0 || segments > 0 });
@@ -105,6 +125,10 @@ export class DerivedRebuild {
       }
       this.store(rebuilt, mask);
       await nextTick();
+    }
+    if (this.holds > 0) {
+      this.set({ ...this.state, running: false });
+      return;
     }
     await this.sweep();
   }

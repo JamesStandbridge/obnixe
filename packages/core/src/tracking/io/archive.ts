@@ -1,9 +1,9 @@
-import { inArray } from "drizzle-orm";
-import { session } from "@obnixe/schema";
+import { and, eq, inArray, notInArray } from "drizzle-orm";
+import { change, changeset, session } from "@obnixe/schema";
 import type { EpochMs, Id, SportKey } from "@obnixe/schema";
 import { importActor } from "../../data/backup/merge.ts";
 import type { Environment, ObnixeDatabase } from "../../database.ts";
-import { revert } from "../../undo.ts";
+import { revert, revertedRowKey } from "../../undo.ts";
 import type { RevertRequest } from "../../undo.ts";
 import { commit } from "../../writer.ts";
 import type { Mutation } from "../../writer.ts";
@@ -388,13 +388,54 @@ export async function importArchive(archive: OpenedArchive, request: ArchiveImpo
   return { format: archive.format, imported, replaced: replacedIds.size, skipped, refused, batches, stopped };
 }
 
+/** Columns a weather write changes on a recording besides `weather`: the journal's own bookkeeping. */
+const weatherWriteColumns: ReadonlySet<string> = new Set(["weather", "updatedAt", "changesetId"]);
+
+function onlyFillsWeather(before: Readonly<Record<string, unknown>> | null, after: Readonly<Record<string, unknown>> | null): boolean {
+  if (before === null || after === null || before["weather"] !== null) return false;
+  const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
+  return [...keys].every((key) => weatherWriteColumns.has(key) || JSON.stringify(before[key]) === JSON.stringify(after[key]));
+}
+
+/**
+ * Recordings of the import changed since only by the weather queue filling their weather (`WTH-002`): the undo deletes them
+ * all the same instead of taking that write for an edit of the user. A recording changed otherwise still blocks the undo.
+ */
+function weatherSettledRows(db: ObnixeDatabase, batchIds: readonly Id[]): ReadonlySet<string> {
+  const created = db
+    .select({ rowId: change.rowId })
+    .from(change)
+    .where(and(inArray(change.changesetId, [...batchIds]), eq(change.tableName, "recording"), eq(change.operation, "insert")))
+    .all()
+    .map((row) => row.rowId);
+  if (created.length === 0) return new Set();
+  const later = db
+    .select()
+    .from(change)
+    .where(and(eq(change.tableName, "recording"), inArray(change.rowId, created), notInArray(change.changesetId, [...batchIds])))
+    .all();
+  const edited = new Set(later.filter((row) => row.operation !== "update" || !onlyFillsWeather(row.before, row.after)).map((row) => row.rowId));
+  return new Set(later.filter((row) => !edited.has(row.rowId)).map((row) => revertedRowKey("recording", row.rowId)));
+}
+
 /**
  * *Annuler l'import* (`IO-025`): reverts every batch, newest first, in one transaction, so that a conflict with a later edit
  * leaves the import whole. Returns the track files the import wrote, to delete once reverted.
  */
-export function undoArchiveImport(db: ObnixeDatabase, env: Environment, report: ArchiveImportReport, request: Omit<RevertRequest, "changesetId">): readonly string[] {
+export function undoArchiveImport(db: ObnixeDatabase, env: Environment, report: ArchiveImportReport, request: Omit<RevertRequest, "changesetId" | "settledRows">): readonly string[] {
+  const batchIds = report.batches.map((batch) => batch.changesetId);
   db.transaction((tx) => {
-    for (const batch of [...report.batches].reverse()) revert(tx, env, { ...request, changesetId: batch.changesetId });
+    const settledRows = weatherSettledRows(tx, batchIds);
+    for (const changesetId of [...batchIds].reverse()) revert(tx, env, { ...request, changesetId, settledRows });
   });
   return report.batches.flatMap((batch) => batch.trackFiles);
+}
+
+/** Whether every batch of the import is still applied, so that *Annuler l'import* can still be offered. */
+export function archiveImportApplied(db: ObnixeDatabase, report: ArchiveImportReport): boolean {
+  const batchIds = report.batches.map((batch) => batch.changesetId);
+  if (batchIds.length === 0) return false;
+  const present = db.select({ id: changeset.id }).from(changeset).where(inArray(changeset.id, batchIds)).all().length;
+  const reverted = db.select({ id: changeset.id }).from(changeset).where(inArray(changeset.revertsId, batchIds)).all().length;
+  return present === batchIds.length && reverted === 0;
 }

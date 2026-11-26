@@ -183,6 +183,36 @@ describe("derived rows", () => {
     expect(efforts.map((effort) => effort.sessionId).sort()).toEqual([first.sessionId, second.sessionId].sort());
   });
 
+  it("defers its passes while held, such as during an archive import, then derives everything in one pass (IO-026)", async () => {
+    const run = await recorded(200, true);
+    const rebuild = new DerivedRebuild(writer, (error) => {
+      throw error;
+    });
+    const release = rebuild.hold();
+    await rebuild.request();
+    expect(staleDerivationCount(db(), activePrivacyMask(db()))).toBe(1);
+    release();
+    release();
+    await rebuild.request();
+    expect(staleDerivationCount(db(), activePrivacyMask(db()))).toBe(0);
+    expect(db().select().from(bestEffort).where(eq(bestEffort.sessionId, run.sessionId)).all()).not.toEqual([]);
+  });
+
+  it("stops a running pass at its next batch when held", async () => {
+    for (let index = 0; index < 21; index += 1) await recorded(30, true);
+    const rebuild = new DerivedRebuild(writer, (error) => {
+      throw error;
+    });
+    const pass = rebuild.request();
+    const release = rebuild.hold();
+    await pass;
+    expect(staleDerivationCount(db(), activePrivacyMask(db()))).toBe(1);
+    expect(rebuild.getState().running).toBe(false);
+    release();
+    await rebuild.request();
+    expect(staleDerivationCount(db(), activePrivacyMask(db()))).toBe(0);
+  });
+
   it("skips a recording whose track is gone instead of looping", async () => {
     const run = await recorded(60, true);
     storedFiles.delete(`${Paths.document.uri}/tracks/${run.recordingId}.otrk`);

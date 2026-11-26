@@ -29,6 +29,12 @@ export interface RevertRequest {
   readonly changesetId: Id;
   readonly summary: string;
   readonly restoredVersionSummary: (restoredNumber: number) => string;
+  /** `revertedRowKey` of rows whose later changes the caller undoes along: compared as the reverted changeset left them. */
+  readonly settledRows?: ReadonlySet<string>;
+}
+
+export function revertedRowKey(table: JournaledTable, rowId: string): string {
+  return `${table}:${rowId}`;
 }
 
 interface ChainLink {
@@ -112,7 +118,11 @@ function revertOne(db: ObnixeDatabase, env: Environment, request: RevertRequest,
   const existing = revertedBy(db, changesetId);
   if (existing !== null) throw new AlreadyRevertedError(changesetId, existing);
   const changes = db.select().from(change).where(eq(change.changesetId, changesetId)).orderBy(asc(change.sequence)).all();
-  const plan = planRevert(changes, (table, rowId) => readRow(db, table, rowId));
+  const left = new Map<string, RowImage | undefined>(changes.map((row) => [revertedRowKey(row.tableName, row.rowId), row.after ?? undefined]));
+  const plan = planRevert(changes, (table, rowId) => {
+    const key = revertedRowKey(table, rowId);
+    return request.settledRows?.has(key) === true ? left.get(key) : readRow(db, table, rowId);
+  });
   if (plan.conflicts.length > 0) throw new RevertConflictError(plan.conflicts);
   const mutations = plan.operations.flatMap((operation) => toMutations(db, env, request, operation));
   try {
