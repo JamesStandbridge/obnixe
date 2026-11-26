@@ -348,7 +348,7 @@ final class JournalWriterTests: XCTestCase {
   func testScanningStopsAtABatchTheStrictReaderRefusesDespiteAValidChecksum() throws {
     let ends = try writeSession(stop: false)
     var bytes = try bytes()
-    bytes[ends[3] - 5] = 4
+    bytes[ends[3] - 5] = 6
     var sink = ByteSink(capacity: bytes.count)
     sink.append(bytes)
     sink.setU32(at: ends[3] - 4, crc(bytes, ends[2], ends[3] - 4))

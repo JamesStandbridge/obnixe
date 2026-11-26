@@ -368,7 +368,7 @@ class JournalWriterTest {
     val ends = writeSession(stop = false)
     val bytes = path.readBytes()
     val markKind = ends[3] - 5
-    bytes[markKind] = 4
+    bytes[markKind] = 6
     val buffer = le(bytes)
     buffer.putInt(ends[3] - 4, crc(bytes, ends[2], ends[3] - 4))
     val tail = JournalScanner.scan(bytes)
