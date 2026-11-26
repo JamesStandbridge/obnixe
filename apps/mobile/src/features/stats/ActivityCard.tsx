@@ -15,7 +15,7 @@ import { useTheme } from "@/ui/theme";
 import { bevels, fonts, radii, wash } from "@/ui/tokens";
 import { formatTimeAt } from "@/format/dates";
 import { formatClock } from "@/format/durations";
-import { capitalize, plural, sessionTitle, zoneLabel } from "@/format/labels";
+import { capitalize, plural, summaryTitle, zoneLabel } from "@/format/labels";
 import { formatInteger, formatNumber } from "@/format/numbers";
 import { durationFigure, effortLabel, painWords, rowDate } from "@/features/stats/format";
 import { DetailLine } from "@/features/stats/parts";
@@ -243,7 +243,7 @@ function cardDate(summary: SessionSummary): string {
 }
 
 function cardLabel(summary: SessionSummary, stats: readonly StatValue[]): string {
-  const parts = [`${sportLabel(summary.sport)}, ${sessionTitle(summary)}`, cardDate(summary)];
+  const parts = [`${sportLabel(summary.sport)}, ${summaryTitle(summary)}`, cardDate(summary)];
   for (const stat of stats) parts.push(`${stat.label} ${stat.value} ${stat.unit}`.trim());
   if (summary.effort !== null) parts.push(`effort ${effortLabel(summary.effort)}`);
   for (const pain of summary.pains) parts.push(`${painWords[pain.level]} ${zoneLabel(pain.zone).toLowerCase()}`);
@@ -274,7 +274,7 @@ export function ActivityCard({ summary, massUnit }: ActivityCardProps) {
               <SportIcon sport={summary.sport} variant="badge" />
               <View style={styles.headText}>
                 <Text style={styles.title} numberOfLines={1}>
-                  {sessionTitle(summary)}
+                  {summaryTitle(summary)}
                 </Text>
                 <Text variant="caption" tone="secondary" numberOfLines={1}>
                   {date}

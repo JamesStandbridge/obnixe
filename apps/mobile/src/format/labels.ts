@@ -1,7 +1,7 @@
 import { localTimeOf } from "@obnixe/core";
 import type { SessionSummary } from "@obnixe/core";
 import { sports, zones } from "@obnixe/schema";
-import type { FieldDefinition, FieldValue, FieldValues, SportDefinition, ZoneKey } from "@obnixe/schema";
+import type { FieldDefinition, FieldValue, FieldValues, Session, SportDefinition, ZoneKey } from "@obnixe/schema";
 import { formatInteger } from "@/format/numbers";
 
 export function plural(count: number, singular: string, pluralForm = `${singular}s`): string {
@@ -22,7 +22,12 @@ export function zoneLabel(zone: ZoneKey): string {
 
 export const freeStrengthTitle = "Musculation libre";
 
-export type SessionTitleSource = Pick<SessionSummary, "sport" | "title" | "slotName" | "variantName" | "values" | "startedAt" | "timeZone" | "recorded">;
+export interface SessionTitleSource extends Pick<Session, "sport" | "title" | "values" | "startedAt" | "timeZone"> {
+  readonly slotName: string | null;
+  readonly variantName: string | null;
+  /** Whether a track backs the session, recorded or imported. */
+  readonly recorded: boolean;
+}
 
 /** The moment of the day a recorded activity started, as its derived title says it (`REC-053`). */
 export function dayMoment(source: Pick<SessionTitleSource, "startedAt" | "timeZone">): string {
@@ -52,6 +57,10 @@ function firstChoice(sport: SportDefinition, values: FieldValues): string | null
     if (label !== null) return label;
   }
   return null;
+}
+
+export function summaryTitle(summary: SessionSummary): string {
+  return sessionTitle({ ...summary, recorded: summary.recording !== null });
 }
 
 export function sessionTitle(source: SessionTitleSource): string {
