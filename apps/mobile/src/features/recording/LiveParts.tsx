@@ -147,7 +147,10 @@ interface HoldButtonProps {
   readonly children?: ReactNode;
 }
 
-/** `UX-003`: acts after a long press of 800 ms, the fill showing the progress; released early, it drains back. */
+/**
+ * `UX-003`: a long press of 800 ms, the fill showing the progress, then a vibration; it acts on release, since unmounting
+ * the pressed view swallows the next touch on Android. Released early, it drains back.
+ */
 export function HoldButton({ label, hint, icon, tone, onHeld, onAccessibilityActivate, disabled = false, style }: HoldButtonProps) {
   const { colors, reduceMotion } = useTheme();
   const progress = useSharedValue(0);
@@ -157,7 +160,6 @@ export function HoldButton({ label, hint, icon, tone, onHeld, onAccessibilityAct
   const complete = (): void => {
     held.current = true;
     void notificationAsync(NotificationFeedbackType.Warning);
-    onHeld();
   };
 
   const start = (): void => {
@@ -170,7 +172,10 @@ export function HoldButton({ label, hint, icon, tone, onHeld, onAccessibilityAct
   };
 
   const release = (): void => {
-    if (held.current) return;
+    if (held.current) {
+      onHeld();
+      return;
+    }
     cancelAnimation(progress);
     progress.value = withTiming(0, { duration: reduceMotion ? 0 : 180 });
   };

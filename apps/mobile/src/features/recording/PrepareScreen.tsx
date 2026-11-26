@@ -24,7 +24,7 @@ import { liveReadout, storedReadout } from "@/features/recording/readout";
 import { ReadoutEditor } from "@/features/recording/ReadoutEditor";
 import { targetLabel } from "@/features/recording/target";
 import { BatteryHint } from "@/features/tracking/BatteryHelpScreen";
-import { ensureActivityPermission, locationAccess, openSystemSettings, requestLocation } from "@/features/tracking/permissions";
+import { ensureActivityPermission, ensureNotificationPermission, locationAccess, openSystemSettings, requestLocation } from "@/features/tracking/permissions";
 import type { LocationAccess } from "@/features/tracking/permissions";
 import { recorder, recordingAvailable, useRecorderView } from "@/features/tracking/recorder";
 import type { RecorderFailure } from "@/features/tracking/recorderHost";
@@ -348,6 +348,7 @@ function Preparation({ sport: requested, kind: requestedKind, slotId, variantId,
   const begin = async (): Promise<void> => {
     if (profile === null || starting) return;
     setStarting(true);
+    await ensureNotificationPermission();
     if (profile.cadence === "steps") await ensureActivityPermission(profile);
     if (display.countdown) {
       setCounting(true);
