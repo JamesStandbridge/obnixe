@@ -71,11 +71,26 @@ struct HeartRateSample: Equatable {
   var rrInterval: Int?
 }
 
+struct CadenceSample: Equatable {
+  var t: Int64
+  /// Pedal revolutions or steps per minute, as the sport's cadence.
+  var perMinute: Int
+}
+
+struct PowerSample: Equatable {
+  var t: Int64
+  var watts: Int
+  /// Crank revolutions per minute from the power meter.
+  var cadence: Int?
+}
+
 enum Sample: Equatable {
   case fix(Fix)
   case pressure(PressureSample)
   case steps(StepSample)
   case heartRate(HeartRateSample)
+  case cadence(CadenceSample)
+  case power(PowerSample)
 
   var t: Int64 {
     switch self {
@@ -83,6 +98,8 @@ enum Sample: Equatable {
     case .pressure(let sample): return sample.t
     case .steps(let sample): return sample.t
     case .heartRate(let sample): return sample.t
+    case .cadence(let sample): return sample.t
+    case .power(let sample): return sample.t
     }
   }
 
@@ -92,6 +109,8 @@ enum Sample: Equatable {
     case .pressure: return .pressure
     case .steps: return .steps
     case .heartRate: return .heartRate
+    case .cadence: return .cadence
+    case .power: return .power
     }
   }
 
@@ -105,6 +124,10 @@ enum Sample: Equatable {
       return ["type": "steps", "t": Double(sample.t), "count": Double(sample.count)]
     case .heartRate(let sample):
       return ["type": "heart_rate", "t": Double(sample.t), "bpm": sample.bpm, "contact": sample.contact.wire, "rrInterval": sample.rrInterval]
+    case .cadence(let sample):
+      return ["type": "cadence", "t": Double(sample.t), "perMinute": sample.perMinute]
+    case .power(let sample):
+      return ["type": "power", "t": Double(sample.t), "watts": sample.watts, "cadence": sample.cadence]
     }
   }
 }

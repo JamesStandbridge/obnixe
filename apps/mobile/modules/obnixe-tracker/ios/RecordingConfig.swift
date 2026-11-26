@@ -20,14 +20,20 @@ struct ReplaySource {
   let speed: Double
 }
 
+struct BluetoothSensor: Equatable {
+  let service: SensorService
+  /// Core Bluetooth identifier of the source.
+  let identifier: UUID
+}
+
 struct RecordingConfig {
   let sessionId: String
   let journalURL: URL
   var power: TrackerPower
   let barometer: Bool
   let pedometer: Bool
-  /// Core Bluetooth identifier of the heart rate source.
-  let heartRateDevice: UUID?
+  /// At most one per role; one source may appear under several services.
+  let bluetooth: [BluetoothSensor]
   /// Batch interval while the app is in the foreground.
   let batchIntervalMs: Int64
   /// Batch interval while the app is in the background.

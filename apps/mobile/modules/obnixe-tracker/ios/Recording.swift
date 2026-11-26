@@ -6,16 +6,25 @@ enum TrackerIssue: String {
   case storageLow = "storage_low"
   case storageFull = "storage_full"
   case heartRateLost = "heart_rate_lost"
+  case cadenceLost = "cadence_lost"
+  case powerLost = "power_lost"
 }
 
 struct TrackerSources {
   let location: LocationSourceKind
   let barometer: Bool
   let pedometer: Bool
-  let heartRate: Bool
+  let bluetooth: Set<SensorRole>
 
   var bridge: [String: Any] {
-    ["location": location.rawValue, "barometer": barometer, "pedometer": pedometer, "heartRate": heartRate]
+    [
+      "location": location.rawValue,
+      "barometer": barometer,
+      "pedometer": pedometer,
+      "heartRate": bluetooth.contains(.heartRate),
+      "cadence": bluetooth.contains(.cadence),
+      "power": bluetooth.contains(.power),
+    ]
   }
 }
 
@@ -46,7 +55,7 @@ protocol RecordingListener: AnyObject {
  (`REC-080`); batches close every `batchIntervalMs` while the app is in the foreground and every `backgroundBatchIntervalMs` otherwise
  (`PRF-003`, `PRF-051`), and immediately on a mark. Confined to `queue`.
  */
-final class Recording: HeartRateLinkListener {
+final class Recording: SensorLinkListener {
   private(set) var config: RecordingConfig
   private(set) var paused: Bool
   /// Timer value frozen by a pause, restored on resume so the Live Activity stays right while JavaScript sleeps.
@@ -74,7 +83,9 @@ final class Recording: HeartRateLinkListener {
   private var location: LocationSource?
   private var pressure: PressureStream?
   private var steps: StepStream?
-  private var heartRate: HeartRateLink?
+  private var links: [SensorLink] = []
+  private let sensorCrank = CrankCadence()
+  private let powerCrank = CrankCadence()
   private var tick: DispatchWorkItem?
   private var stopped = false
   /// Set once the journal is closed; a storage-full self stop can happen while `stop()` drains the mark requests.
@@ -124,13 +135,15 @@ final class Recording: HeartRateLinkListener {
       steps.start(clock: clock) { [weak self] sample in self?.onSample(.steps(sample)) }
       self.steps = steps
     }
-    if let device = config.heartRateDevice, live || replay?.speed == 1, TrackerPermissions.isGranted(.bluetooth) {
-      let heartRate = HeartRateLink(identifier: device, queue: queue, listener: self)
-      heartRate.start()
-      self.heartRate = heartRate
+    if live || replay?.speed == 1, TrackerPermissions.isGranted(.bluetooth) {
+      links = Dictionary(grouping: config.bluetooth, by: \.identifier).map { identifier, sensors in
+        let link = SensorLink(identifier: identifier, services: Set(sensors.map(\.service)), queue: queue, listener: self)
+        link.start()
+        return link
+      }
     }
     scheduleTick()
-    return TrackerSources(location: location.kind, barometer: pressure != nil, pedometer: steps != nil, heartRate: heartRate != nil)
+    return TrackerSources(location: location.kind, barometer: pressure != nil, pedometer: steps != nil, bluetooth: Set(links.flatMap { $0.services.map(\.role) }))
   }
 
   /// Writes a pause, resume or lap mark at `t` (now by default); false when the pause state makes it meaningless (lap or pause while paused).
@@ -209,7 +222,7 @@ final class Recording: HeartRateLinkListener {
     location?.stop()
     pressure?.stop()
     steps?.stop()
-    heartRate?.stop()
+    links.forEach { $0.stop() }
     MarkRequests.clear(sessionId: sessionId)
   }
 
@@ -223,12 +236,24 @@ final class Recording: HeartRateLinkListener {
     listener?.recording(self, didReport: issue)
   }
 
-  func heartRateLink(_ link: HeartRateLink, didMeasure measurement: HeartRateMeasurement) {
-    onSample(.heartRate(HeartRateSample(t: clock.now(), bpm: measurement.bpm, contact: measurement.contact, rrInterval: measurement.rrInterval)))
+  func sensorLink(_ link: SensorLink, service: SensorService, didNotify value: [UInt8], receivedAtNs: Int64) {
+    let t = clock.at(monotonicNs: receivedAtNs)
+    let sample: Sample?
+    switch service {
+    case .heartRate:
+      sample = HeartRateMeasurement(value).map { Sample.heartRate(HeartRateSample(t: t, bpm: $0.bpm, contact: $0.contact, rrInterval: $0.rrInterval)) }
+    case .cyclingSpeedCadence:
+      sample = CrankRevolutions(cscMeasurement: value).flatMap { sensorCrank.push(receivedAtNs: receivedAtNs, $0) }.map { Sample.cadence(CadenceSample(t: t, perMinute: $0)) }
+    case .runningSpeedCadence:
+      sample = rscCadence(value).map { Sample.cadence(CadenceSample(t: t, perMinute: $0)) }
+    case .cyclingPower:
+      sample = CyclingPowerMeasurement(value).map { power in Sample.power(PowerSample(t: t, watts: power.watts, cadence: power.crank.flatMap { powerCrank.push(receivedAtNs: receivedAtNs, $0) })) }
+    }
+    if let sample { onSample(sample) }
   }
 
-  func heartRateLinkDidLose(_ link: HeartRateLink) {
-    report(.heartRateLost)
+  func sensorLinkDidLose(_ link: SensorLink) {
+    for role in Set(link.services.map(\.role)) { report(role.issue) }
   }
 
   private func startLocation() {

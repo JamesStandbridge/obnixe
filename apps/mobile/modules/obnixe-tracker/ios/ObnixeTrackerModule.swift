@@ -5,7 +5,7 @@ public final class ObnixeTrackerModule: Module {
   public func definition() -> ModuleDefinition {
     Name("ObnixeTracker")
 
-    Events("onSamples", "onMark", "onIssue", "onHeartRateDevice", "onWarmupFix")
+    Events("onSamples", "onMark", "onIssue", "onSensorDevice", "onWarmupFix")
 
     OnCreate {
       TrackerHub.shared.module = self
@@ -59,8 +59,8 @@ public final class ObnixeTrackerModule: Module {
       TrackerHub.shared.setNotification(notification.content)
     }
 
-    AsyncFunction("scanHeartRate") { (timeoutMs: Double, promise: Promise) in
-      TrackerHub.shared.scanHeartRate(timeoutMs: Int(min(max(timeoutMs, 1_000), 60_000)), promise: promise)
+    AsyncFunction("scanSensors") { (service: SensorService, timeoutMs: Double, promise: Promise) in
+      TrackerHub.shared.scanSensors(service: service, timeoutMs: Int(min(max(timeoutMs, 1_000), 60_000)), promise: promise)
     }
 
     Function("stopScan") {
@@ -85,8 +85,8 @@ public final class ObnixeTrackerModule: Module {
     sendEvent("onIssue", ["sessionId": sessionId, "kind": issue.rawValue])
   }
 
-  func emitHeartRateDevice(_ device: HeartRateDevice) {
-    sendEvent("onHeartRateDevice", device.bridge)
+  func emitSensorDevice(_ device: SensorDevice) {
+    sendEvent("onSensorDevice", device.bridge)
   }
 
   func emitWarmupFix(_ fix: Fix) {
@@ -118,10 +118,15 @@ struct NotificationRecord: Record {
   }
 }
 
+struct BluetoothSensorRecord: Record {
+  @Field var service: SensorService = .heartRate
+  @Field var id: String = ""
+}
+
 struct SensorsRecord: Record {
   @Field var barometer: Bool = false
   @Field var pedometer: Bool = false
-  @Field var heartRateDevice: String?
+  @Field var bluetooth: [BluetoothSensorRecord] = []
 }
 
 struct ReplayRecord: Record {
@@ -142,12 +147,13 @@ struct StartRequestRecord: Record {
 
   /// The validated configuration, or nil when a field is out of its contract.
   func toConfig() -> RecordingConfig? {
-    let heartRateDevice = sensors.heartRateDevice.flatMap { UUID(uuidString: $0) }
+    let bluetooth = sensors.bluetooth.compactMap { sensor in UUID(uuidString: sensor.id).map { BluetoothSensor(service: sensor.service, identifier: $0) } }
     let valid = JournalHeader.isSessionId(sessionId)
       && !journalPath.isEmpty
       && (batchIntervalMs == 1_000 || batchIntervalMs == 5_000)
       && (backgroundBatchIntervalMs == 1_000 || backgroundBatchIntervalMs == 5_000)
-      && (sensors.heartRateDevice == nil || heartRateDevice != nil)
+      && bluetooth.count == sensors.bluetooth.count
+      && Set(bluetooth.map(\.service.role)).count == bluetooth.count
       && (replay.map { (1...50).contains($0.speed) } ?? true)
     guard valid else { return nil }
     return RecordingConfig(
@@ -156,7 +162,7 @@ struct StartRequestRecord: Record {
       power: power,
       barometer: sensors.barometer,
       pedometer: sensors.pedometer,
-      heartRateDevice: heartRateDevice,
+      bluetooth: bluetooth,
       batchIntervalMs: Int64(batchIntervalMs),
       backgroundBatchIntervalMs: Int64(backgroundBatchIntervalMs),
       notification: notification.content,

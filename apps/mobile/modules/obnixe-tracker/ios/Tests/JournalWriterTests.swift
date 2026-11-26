@@ -197,6 +197,27 @@ final class JournalWriterTests: XCTestCase {
     XCTAssertEqual(bytes.u16(at: at + 18), 0)
   }
 
+  func testPowerAndCadenceRecordsClampTheirValuesAndEncodeAnAbsentCrankCadenceAs0xFFFF() throws {
+    try withWriter { writer in
+      XCTAssertTrue(writer.append(.power(PowerSample(t: 100, watts: 251, cadence: nil))))
+      XCTAssertTrue(writer.append(.power(PowerSample(t: 200, watts: 70_000, cadence: 92))))
+      XCTAssertTrue(writer.append(.cadence(CadenceSample(t: 150, perMinute: 176))))
+      _ = try writer.flush()
+    }
+    let bytes = try bytes()
+    let at = headerLength + 8
+    XCTAssertEqual(bytes[at], 6)
+    XCTAssertEqual(bytes.u16(at: at + 5), 251)
+    XCTAssertEqual(bytes.u16(at: at + 7), 0xFFFF)
+    XCTAssertEqual(bytes.u16(at: at + 14), 0xFFFE)
+    XCTAssertEqual(bytes.u16(at: at + 16), 92)
+    XCTAssertEqual(bytes[at + 18], 7)
+    XCTAssertEqual(bytes.u32(at: at + 19), 150)
+    XCTAssertEqual(bytes.u16(at: at + 23), 176)
+    XCTAssertEqual(bytes.count, at + 25 + 4)
+    XCTAssertEqual(try JournalScanner.scan(bytes).nextSequence, 1)
+  }
+
   func testSamplesTheStrictReaderWouldRefuseAreDropped() throws {
     try withWriter { writer in
       XCTAssertTrue(writer.append(.fix(fix)))
