@@ -14,14 +14,14 @@ export interface TrackerNotification {
   readonly title: string;
   /** Second line, e.g. "Allure 5:23 /km". */
   readonly text: string;
-  /** Instant the displayed timer read zero, shown as a running chronometer and as the Live Update chip; null hides it. */
+  /** Instant the displayed timer read zero, shown as a running chronometer, the Live Update chip (Android) and the Live Activity (iOS); null hides it. */
   readonly timerBaseAt: EpochMs | null;
 }
 
 export interface TrackerSensors {
   readonly barometer: boolean;
   readonly pedometer: boolean;
-  /** Identifier of the heart rate source, as reported by `onHeartRateDevice`. */
+  /** Identifier of the heart rate source, as reported by `onHeartRateDevice`: its Bluetooth address on Android, its Core Bluetooth UUID on iOS. */
   readonly heartRateDevice: string | null;
 }
 
@@ -39,7 +39,7 @@ export interface TrackerStartRequest {
   readonly journal: "create" | "continue";
   readonly power: TrackerPower;
   readonly sensors: TrackerSensors;
-  /** Journal batch and `onSamples` interval while the screen is on; 5 s while it is off (PRF-003, PRF-051). */
+  /** Journal batch and `onSamples` interval while the screen is on (iOS: the app in the foreground); 5 s otherwise (PRF-003, PRF-051). */
   readonly batchIntervalMs: 1000 | 5000;
   readonly notification: TrackerNotification;
   readonly replay: TrackerReplay | null;
@@ -103,6 +103,7 @@ export interface HeartRateDevice {
   readonly rssi: number;
 }
 
+/** On iOS, `activity` is Motion & Fitness (barometer and pedometer) and `notifications` the Live Activities switch, which only the system settings change. */
 export type TrackerPermission = "location" | "activity" | "bluetooth" | "notifications";
 
 /** `approximate` only applies to location, which the tracker needs precise (PRV-003). */
@@ -152,5 +153,5 @@ declare class ObnixeTrackerModule extends NativeModule<TrackerEvents> {
   stop(): Promise<TrackerStopped>;
 }
 
-/** The tracker module, or null where the app was built without it (web, platforms not implemented yet). */
+/** The tracker module, or null where the app was built without it (web). */
 export const tracker: ObnixeTrackerModule | null = requireOptionalNativeModule<ObnixeTrackerModule>("ObnixeTracker");

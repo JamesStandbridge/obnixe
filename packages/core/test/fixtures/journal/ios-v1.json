@@ -1,0 +1,134 @@
+{
+  "header": {
+    "device": "Apple iPhone17,1",
+    "monotonicOriginNs": "412345678901234",
+    "platform": "ios",
+    "sessionId": "019abc12-3456-7def-8123-456789abcd02",
+    "startedAt": 1795678200000
+  },
+  "lastSequence": 5,
+  "marks": [
+    {
+      "kind": "start",
+      "t": 0
+    },
+    {
+      "kind": "pause",
+      "t": 3100
+    },
+    {
+      "kind": "resume",
+      "t": 9200
+    },
+    {
+      "kind": "lap",
+      "t": 10500
+    },
+    {
+      "kind": "stop",
+      "t": 11000
+    }
+  ],
+  "samples": [
+    {
+      "altitudeEllipsoidMm": 1092400,
+      "altitudeMslMm": 1042100,
+      "bearingAccuracyCentiDeg": 1150,
+      "bearingCentiDeg": 27050,
+      "fixAgeMs": 180,
+      "horizontalAccuracyDm": 36,
+      "latitudeE7": 458326412,
+      "longitudeE7": 68652087,
+      "simulated": false,
+      "speedAccuracyCmS": 42,
+      "speedCmS": 298,
+      "t": 1000,
+      "type": "fix",
+      "verticalAccuracyDm": 51
+    },
+    {
+      "pascals": 89412,
+      "t": 1020,
+      "type": "pressure"
+    },
+    {
+      "count": 2,
+      "t": 1100,
+      "type": "steps"
+    },
+    {
+      "bpm": 142,
+      "contact": "contact",
+      "rrInterval": 433,
+      "t": 1150,
+      "type": "heart_rate"
+    },
+    {
+      "altitudeEllipsoidMm": 1092400,
+      "altitudeMslMm": 1042100,
+      "bearingAccuracyCentiDeg": 1150,
+      "bearingCentiDeg": 27050,
+      "fixAgeMs": -4,
+      "horizontalAccuracyDm": 36,
+      "latitudeE7": 458326610,
+      "longitudeE7": 68652301,
+      "simulated": false,
+      "speedAccuracyCmS": 42,
+      "speedCmS": 65534,
+      "t": 2000,
+      "type": "fix",
+      "verticalAccuracyDm": 51
+    },
+    {
+      "bpm": 143,
+      "contact": "absent",
+      "rrInterval": null,
+      "t": 2150,
+      "type": "heart_rate"
+    },
+    {
+      "count": 5,
+      "t": 2900,
+      "type": "steps"
+    },
+    {
+      "bpm": 141,
+      "contact": "unsupported",
+      "rrInterval": 1024,
+      "t": 3000,
+      "type": "heart_rate"
+    },
+    {
+      "pascals": 89430,
+      "t": 9000,
+      "type": "pressure"
+    },
+    {
+      "altitudeEllipsoidMm": -430500,
+      "altitudeMslMm": null,
+      "bearingAccuracyCentiDeg": null,
+      "bearingCentiDeg": null,
+      "fixAgeMs": 0,
+      "horizontalAccuracyDm": 50,
+      "latitudeE7": -900000000,
+      "longitudeE7": 1800000000,
+      "simulated": true,
+      "speedAccuracyCmS": null,
+      "speedCmS": null,
+      "t": 10000,
+      "type": "fix",
+      "verticalAccuracyDm": null
+    },
+    {
+      "count": 19,
+      "t": 10100,
+      "type": "steps"
+    },
+    {
+      "pascals": 89401,
+      "t": 11000,
+      "type": "pressure"
+    }
+  ],
+  "validLength": 359
+}
