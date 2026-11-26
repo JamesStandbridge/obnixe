@@ -12,7 +12,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "vitest run --exclude 'src/tracking/**' && vitest run --coverage src/tracking && node --experimental-strip-types scripts/check-coverage.ts",
     "geoid:generate": "node --experimental-strip-types scripts/generate-geoid-grid.ts",
     "io-fixtures:generate": "node --experimental-strip-types scripts/generate-io-fixtures.ts"
   },
@@ -29,6 +29,7 @@
     "@garmin/fitsdk": "^21.222.0",
     "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^26.6.5",
+    "@vitest/coverage-v8": "5.0.5",
     "better-sqlite3": "^13.0.3",
     "geographiclib-geodesic": "^2.2.0",
     "typescript": "^7.0.2",

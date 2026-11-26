@@ -1,15 +1,18 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { validateStyleMin } from "@maplibre/maplibre-gl-style-spec";
 import type { StyleSpecification } from "@maplibre/maplibre-gl-style-spec";
 import type { MapEmphasis } from "@/features/maps/outdoorStyle";
 import { blankStyle, emphasisOf, outdoorStyle, resolveMapBase } from "@/features/maps/styles";
+import { trackLayers } from "@/features/maps/trackLayers";
 import type { PaletteName } from "@/ui/tokens";
 
 const assets = fileURLToPath(new URL("../../../public/maps/", import.meta.url));
 const variants: readonly PaletteName[] = ["dark", "sunlight"];
 const emphases: readonly MapEmphasis[] = ["foot", "bike"];
+const sources = fileURLToPath(new URL("../../", import.meta.url));
+const providerHosts = /(openfreemap\.org|amazonaws\.com|geopf\.fr|ign\.fr|openstreetmap\.org|maptiler|mapbox|stadiamaps|thunderforest)/;
 
 function collect(value: unknown, key: string, found: unknown[]): unknown[] {
   if (Array.isArray(value)) {
@@ -41,7 +44,7 @@ function iconNames(style: StyleSpecification): Set<string> {
   return names;
 }
 
-describe("Obnixe Outdoor", () => {
+describe("Obnixe Outdoor (MAP-002)", () => {
   it.each(variants.flatMap((variant) => emphases.map((emphasis) => [variant, emphasis] as const)))("is a valid MapLibre style in %s for %s", (variant, emphasis) => {
     expect(validateStyleMin(outdoorStyle(variant, emphasis))).toEqual([]);
   });
@@ -54,7 +57,7 @@ describe("Obnixe Outdoor", () => {
     expect(existsSync(`${assets}overlay/heading.png`)).toBe(true);
   });
 
-  it("names only free providers and the bundled assets", () => {
+  it("names only free providers and the bundled assets (MAP-003)", () => {
     const urls = JSON.stringify(outdoorStyle("sunlight", "bike")).match(/[a-z]+:\/\/[^"]+/g) ?? [];
     for (const url of urls) expect(url).toMatch(/^(asset:\/\/maps\/|https:\/\/tiles\.openfreemap\.org\/|https:\/\/s3\.amazonaws\.com\/elevation-tiles-prod\/)/);
   });
@@ -77,7 +80,7 @@ describe("map bases", () => {
     expect(emphasisOf(null)).toBe("foot");
   });
 
-  it("credits every source and downloads relief up to z12", () => {
+  it("credits every source and downloads relief up to z12 (MAP-004)", () => {
     const outdoor = resolveMapBase({ mapStyle: "obnixe_outdoor", variant: "dark", emphasis: "foot" });
     expect(outdoor.attribution.map((source) => source.label)).toEqual([
       "© OpenFreeMap",
@@ -88,14 +91,52 @@ describe("map bases", () => {
     expect(outdoor.offline).toEqual({ vector: { min: 5, max: 14 }, relief: { min: 5, max: 12 } });
   });
 
-  it("loads Plan IGN from the official style", () => {
+  it("loads Plan IGN from the official style (MAP-007)", () => {
     const ign = resolveMapBase({ mapStyle: "plan_ign", variant: "sunlight", emphasis: "bike" });
     expect(ign.style).toBe("https://data.geopf.fr/annexes/ressources/vectorTiles/styles/PLAN.IGN/standard.json");
     expect(ign.attribution.map((source) => source.label)).toEqual(["© IGN"]);
     expect(ign.offline.relief).toBeNull();
   });
 
-  it("falls back to a plain valid ground", () => {
+  it("falls back to a plain valid ground (MAP-032)", () => {
     for (const variant of variants) expect(validateStyleMin(blankStyle(variant))).toEqual([]);
+  });
+});
+
+describe("map sources", () => {
+  it("names the tile providers in features/maps/styles.ts only, without API keys (MAP-001)", () => {
+    const files = readdirSync(sources, { recursive: true, encoding: "utf8" }).filter((file) => /\.tsx?$/.test(file) && !file.endsWith(".test.ts"));
+    const naming = files.filter((file) => providerHosts.test(readFileSync(`${sources}${file}`, "utf8")));
+    expect(naming).toEqual(["features/maps/styles.ts"]);
+    expect(readFileSync(`${sources}features/maps/styles.ts`, "utf8")).not.toMatch(/(api_?key|access_token|key=)/i);
+  });
+
+  it("never loads tile.openstreetmap.org (MAP-003)", () => {
+    for (const variant of variants) expect(JSON.stringify(outdoorStyle(variant, "foot"))).not.toContain("tile.openstreetmap.org");
+  });
+
+  it("shades the relief from terrarium elevation tiles from z9 to z16, softer in the dark theme (MAP-005)", () => {
+    for (const variant of variants) {
+      const style = outdoorStyle(variant, "foot");
+      const relief = style.layers.find((layer) => layer.type === "hillshade");
+      expect(relief?.minzoom).toBeLessThanOrEqual(9);
+      expect(relief?.maxzoom).toBeGreaterThanOrEqual(16);
+      const source = relief === undefined || !("source" in relief) ? undefined : style.sources[relief.source];
+      expect(source).toMatchObject({ type: "raster-dem", encoding: "terrarium" });
+    }
+    const darkRelief = outdoorStyle("dark", "foot").layers.find((layer) => layer.type === "hillshade");
+    expect(JSON.stringify(darkRelief?.paint)).toMatch(/rgba\([^)]*, 0\.\d+\)/);
+  });
+
+  it("draws the track as a zoom-dependent rounded gradient over a rim of the ground tone (MAP-008)", () => {
+    for (const variant of variants) {
+      const layers = trackLayers({ from: "#2f80ed", to: "#e5ed32" }, variant);
+      const line = layers.find((layer) => layer.id === "obnixe-track");
+      const rim = layers.find((layer) => layer.id === "obnixe-track-rim");
+      expect(line?.paint).toHaveProperty("line-gradient");
+      expect(JSON.stringify(line?.paint)).toContain('["zoom"]');
+      expect(line?.layout).toMatchObject({ "line-cap": "round" });
+      expect(rim?.paint).toMatchObject({ "line-color": variant === "dark" ? "#0b0e11" : "#ffffff" });
+    }
   });
 });

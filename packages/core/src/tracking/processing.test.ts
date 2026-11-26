@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { stageScenarios, coreScenarios, heartRateDropouts, stopAndGoStopsMs, tunnelGap } from "./testing/scenarios.ts";
-import type { Scenario, Truth } from "./testing/scenarios.ts";
+import { buildTruth, clearSky, coreScenarios, heartRateDropouts, move, simulate, stageScenarios, stopAndGoStopsMs, tunnelGap } from "./testing/scenarios.ts";
+import type { Route, Scenario, Truth } from "./testing/scenarios.ts";
+import { createRandom } from "./testing/random.ts";
 import { runBatch, runLive } from "./testing/run.ts";
 import { forEachHeartRateSpan, heartRateHoldMs, SpanOverlap } from "./zones.ts";
 import { toSampleColumns } from "./types.ts";
@@ -42,7 +43,7 @@ function expectLiveMatchesBatch(scenario: Scenario, label: string): void {
   expect(Math.abs(live - batch), label).toBeLessThanOrEqual(Math.max(0.005 * batch, 20_000));
 }
 
-describe("tracking core scenarios", { timeout: 60_000 }, () => {
+describe("tracking core scenarios (TST-010)", { timeout: 60_000 }, () => {
   it("are reproducible from their seed (TST-002)", () => {
     for (const build of Object.values(coreScenarios)) {
       expect(build(3).samples).toEqual(build(3).samples);
@@ -110,6 +111,27 @@ describe("tracking core scenarios", { timeout: 60_000 }, () => {
       const scenario = coreScenarios.longRide200km(seed);
       expect(relativeError(runBatch(scenario).summary.distanceMm / 1000, scenario.truth.distance), `seed ${seed}`).toBeLessThanOrEqual(0.001);
     }
+  });
+
+  it("GPS-010 measures within 1 % at 0.2, 1 and 10 Hz and at irregular intervals", () => {
+    const route: Route = { latitude: 45.1885, longitude: 5.7245, altitude: 214, legs: [20, 110, 200, 290].map((bearing) => move(1250, 1000 / 300, bearing)) };
+    const sensors = { ...clearSky, accuracy: { min: 4, max: 4, periodMs: 120_000 } };
+    for (const intervalMs of [5000, 1000, 100]) {
+      const truth = buildTruth(route, intervalMs);
+      const scenario: Scenario = { sport: "run", truth, ...simulate(truth, sensors, 7) };
+      expect(relativeError(runBatch(scenario).summary.distanceMm / 1000, truth.distance), `${intervalMs} ms`).toBeLessThanOrEqual(0.01);
+    }
+    const dense = buildTruth(route, 100);
+    const simulation = simulate(dense, sensors, 8);
+    const random = createRandom(8);
+    let nextT = 0;
+    const irregular = simulation.samples.filter((sample) => {
+      if (sample.t < nextT) return false;
+      nextT = sample.t + random.between(200, 5000);
+      return true;
+    });
+    const scenario: Scenario = { sport: "run", truth: dense, samples: irregular, spikes: simulation.spikes };
+    expect(relativeError(runBatch(scenario).summary.distanceMm / 1000, dense.distance)).toBeLessThanOrEqual(0.01);
   });
 
   it("hr-dropout averages the heart rate over the moving time without filling the dropouts (SPT-003)", () => {

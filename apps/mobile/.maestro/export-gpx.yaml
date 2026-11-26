@@ -1,0 +1,17 @@
+appId: com.jamesstandbridge.obnixe
+name: Export GPX d'une activité enregistrée
+# Needs at least one recorded or imported run in the journal.
+tags:
+  - TST-031
+---
+- launchApp
+- tapOn: "Journal"
+- tapOn:
+    text: ".*Course.*"
+    index: 0
+- scrollUntilVisible:
+    element: "Exporter en GPX"
+- tapOn: "Exporter en GPX"
+- tapOn: "Partager le fichier GPX"
+- assertVisible: ".*(Share|Partager).*"
+- pressKey: Back

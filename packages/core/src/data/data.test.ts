@@ -1,6 +1,6 @@
 import { and, asc, eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
-import { agentCall, agentConnection, backup, change, changeset, journaledTables, sportKeys, painReport, session, sportPreference, strengthEntry, strengthSet, weighIn, zoneTracking } from "@obnixe/schema";
+import { agentCall, agentConnection, backup, change, changeset, journaled, journaledTables, mergePolicies, rowSchemas, sportKeys, painReport, session, sportPreference, strengthEntry, strengthSet, weighIn, zoneTracking } from "@obnixe/schema";
 import type { EpochMs, Id, LocalDate, SportPreference } from "@obnixe/schema";
 import { loadRevertIndex } from "../agent/history.ts";
 import { createTestContext } from "../testing.ts";
@@ -42,6 +42,18 @@ describe("settings", () => {
     context.advance(1000);
     updateSettings(context.db, { theme: "sunlight", bridgeHost: null }, context.env.now());
     expect(readSettings(context.db)).toMatchObject({ theme: "sunlight", bridgeHost: null, updatedAt: context.env.now() });
+  });
+});
+
+describe("journal (DAT-001)", () => {
+  it("journals the tracking tables and leaves the derived ones out", () => {
+    for (const table of ["recording", "lap", "privacy_zone", "segment", "route"] as const) {
+      expect(journaledTables, table).toContain(table);
+      expect(journaled[table], table).toBeDefined();
+      expect(mergePolicies[table], table).toBeDefined();
+      expect(rowSchemas[table], table).toBeDefined();
+    }
+    for (const table of ["best_effort", "segment_effort"]) expect(journaledTables as readonly string[], table).not.toContain(table);
   });
 });
 

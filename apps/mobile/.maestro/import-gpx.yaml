@@ -1,0 +1,19 @@
+appId: com.jamesstandbridge.obnixe
+name: Import d'une trace GPX depuis les réglages
+# Needs a GPX file in Download, for example: adb push steady-run.gpx /sdcard/Download/
+tags:
+  - TST-031
+---
+- launchApp
+- tapOn: "Réglages et données"
+- scrollUntilVisible:
+    element: "Importer une activité"
+- tapOn: "Importer une activité"
+- tapOn: "Choisir le fichier"
+- tapOn: ".*\\.gpx"
+- assertVisible: "Aperçu"
+- tapOn: "Importer l'activité"
+- tapOn: "Journal"
+- assertVisible:
+    text: ".*Course.*"
+    index: 0

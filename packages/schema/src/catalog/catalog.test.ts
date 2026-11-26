@@ -46,7 +46,7 @@ describe("catalog", () => {
     expect(boulder.safeParse({ grade: gradeValue("french", "6b"), attempts: 2, result: "sent" }).success).toBe(false);
   });
 
-  it("records exactly the V1 outdoor sports", () => {
+  it("records exactly the V1 outdoor sports (SPT-001)", () => {
     const recordable = (Object.entries(sports) as [SportKey, SportDefinition][]).filter(([, sport]) => sport.recording !== null).map(([key]) => key);
     expect(recordable.sort()).toEqual(["bike", "hike", "run", "trail", "walk"]);
   });

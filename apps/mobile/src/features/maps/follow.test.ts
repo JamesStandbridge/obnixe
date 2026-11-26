@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { follow, followResumeDelayMs, initialFollow } from "@/features/maps/follow";
 
-describe("follow", () => {
+describe("follow (MAP-011)", () => {
   it("stops following on a gesture and resumes 15 s after the last one", () => {
     const moved = follow(initialFollow, { type: "gesture", at: 1000 });
     expect(moved.following).toBe(false);

@@ -1,0 +1,41 @@
+appId: com.jamesstandbridge.obnixe
+name: Course enregistrée avec pause, tour, verrouillage, arrêt et bilan
+tags:
+  - TST-031
+  - REC-001
+  - UX-003
+  - UX-004
+  - REC-051
+  - INT-021
+  - SUM-003
+---
+- runFlow: shared/start-run.yaml
+- travel:
+    points:
+      - 45.1885,5.7245
+      - 45.1930,5.7290
+      - 45.1975,5.7245
+    speed: 3
+- tapOn: "Marquer un tour"
+- tapOn: "Mettre en pause"
+- assertVisible: "Reprendre l'enregistrement"
+- tapOn: "Reprendre l'enregistrement"
+- tapOn: "Verrouiller l'écran"
+- assertVisible: "Déverrouiller"
+- assertNotVisible: "Mettre en pause"
+- longPressOn: "Déverrouiller"
+- tapOn: "Terminer"
+- assertVisible: "Mettre en pause"
+- longPressOn: "Terminer"
+- assertVisible: "En mouvement"
+- tapOn: "Enregistrer"
+- tapOn: "Voir le bilan"
+- assertVisible: "Douleurs maintenant"
+- tapOn: "Enregistrer le bilan"
+- tapOn: "Journal"
+- tapOn:
+    text: ".*Course.*"
+    index: 0
+- scrollUntilVisible:
+    element: "Splits"
+- assertVisible: "Exporter en GPX"

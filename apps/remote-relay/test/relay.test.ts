@@ -141,8 +141,15 @@ describe("phone connection", () => {
   it("serves the public pages on the www host", async () => {
     const privacy = await relay.dispatchFetch("https://www.obnixe.app/privacy");
     expect(privacy.status).toBe(200);
-    expect(await privacy.text()).toContain("Privacy policy");
+    expect(await privacy.text()).toContain("Politique de confidentialité");
     expect((await relay.dispatchFetch("https://www.obnixe.app/ailleurs")).status).toBe(404);
+  });
+
+  it("PRV-021 publishes the location, heart rate, map, weather, backup and permission policy", async () => {
+    const policy = await (await relay.dispatchFetch("https://www.obnixe.app/privacy")).text();
+    for (const topic of ["Localisation", "Fréquence cardiaque", "OpenFreeMap", "Terrain Tiles", "IGN", "Open-Meteo", "0,1 degré", "XChaCha20-Poly1305", "Lire les traces", "Activité physique", "Bluetooth"]) {
+      expect(policy).toContain(topic);
+    }
   });
 
   it("refuses unknown hosts and malformed phone keys", async () => {

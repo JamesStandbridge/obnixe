@@ -1,0 +1,19 @@
+appId: com.jamesstandbridge.obnixe
+name: Position approximative, demande de la position exacte
+tags:
+  - TST-031
+  - PRV-003
+---
+- launchApp:
+    clearState: true
+    permissions:
+      all: deny
+- tapOn: "Enregistrer une sortie"
+- tapOn: "Autoriser la localisation"
+- tapOn: "(Approximate|Approximative)"
+- tapOn: ".*(using the app|utilisez l'appli|utilisation de l'appli).*"
+- assertVisible: "Position précise nécessaire"
+- tapOn: "Autoriser la position exacte"
+- tapOn: "(Precise|Exacte|Position exacte)"
+- tapOn: ".*(using the app|utilisez l'appli|utilisation de l'appli).*"
+- assertVisible: "Démarrer"

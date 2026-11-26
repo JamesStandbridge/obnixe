@@ -173,7 +173,7 @@ describe("summary track", () => {
 });
 
 describe("slot target", () => {
-  it("prefers the distance target and counts the moving time for a duration (UX-005)", () => {
+  it("prefers the distance target and counts the moving time for a duration (UX-005, INT-003)", () => {
     const distance = slotTarget({ targetValues: { kind: "long", distance: 18_000 }, targetDurationSeconds: 5400 });
     expect(distance).toEqual({ kind: "distance", meters: 18_000 });
     expect(distance === null ? null : targetProgress(distance, { distanceMm: 12_480_000, movingMs: 0 })).toEqual({ fraction: 12.48 / 18, reached: false, done: "12,4", goal: "18 km" });

@@ -55,6 +55,7 @@
     "babel-plugin-inline-import": "^3.0.0",
     "babel-preset-expo": "^58.0.20",
     "fflate": "^0.8.3",
+    "js-yaml": "4.3.2",
     "opentype.js": "2.0.0",
     "typescript": "~6.0.3",
     "vitest": "^5.0.5"

@@ -10,7 +10,9 @@ import type { Fixtures } from "../data/testFixtures.ts";
 import { planTrashPurge, trashMutation } from "../data/trash.ts";
 import { createTestContext, testUpgrader } from "../testing.ts";
 import type { TestContext } from "../testing.ts";
+import { nextSlot } from "../rotation.ts";
 import { revert } from "../undo.ts";
+import type { Mutation } from "../writer.ts";
 import { processTrack } from "./batch.ts";
 import type { ProcessedTrack } from "./batch.ts";
 import { encodeTrack, trackDigest } from "./codec/track.ts";
@@ -82,12 +84,28 @@ const sessionOf = (id: Id) => context.db.select().from(session).where(eq(session
 const recordingOf = (id: Id) => context.db.select().from(recording).where(eq(recording.sessionId, id)).get();
 
 describe("recording start", () => {
-  it("opens the session with a placeholder recording and refuses a second open session (REC-003)", () => {
+  it("opens the session with a placeholder recording and refuses a second open session (REC-003, INT-001)", () => {
     const plan = start();
     expect(sessionOf(plan.sessionId)).toMatchObject({ sport: "run", status: "in_progress", startedAt, endedAt: null, review: "pending" });
     expect(recordingOf(plan.sessionId)).toMatchObject({ source: "live", device: "Pixel 9 Pro", autoPause: true, trackFile: null, elapsedMs: 0 });
     expect(openLiveRecording(context.db)?.session.id).toBe(plan.sessionId);
     expect(() => planRecordingStart(context.db, context.env, { sport: "run", values: {}, gearId: null, slot: null, timeZone: "Europe/Paris", routeId: null, workout: null })).toThrow(OpenSessionExistsError);
+  });
+
+  it("INT-002 links a recording started from a program slot and advances the rotation once saved", () => {
+    const program = make.program("active");
+    const version = make.version(program.id, 1, "Base");
+    const slots = ["A", "B"].map((lineage, position) => ({ id: context.env.newId(), versionId: version.id, lineageId: lineage as Id, position, sport: "run" as const, name: `Footing ${lineage}`, targetDurationSeconds: 3600, targetEffort: null, targetValues: {} }));
+    make.write([{ kind: "insert", table: "program", row: program }, { kind: "insert", table: "program_version", row: version }, ...slots.map((row): Mutation => ({ kind: "insert", table: "program_slot", row }))]);
+    const first = nextSlot(context.db);
+    if (first === null) throw new Error("No next slot");
+    expect(first.slot.lineageId).toBe("A");
+    const plan = planRecordingStart(context.db, context.env, { sport: "run", values: {}, gearId: null, slot: { slotId: first.slot.id, variantId: null, countsInRotation: true }, routeId: null, workout: null, timeZone: "Europe/Paris" });
+    make.write(recordingStartMutations(plan, { startedAt, device: "Pixel 9 Pro" }));
+    expect(sessionOf(plan.sessionId)).toMatchObject({ slotId: first.slot.id, countsInRotation: true, status: "in_progress" });
+    save(plan);
+    expect(sessionOf(plan.sessionId)).toMatchObject({ slotId: first.slot.id, countsInRotation: true, status: "completed" });
+    expect(nextSlot(context.db)?.slot.lineageId).toBe("B");
   });
 
   it("refuses a sport without a recording profile", () => {

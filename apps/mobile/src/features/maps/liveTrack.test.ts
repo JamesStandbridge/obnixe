@@ -19,7 +19,7 @@ function point(latitude: number, longitude: number, stretch: LiveStretch = "movi
   return { latitude, longitude, stretch };
 }
 
-describe("LiveTrack", () => {
+describe("LiveTrack (MAP-010)", () => {
   let clock = 0;
   const now = (): number => clock;
 

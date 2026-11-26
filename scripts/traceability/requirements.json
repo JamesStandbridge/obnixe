@@ -1,0 +1,952 @@
+[
+  {
+    "id": "CAL-001",
+    "level": "MUST",
+    "title": "Estimation et affichage"
+  },
+  {
+    "id": "CAL-002",
+    "level": "MUST",
+    "title": "Choix de la méthode"
+  },
+  {
+    "id": "CAL-003",
+    "level": "MUST",
+    "title": "Masse utilisée"
+  },
+  {
+    "id": "CAL-004",
+    "level": "MUST",
+    "title": "Profil physiologique et zones"
+  },
+  {
+    "id": "CAL-005",
+    "level": "SHOULD",
+    "title": "Cumuls d'énergie"
+  },
+  {
+    "id": "DAT-001",
+    "level": "MUST",
+    "title": "Tables et journal"
+  },
+  {
+    "id": "DAT-002",
+    "level": "MUST",
+    "title": "Validation croisée"
+  },
+  {
+    "id": "DAT-003",
+    "level": "MUST",
+    "title": "Préférences par sport"
+  },
+  {
+    "id": "DAT-004",
+    "level": "MUST",
+    "title": "Réglages globaux"
+  },
+  {
+    "id": "DAT-010",
+    "level": "MUST",
+    "title": "Migration unique générée"
+  },
+  {
+    "id": "DAT-011",
+    "level": "MUST",
+    "title": "Matériel du trail"
+  },
+  {
+    "id": "DAT-012",
+    "level": "MUST",
+    "title": "Reconstruction des dérivés"
+  },
+  {
+    "id": "DAT-020",
+    "level": "MUST",
+    "title": "Écriture atomique de la trace"
+  },
+  {
+    "id": "DAT-021",
+    "level": "MUST",
+    "title": "Volumétrie"
+  },
+  {
+    "id": "DAT-030",
+    "level": "MUST",
+    "title": "Traces dans les sauvegardes"
+  },
+  {
+    "id": "DAT-031",
+    "level": "MUST",
+    "title": "Fusion"
+  },
+  {
+    "id": "DAT-032",
+    "level": "MUST",
+    "title": "Restauration d'une sauvegarde ancienne"
+  },
+  {
+    "id": "DAT-033",
+    "level": "MUST",
+    "title": "Migration de la base en place"
+  },
+  {
+    "id": "DAT-040",
+    "level": "MUST",
+    "title": "Décodeur strict"
+  },
+  {
+    "id": "ELE-001",
+    "level": "MUST",
+    "title": "Altitude orthométrique"
+  },
+  {
+    "id": "ELE-002",
+    "level": "MUST",
+    "title": "Fusion baromètre et GNSS"
+  },
+  {
+    "id": "ELE-010",
+    "level": "MUST",
+    "title": "Dénivelé avec hystérésis"
+  },
+  {
+    "id": "ELE-011",
+    "level": "MUST",
+    "title": "Exactitude du D+"
+  },
+  {
+    "id": "ELE-020",
+    "level": "MUST",
+    "title": "Pente"
+  },
+  {
+    "id": "ELE-021",
+    "level": "MUST",
+    "title": "Vitesse verticale et VAM"
+  },
+  {
+    "id": "GPS-001",
+    "level": "MUST",
+    "title": "Étages purs et déterministes"
+  },
+  {
+    "id": "GPS-002",
+    "level": "MUST",
+    "title": "Versions d'algorithme"
+  },
+  {
+    "id": "GPS-010",
+    "level": "MUST",
+    "title": "Cadence nominale"
+  },
+  {
+    "id": "GPS-011",
+    "level": "MUST",
+    "title": "Échantillon brut complet"
+  },
+  {
+    "id": "GPS-012",
+    "level": "MUST",
+    "title": "Base de temps monotone"
+  },
+  {
+    "id": "GPS-013",
+    "level": "SHOULD",
+    "title": "Capteurs optionnels"
+  },
+  {
+    "id": "GPS-020",
+    "level": "MUST",
+    "title": "Positions simulées"
+  },
+  {
+    "id": "GPS-030",
+    "level": "MUST",
+    "title": "Récupération après rejets en série"
+  },
+  {
+    "id": "GPS-031",
+    "level": "MUST",
+    "title": "Lisseur en lot"
+  },
+  {
+    "id": "GPS-032",
+    "level": "MUST",
+    "title": "Écart entre direct et bilan"
+  },
+  {
+    "id": "GPS-033",
+    "level": "MUST",
+    "title": "Calcul du temps en mouvement"
+  },
+  {
+    "id": "GPS-034",
+    "level": "SHOULD",
+    "title": "Seuils vérifiés par la cadence"
+  },
+  {
+    "id": "GPS-035",
+    "level": "MUST",
+    "title": "Stabilité de l'allure affichée"
+  },
+  {
+    "id": "GPS-036",
+    "level": "MUST",
+    "title": "Distance horizontale"
+  },
+  {
+    "id": "GPS-037",
+    "level": "MUST",
+    "title": "Distance comptée"
+  },
+  {
+    "id": "GPS-040",
+    "level": "MUST",
+    "title": "Trous de signal"
+  },
+  {
+    "id": "GPS-041",
+    "level": "MUST",
+    "title": "Exactitude de distance"
+  },
+  {
+    "id": "GPS-050",
+    "level": "MUST",
+    "title": "GAP pour la course et le trail"
+  },
+  {
+    "id": "GPS-060",
+    "level": "MUST",
+    "title": "Interpolation des bornes"
+  },
+  {
+    "id": "GPS-061",
+    "level": "MUST",
+    "title": "Contenu d'un split ou d'un tour"
+  },
+  {
+    "id": "GPS-070",
+    "level": "MUST",
+    "title": "Simplification réservée à l'affichage"
+  },
+  {
+    "id": "GPS-071",
+    "level": "MUST",
+    "title": "Trace en direct incrémentale"
+  },
+  {
+    "id": "INT-001",
+    "level": "MUST",
+    "title": "Une activité est une séance"
+  },
+  {
+    "id": "INT-002",
+    "level": "MUST",
+    "title": "Lien au créneau"
+  },
+  {
+    "id": "INT-003",
+    "level": "SHOULD",
+    "title": "Cibles du créneau"
+  },
+  {
+    "id": "INT-010",
+    "level": "MUST",
+    "title": "Matériel par défaut"
+  },
+  {
+    "id": "INT-020",
+    "level": "SHOULD",
+    "title": "Douleur pendant l'activité"
+  },
+  {
+    "id": "INT-021",
+    "level": "MUST",
+    "title": "Douleurs de fin"
+  },
+  {
+    "id": "INT-030",
+    "level": "MUST",
+    "title": "Changesets de l'enregistrement"
+  },
+  {
+    "id": "INT-031",
+    "level": "MUST",
+    "title": "Corbeille"
+  },
+  {
+    "id": "INT-040",
+    "level": "MUST",
+    "title": "Historique enrichi"
+  },
+  {
+    "id": "INT-041",
+    "level": "MUST",
+    "title": "Lecture des traces par l'agent"
+  },
+  {
+    "id": "INT-042",
+    "level": "MUST",
+    "title": "Écritures de l'agent"
+  },
+  {
+    "id": "INT-050",
+    "level": "MUST",
+    "title": "Pas d'autre dépendance de calcul"
+  },
+  {
+    "id": "IO-001",
+    "level": "MUST",
+    "title": "Export GPX"
+  },
+  {
+    "id": "IO-002",
+    "level": "MUST",
+    "title": "Points exportés"
+  },
+  {
+    "id": "IO-004",
+    "level": "MUST",
+    "title": "Partage et nommage"
+  },
+  {
+    "id": "IO-010",
+    "level": "MUST",
+    "title": "Import d'un fichier"
+  },
+  {
+    "id": "IO-011",
+    "level": "MUST",
+    "title": "Recalcul à l'import"
+  },
+  {
+    "id": "IO-012",
+    "level": "MUST",
+    "title": "Doublons"
+  },
+  {
+    "id": "IO-013",
+    "level": "MUST",
+    "title": "Robustesse des lecteurs"
+  },
+  {
+    "id": "IO-050",
+    "level": "MUST",
+    "title": "Import d'un FIT de la montre"
+  },
+  {
+    "id": "IO-051",
+    "level": "MUST",
+    "title": "Partager vers Obnixe"
+  },
+  {
+    "id": "IO-052",
+    "level": "SHOULD",
+    "title": "Fusion téléphone et montre"
+  },
+  {
+    "id": "MAP-001",
+    "level": "MUST",
+    "title": "Fournisseur configurable"
+  },
+  {
+    "id": "MAP-002",
+    "level": "MUST",
+    "title": "Style Obnixe Outdoor"
+  },
+  {
+    "id": "MAP-003",
+    "level": "MUST",
+    "title": "Interdits"
+  },
+  {
+    "id": "MAP-004",
+    "level": "MUST",
+    "title": "Attribution"
+  },
+  {
+    "id": "MAP-005",
+    "level": "MUST",
+    "title": "Relief"
+  },
+  {
+    "id": "MAP-007",
+    "level": "SHOULD",
+    "title": "Fonds IGN en France"
+  },
+  {
+    "id": "MAP-008",
+    "level": "MUST",
+    "title": "Trace en dégradé"
+  },
+  {
+    "id": "MAP-010",
+    "level": "MUST",
+    "title": "Contenu de la carte en direct"
+  },
+  {
+    "id": "MAP-011",
+    "level": "MUST",
+    "title": "Suivi et interaction"
+  },
+  {
+    "id": "MAP-012",
+    "level": "MUST",
+    "title": "Coût de rendu borné"
+  },
+  {
+    "id": "MAP-020",
+    "level": "MUST",
+    "title": "Vue de la trace"
+  },
+  {
+    "id": "MAP-021",
+    "level": "SHOULD",
+    "title": "Coloration par métrique"
+  },
+  {
+    "id": "MAP-022",
+    "level": "MUST",
+    "title": "Synchronisation carte et graphiques"
+  },
+  {
+    "id": "MAP-023",
+    "level": "MUST",
+    "title": "Aperçus sans réseau"
+  },
+  {
+    "id": "MAP-030",
+    "level": "MUST",
+    "title": "Cache ambiant"
+  },
+  {
+    "id": "MAP-031",
+    "level": "MUST",
+    "title": "Régions hors ligne"
+  },
+  {
+    "id": "MAP-032",
+    "level": "MUST",
+    "title": "Dégradation sans réseau"
+  },
+  {
+    "id": "NRG-001",
+    "level": "MUST",
+    "title": "Mode économie sur batterie faible"
+  },
+  {
+    "id": "NRG-002",
+    "level": "MUST",
+    "title": "Aucune acquisition hors enregistrement"
+  },
+  {
+    "id": "PLT-001",
+    "level": "MUST",
+    "title": "Version minimale iOS"
+  },
+  {
+    "id": "PLT-010",
+    "level": "MUST",
+    "title": "Arrêt par l'utilisateur depuis le système"
+  },
+  {
+    "id": "PLT-011",
+    "level": "SHOULD",
+    "title": "Aide aux réglages de batterie"
+  },
+  {
+    "id": "PLT-012",
+    "level": "MUST",
+    "title": "Android 16 et Pixel"
+  },
+  {
+    "id": "PLT-020",
+    "level": "MUST",
+    "title": "Pas d'enregistrement sur le web"
+  },
+  {
+    "id": "PLT-021",
+    "level": "MUST",
+    "title": "Fonctions web"
+  },
+  {
+    "id": "PLT-030",
+    "level": "MUST",
+    "title": "Validation sur les appareils de l'utilisateur"
+  },
+  {
+    "id": "PR-001",
+    "level": "MUST",
+    "title": "Calcul des meilleurs efforts"
+  },
+  {
+    "id": "PR-002",
+    "level": "MUST",
+    "title": "Éligibilité"
+  },
+  {
+    "id": "PR-003",
+    "level": "MUST",
+    "title": "Records dérivés et toujours justes"
+  },
+  {
+    "id": "PR-004",
+    "level": "MUST",
+    "title": "Annonce des records"
+  },
+  {
+    "id": "PR-005",
+    "level": "SHOULD",
+    "title": "Écran des records"
+  },
+  {
+    "id": "PRF-001",
+    "level": "MUST",
+    "title": "Consommation écran éteint"
+  },
+  {
+    "id": "PRF-002",
+    "level": "MUST",
+    "title": "Consommation écran allumé"
+  },
+  {
+    "id": "PRF-003",
+    "level": "MUST",
+    "title": "Réveils de JavaScript écran éteint"
+  },
+  {
+    "id": "PRF-004",
+    "level": "MUST",
+    "title": "Coût de la fréquence cardiaque Bluetooth"
+  },
+  {
+    "id": "PRF-009",
+    "level": "MUST",
+    "title": "Budgets de calcul"
+  },
+  {
+    "id": "PRF-030",
+    "level": "MUST",
+    "title": "Complexité"
+  },
+  {
+    "id": "PRF-031",
+    "level": "MUST",
+    "title": "Représentation mémoire"
+  },
+  {
+    "id": "PRF-040",
+    "level": "MUST",
+    "title": "Fluidité"
+  },
+  {
+    "id": "PRF-041",
+    "level": "MUST",
+    "title": "Rafraîchissement borné"
+  },
+  {
+    "id": "PRF-050",
+    "level": "MUST",
+    "title": "Mémoire"
+  },
+  {
+    "id": "PRF-051",
+    "level": "MUST",
+    "title": "Débit d'écriture"
+  },
+  {
+    "id": "PRV-001",
+    "level": "MUST",
+    "title": "Permission minimale"
+  },
+  {
+    "id": "PRV-002",
+    "level": "MUST",
+    "title": "Demande au bon moment"
+  },
+  {
+    "id": "PRV-003",
+    "level": "MUST",
+    "title": "Position approximative"
+  },
+  {
+    "id": "PRV-004",
+    "level": "MUST",
+    "title": "Textes d'autorisation"
+  },
+  {
+    "id": "PRV-005",
+    "level": "MUST",
+    "title": "Activité physique (Android)"
+  },
+  {
+    "id": "PRV-006",
+    "level": "MUST",
+    "title": "Bluetooth"
+  },
+  {
+    "id": "PRV-010",
+    "level": "MUST",
+    "title": "Définition et effet"
+  },
+  {
+    "id": "PRV-011",
+    "level": "MUST",
+    "title": "Zones à l'export"
+  },
+  {
+    "id": "PRV-012",
+    "level": "SHOULD",
+    "title": "Contre la triangulation"
+  },
+  {
+    "id": "PRV-013",
+    "level": "MUST",
+    "title": "Métriques préservées"
+  },
+  {
+    "id": "PRV-014",
+    "level": "SHOULD",
+    "title": "Proposition de zone"
+  },
+  {
+    "id": "PRV-020",
+    "level": "MUST",
+    "title": "Aucune transmission implicite"
+  },
+  {
+    "id": "PRV-021",
+    "level": "MUST",
+    "title": "Politique de confidentialité"
+  },
+  {
+    "id": "REC-001",
+    "level": "MUST",
+    "title": "Démarrer depuis l'accueil"
+  },
+  {
+    "id": "REC-002",
+    "level": "MUST",
+    "title": "Saisie manuelle conservée"
+  },
+  {
+    "id": "REC-003",
+    "level": "MUST",
+    "title": "Une seule séance ouverte"
+  },
+  {
+    "id": "REC-004",
+    "level": "MUST",
+    "title": "Transitions exhaustives et pures"
+  },
+  {
+    "id": "REC-005",
+    "level": "MUST",
+    "title": "Pas de commit à la cadence des échantillons"
+  },
+  {
+    "id": "REC-010",
+    "level": "MUST",
+    "title": "Écran de préparation"
+  },
+  {
+    "id": "REC-011",
+    "level": "MUST",
+    "title": "Démarrage sans attendre le signal"
+  },
+  {
+    "id": "REC-012",
+    "level": "SHOULD",
+    "title": "Préchauffage du récepteur"
+  },
+  {
+    "id": "REC-020",
+    "level": "MUST",
+    "title": "Effet de la pause"
+  },
+  {
+    "id": "REC-021",
+    "level": "SHOULD",
+    "title": "Rappel de pause prolongée"
+  },
+  {
+    "id": "REC-030",
+    "level": "MUST",
+    "title": "Pause automatique par sport"
+  },
+  {
+    "id": "REC-031",
+    "level": "MUST",
+    "title": "Sémantique de la pause automatique"
+  },
+  {
+    "id": "REC-032",
+    "level": "MUST",
+    "title": "Latence de la pause automatique"
+  },
+  {
+    "id": "REC-040",
+    "level": "MUST",
+    "title": "Tour manuel"
+  },
+  {
+    "id": "REC-041",
+    "level": "SHOULD",
+    "title": "Tour automatique"
+  },
+  {
+    "id": "REC-042",
+    "level": "MUST",
+    "title": "Splits indépendants des tours"
+  },
+  {
+    "id": "REC-050",
+    "level": "MUST",
+    "title": "Résumé d'arrêt"
+  },
+  {
+    "id": "REC-051",
+    "level": "MUST",
+    "title": "Bilan existant"
+  },
+  {
+    "id": "REC-052",
+    "level": "SHOULD",
+    "title": "Activité trop courte"
+  },
+  {
+    "id": "REC-053",
+    "level": "MUST",
+    "title": "Titre par défaut"
+  },
+  {
+    "id": "REC-060",
+    "level": "SHOULD",
+    "title": "Chronomètre d'intérieur"
+  },
+  {
+    "id": "REC-070",
+    "level": "MUST",
+    "title": "Continuité en arrière-plan"
+  },
+  {
+    "id": "REC-071",
+    "level": "MUST",
+    "title": "Notification permanente (Android)"
+  },
+  {
+    "id": "REC-072",
+    "level": "MUST",
+    "title": "Activité en direct (iOS)"
+  },
+  {
+    "id": "REC-074",
+    "level": "MUST",
+    "title": "Live Update (Android 16)"
+  },
+  {
+    "id": "REC-075",
+    "level": "MUST",
+    "title": "Alertes sans voix"
+  },
+  {
+    "id": "REC-080",
+    "level": "MUST",
+    "title": "Durabilité du journal brut"
+  },
+  {
+    "id": "REC-081",
+    "level": "MUST",
+    "title": "Détection de l'interruption"
+  },
+  {
+    "id": "REC-082",
+    "level": "MUST",
+    "title": "Aucune séance perdue"
+  },
+  {
+    "id": "SEG-001",
+    "level": "MUST",
+    "title": "Création d'un segment"
+  },
+  {
+    "id": "SEG-002",
+    "level": "MUST",
+    "title": "Détection des passages"
+  },
+  {
+    "id": "SEG-003",
+    "level": "MUST",
+    "title": "Classement personnel"
+  },
+  {
+    "id": "SEG-005",
+    "level": "MUST",
+    "title": "Coût de la détection"
+  },
+  {
+    "id": "SPT-001",
+    "level": "MUST",
+    "title": "Sports enregistrables V1"
+  },
+  {
+    "id": "SPT-002",
+    "level": "MUST",
+    "title": "Profil d'enregistrement déclaré dans le catalogue"
+  },
+  {
+    "id": "SPT-003",
+    "level": "MUST",
+    "title": "Cohérence des valeurs de séance"
+  },
+  {
+    "id": "SPT-004",
+    "level": "MUST",
+    "title": "Métriques calculées par profil"
+  },
+  {
+    "id": "SPT-005",
+    "level": "SHOULD",
+    "title": "Écran de direct configurable"
+  },
+  {
+    "id": "SPT-006",
+    "level": "MUST",
+    "title": "Unités"
+  },
+  {
+    "id": "SPT-007",
+    "level": "MUST",
+    "title": "Fréquence cardiaque Bluetooth, dont montre Garmin"
+  },
+  {
+    "id": "SUM-001",
+    "level": "MUST",
+    "title": "Contenu du détail"
+  },
+  {
+    "id": "SUM-002",
+    "level": "MUST",
+    "title": "Graphiques"
+  },
+  {
+    "id": "SUM-003",
+    "level": "MUST",
+    "title": "Tableau des splits"
+  },
+  {
+    "id": "SUM-004",
+    "level": "MUST",
+    "title": "Retouches"
+  },
+  {
+    "id": "SUM-005",
+    "level": "SHOULD",
+    "title": "Recalcul"
+  },
+  {
+    "id": "SUM-010",
+    "level": "MUST",
+    "title": "Intégration au journal"
+  },
+  {
+    "id": "SUM-011",
+    "level": "MUST",
+    "title": "Cumuls par période"
+  },
+  {
+    "id": "SUM-012",
+    "level": "SHOULD",
+    "title": "Filtres"
+  },
+  {
+    "id": "TST-001",
+    "level": "MUST",
+    "title": "Couverture du cœur"
+  },
+  {
+    "id": "TST-002",
+    "level": "MUST",
+    "title": "Propriétés vérifiées"
+  },
+  {
+    "id": "TST-010",
+    "level": "MUST",
+    "title": "Scénarios en CI"
+  },
+  {
+    "id": "TST-020",
+    "level": "MUST",
+    "title": "Corpus de référence"
+  },
+  {
+    "id": "TST-030",
+    "level": "MUST",
+    "title": "Durabilité et reprise"
+  },
+  {
+    "id": "TST-031",
+    "level": "MUST",
+    "title": "Parcours bout en bout"
+  },
+  {
+    "id": "TST-032",
+    "level": "MUST",
+    "title": "Compatibilité des sauvegardes et de la base"
+  },
+  {
+    "id": "TST-033",
+    "level": "MUST",
+    "title": "Clients réseau simulés"
+  },
+  {
+    "id": "TST-040",
+    "level": "MUST",
+    "title": "Mesures de terrain"
+  },
+  {
+    "id": "TST-050",
+    "level": "MUST",
+    "title": "Chaque exigence MUST est testée"
+  },
+  {
+    "id": "UX-001",
+    "level": "MUST",
+    "title": "Lisibilité en mouvement"
+  },
+  {
+    "id": "UX-002",
+    "level": "MUST",
+    "title": "Pages du direct"
+  },
+  {
+    "id": "UX-003",
+    "level": "MUST",
+    "title": "Protection contre les appuis involontaires"
+  },
+  {
+    "id": "UX-004",
+    "level": "MUST",
+    "title": "Écran allumé optionnel"
+  },
+  {
+    "id": "UX-005",
+    "level": "SHOULD",
+    "title": "Cible de séance"
+  },
+  {
+    "id": "WTH-001",
+    "level": "SHOULD",
+    "title": "Météo de l'activité"
+  },
+  {
+    "id": "WTH-002",
+    "level": "MUST",
+    "title": "Stockage et affichage de la météo"
+  },
+  {
+    "id": "WTH-003",
+    "level": "MUST",
+    "title": "Report et désactivation"
+  }
+]

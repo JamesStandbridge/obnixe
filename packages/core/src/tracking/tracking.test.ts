@@ -1,10 +1,15 @@
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { mountainBikeMotion, sports } from "@obnixe/schema";
 import { resolveProfile } from "./profile.ts";
+import { coreScenarios } from "./testing/scenarios.ts";
+import { runBatch } from "./testing/run.ts";
 import { absentValue, toSampleColumns, UnorderedSamplesError } from "./types.ts";
 import type { Fix, Sample } from "./types.ts";
 
-describe("resolveProfile", () => {
+describe("resolveProfile (SPT-002)", () => {
   it("returns the sport profile tagged with its sport", () => {
     expect(resolveProfile("trail", { kind: "race" })).toEqual({ ...sports.trail.recording, sport: "trail" });
   });
@@ -41,7 +46,7 @@ const fix = (t: number, overrides: Partial<Fix> = {}): Fix => ({
 });
 
 describe("toSampleColumns", () => {
-  it("splits interleaved samples into typed columns", () => {
+  it("splits interleaved samples into typed columns (PRF-031)", () => {
     const samples: Sample[] = [
       fix(0),
       { type: "pressure", t: 200, pascals: 98_532 },
@@ -64,5 +69,38 @@ describe("toSampleColumns", () => {
 
   it("refuses a stream that goes back in time", () => {
     expect(() => toSampleColumns([fix(1000), fix(999)])).toThrow(UnorderedSamplesError);
+  });
+
+  it("PRF-031 keeps every processed series in a typed column", () => {
+    const { series } = runBatch(coreScenarios.hrDropout(1));
+    for (const [name, column] of Object.entries(series)) {
+      if (name === "length" || column === null) continue;
+      expect(ArrayBuffer.isView(column), name).toBe(true);
+      expect((column as ArrayLike<number>).length, name).toBe(series.length);
+    }
+  });
+});
+
+const trackingDirectory = fileURLToPath(new URL(".", import.meta.url));
+/** Validation, storage, DEFLATE and hashing: none of them computes a metric. */
+const allowedPackages = new Set(["@obnixe/schema", "drizzle-orm", "zod", "fflate", "@noble/hashes"]);
+
+function packageOf(specifier: string): string {
+  const parts = specifier.split("/");
+  return specifier.startsWith("@") ? parts.slice(0, 2).join("/") : (parts[0] ?? specifier);
+}
+
+describe("dependencies", () => {
+  it("INT-050 implements the processing algorithms without third-party libraries", () => {
+    const sources = readdirSync(trackingDirectory, { recursive: true, encoding: "utf8" }).filter((file) => file.endsWith(".ts") && !file.endsWith(".test.ts"));
+    expect(sources.length).toBeGreaterThan(40);
+    const imported = new Set<string>();
+    for (const file of sources) {
+      for (const match of readFileSync(join(trackingDirectory, file), "utf8").matchAll(/(?:^|\n)\s*(?:import|export)\s[^;]*?from\s+"([^"]+)"/g)) {
+        const specifier = match[1] ?? "";
+        if (!specifier.startsWith(".")) imported.add(packageOf(specifier));
+      }
+    }
+    expect([...imported].filter((name) => !allowedPackages.has(name))).toEqual([]);
   });
 });

@@ -93,7 +93,7 @@ describe("weatherRequest", () => {
   });
 });
 
-describe("parseWeather", () => {
+describe("parseWeather (TST-033)", () => {
   it("converts the recorded forecast hours of the activity to stored integer units", () => {
     const weather = parseWeather(weatherRequest(annecyRun, annecyNow), JSON.parse(recorded("forecast")), fetchedAt);
     expect(weather.source).toBe("open_meteo_forecast");
@@ -145,7 +145,7 @@ describe("parseWeather", () => {
   });
 });
 
-describe("fetchWeather", () => {
+describe("fetchWeather (TST-033)", () => {
   const request = weatherRequest(annecyRun, annecyNow);
 
   it("accepts the platform fetch as transport", () => {

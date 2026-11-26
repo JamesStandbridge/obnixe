@@ -1,0 +1,34 @@
+appId: com.jamesstandbridge.obnixe
+name: Première demande de localisation acceptée, départ sans signal
+tags:
+  - TST-031
+  - PRV-002
+  - PRV-005
+  - REC-010
+  - REC-011
+---
+- launchApp:
+    clearState: true
+    permissions:
+      all: deny
+- tapOn: "Enregistrer une sortie"
+- assertVisible: "Ta position, pendant la sortie seulement"
+- assertVisible: "Noter à la main"
+- tapOn: "Autoriser la localisation"
+- tapOn:
+    text: ".*(using the app|utilisez l'appli|utilisation de l'appli).*"
+    optional: true
+- assertVisible: "Démarrer"
+- assertVisible: "Pause automatique"
+- assertVisible: "Recherche du signal GPS.*"
+- tapOn: "Démarrer"
+- tapOn:
+    text: "(Allow|Autoriser)"
+    optional: true
+- extendedWaitUntil:
+    visible: "Mettre en pause"
+    timeout: 10000
+- longPressOn: "Terminer"
+- tapOn: "Supprimer"
+- assertVisible: "Sortie supprimée"
+- tapOn: "Annuler"

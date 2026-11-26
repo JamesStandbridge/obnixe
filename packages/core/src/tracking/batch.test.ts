@@ -108,6 +108,26 @@ describe("processTrack (GPS-001, GPS-002)", () => {
     expect(energy?.kcal).toBeLessThan(900);
   });
 
+  it("GPS-050 computes the grade-adjusted pace of the activity and its splits for run and trail only", () => {
+    const scenario = stageScenarios.sawtooth(2);
+    for (const sport of ["run", "trail", "walk", "hike", "bike"] as const) {
+      const processed = runBatch({ ...scenario, sport });
+      const adjusted = sport === "run" || sport === "trail";
+      expect(processed.details.gradeAdjustedDistanceMm !== null, sport).toBe(adjusted);
+      expect(processed.splits.length, sport).toBeGreaterThan(0);
+      expect(processed.splits.every((split) => (split.gradeAdjustedDistanceMm !== null) === adjusted), sport).toBe(true);
+    }
+  });
+
+  it("GPS-013 records without barometer or pedometer and names the sources it used", () => {
+    const withSensors = stageScenarios.sawtooth(3);
+    const fixesOnly = { ...withSensors, samples: fixesOf(withSensors.samples) };
+    const bare = runBatch(fixesOnly).summary;
+    expect(bare).toMatchObject({ elevationSource: "gnss", cadenceSource: "none", heartRateSource: "none", cadenceAvg: null });
+    expect(Math.abs(bare.distanceMm / 1000 / withSensors.truth.distance - 1)).toBeLessThan(0.02);
+    expect(runBatch(withSensors).summary).toMatchObject({ elevationSource: "barometer", cadenceSource: "pedometer" });
+  });
+
   it("handles a track without any fix", () => {
     const processed = processTrack(trackOf([], [{ kind: "start", t: 0 }, { kind: "stop", t: 60_000 }]), profileOf({ sport: "run" }), { laps: recordedLaps, trim: untrimmed });
     expect(processed.summary).toMatchObject({ elapsedMs: 60_000, movingMs: 0, distanceMm: 0, ascentMm: null, elevationSource: "none", bbox: null, speedMaxMmS: null, pointCount: 0 });

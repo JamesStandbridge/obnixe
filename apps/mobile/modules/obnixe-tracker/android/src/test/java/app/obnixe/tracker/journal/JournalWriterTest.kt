@@ -126,7 +126,7 @@ class JournalWriterTest {
   }
 
   @Test
-  fun `fix records hold every field at its offset`() {
+  fun `fix records hold every field at its offset (GPS-011)`() {
     JournalWriter.create(path, header).use { writer ->
       writer.append(fix)
       writer.flush()

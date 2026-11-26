@@ -1,0 +1,24 @@
+appId: com.jamesstandbridge.obnixe
+name: Appairage d'une source cardiaque simulée
+# Needs a Heart Rate service advertised nearby, for example the Venu 3S in broadcast mode or nRF Connect.
+tags:
+  - TST-031
+  - PRV-006
+---
+- launchApp:
+    clearState: true
+    permissions:
+      all: deny
+- tapOn: "Réglages et données"
+- scrollUntilVisible:
+    element: "Course"
+- tapOn: "Course"
+- tapOn: "Capteur cardiaque"
+- tapOn: "Rechercher"
+- tapOn: "(Allow|Autoriser)"
+- assertVisible: "Sources à proximité"
+- extendedWaitUntil:
+    visible: ".*(Venu|HRM|Heart|Capteur).*"
+    timeout: 20000
+- tapOn: ".*(Venu|HRM|Heart|Capteur).*"
+- assertVisible: "Oublier"

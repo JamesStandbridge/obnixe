@@ -96,7 +96,7 @@ describe("computeImport (IO-011, IO-050)", () => {
 });
 
 describe("planImport (IO-010)", () => {
-  it("writes a completed session, its recording, laps and trace in one import changeset", () => {
+  it("writes a completed session, its recording, laps and trace in one import changeset, keeping the file energy beside the estimate (CAL-001)", () => {
     make.write([{ kind: "insert", table: "weigh_in", row: make.weighIn("2026-10-24", 70_000) }]);
     updateSettings(context.db, { birthYear: 1990, sex: "female" }, context.env.now());
     const computation = computed("venu3s-run.fit");

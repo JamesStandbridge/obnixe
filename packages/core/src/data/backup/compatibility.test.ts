@@ -62,7 +62,7 @@ describe("v1 database migrated in place", () => {
     context = createTestContext(databaseV1);
   });
 
-  it("converts trail runs, their gear and program slots, and pool swims", () => {
+  it("converts trail runs, their gear and program slots, and pool swims (DAT-010, DAT-011)", () => {
     expectConverted(context);
   });
 
@@ -79,7 +79,7 @@ describe("v1 database migrated in place", () => {
     expect(after.recording).toBe(0);
   });
 
-  it("gives the new settings their defaults", () => {
+  it("gives the new settings their defaults (DAT-004)", () => {
     expect(readSettings(context.db)).toMatchObject({
       agentCanReadLocation: true,
       keepScreenOn: false,
@@ -101,7 +101,7 @@ describe("v1 database migrated in place", () => {
   });
 });
 
-describe("v1 backup", () => {
+describe("v1 backup (DAT-032, TST-032)", () => {
   let opened: Snapshot;
 
   beforeAll(async () => {
