@@ -50,7 +50,7 @@ beforeEach(() => {
 });
 
 function call(tool: string, args: unknown): ToolOutcome {
-  return runAgentTool(context.db, context.env, { connectionId, tool, arguments: args, timeZone });
+  return runAgentTool(context.db, context.env, { connectionId, tool, arguments: args, timeZone, readTrack: () => null });
 }
 
 function ok<T>(tool: string, args: unknown): T {

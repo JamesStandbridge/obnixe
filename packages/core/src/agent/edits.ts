@@ -1,5 +1,5 @@
 import { asc, eq, inArray } from "drizzle-orm";
-import { exercise, exerciseZone, painReport, program, session, sessionItem, sports, strengthEntry, strengthSet } from "@obnixe/schema";
+import { exercise, exerciseZone, painReport, program, recording, session, sessionItem, sports, strengthEntry, strengthSet } from "@obnixe/schema";
 import type { EpochMs, Exercise, FieldValues, Id, LocalDate, PainReport, Session, SessionItem, StrengthEntry, StrengthSet, ZoneKey } from "@obnixe/schema";
 import type { ObnixeDatabase } from "../database.ts";
 import { activeSeconds } from "../activity/freeSession.ts";
@@ -8,6 +8,7 @@ import { planArchiveExercise, planExerciseCues, planRestoreExercise, planUpdateE
 import type { ExerciseInput, ExerciseIssue } from "../programs/exercises.ts";
 import { exerciseUsage, latestVersion } from "../programs/queries.ts";
 import { planActivate, planArchive } from "../programs/status.ts";
+import { resolveProfile } from "../tracking/profile.ts";
 import type { StatusRefusal } from "../programs/status.ts";
 import { commit } from "../writer.ts";
 import type { Actor, Mutation, NewRow } from "../writer.ts";
@@ -108,8 +109,30 @@ function itemMutations(db: ObnixeDatabase, env: AgentEnvironment, sessionId: Id,
   return { release, insert: [...insert, ...reanchor] };
 }
 
+const trackValueKeys = ["distance", "elevation_gain", "heart_rate_avg"] as const;
+
+/** A recorded activity keeps its timing and the values measured on its track (`INT-042`, `SPT-003`). */
+function guardRecordedSession(db: ObnixeDatabase, current: Session, input: ToolInput<"update_session">): void {
+  const attached = db.select({ source: recording.source }).from(recording).where(eq(recording.sessionId, current.id)).get();
+  if (attached === undefined) return;
+  if (input.startedAt !== undefined || input.durationSeconds !== undefined) {
+    throw new ToolInputError(`Session '${current.id}' was recorded: its start time and duration come from the track and cannot change.`);
+  }
+  if (input.values === undefined) return;
+  if (attached.source === "live" && resolveProfile(current.sport, input.values) === null) {
+    throw new ToolInputError(`Session '${current.id}' was recorded with GPS, so its values must keep a ${current.sport} kind that records a track.`);
+  }
+  const changed = trackValueKeys.filter((key) => !sameValue(input.values?.[key], current.values[key]));
+  if (changed.length === 0) return;
+  const expected = Object.fromEntries(trackValueKeys.filter((key) => current.values[key] !== undefined).map((key) => [key, current.values[key]]));
+  throw new ToolInputError(
+    `Session '${current.id}' was recorded: the values ${changed.join(", ")} come from its track and cannot be changed. Send them unchanged (${JSON.stringify(expected)}, any other key left out); fix the track on the phone instead.`,
+  );
+}
+
 export function updateSession(db: ObnixeDatabase, env: AgentEnvironment, actor: Actor, input: ToolInput<"update_session">): ToolResult {
   const current = editableSession(db, input.sessionId, "editing");
+  guardRecordedSession(db, current, input);
   const sport = sports[current.sport];
   if (sport.archetype === "strength" && (input.values !== undefined || input.items !== undefined)) {
     throw new ToolInputError("Strength sessions have no values or items. Correct exercises and sets with update_strength_session.");

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { destructiveTools, toolContracts, toolNames } from "../contract.ts";
+import type { ToolName } from "../contract.ts";
 import type { ToolOutcome } from "../protocol.ts";
 
 export const remoteServerVersion = "1.0.0";
@@ -27,6 +28,12 @@ export type RpcReply =
   | { readonly jsonrpc: "2.0"; readonly id: RpcId | null; readonly error: { readonly code: number; readonly message: string } };
 
 export type RunTool = (name: string, args: Readonly<Record<string, unknown>>) => ToolOutcome;
+
+export interface McpHandlers {
+  readonly runTool: RunTool;
+  /** The tools offered now: removing a permission such as `agentCanReadLocation` hides its tools (`INT-041`). */
+  readonly exposedTools: () => readonly ToolName[];
+}
 
 export interface McpTool {
   readonly name: string;
@@ -69,7 +76,7 @@ function negotiatedVersion(params: Readonly<Record<string, unknown>> | undefined
 }
 
 /** Answers one JSON-RPC message; notifications and responses from the client get no reply. */
-export function answerMcpMessage(message: unknown, runTool: RunTool): RpcReply | null {
+export function answerMcpMessage(message: unknown, handlers: McpHandlers): RpcReply | null {
   const parsed = requestSchema.safeParse(message);
   if (!parsed.success) return failure(null, rpcCodes.invalidRequest, "Invalid JSON-RPC request");
   const { id, method, params } = parsed.data;
@@ -88,12 +95,14 @@ export function answerMcpMessage(message: unknown, runTool: RunTool): RpcReply |
       };
     case "ping":
       return { jsonrpc: "2.0", id, result: {} };
-    case "tools/list":
-      return { jsonrpc: "2.0", id, result: { tools: listMcpTools() } };
+    case "tools/list": {
+      const exposed: ReadonlySet<string> = new Set(handlers.exposedTools());
+      return { jsonrpc: "2.0", id, result: { tools: listMcpTools().filter((tool) => exposed.has(tool.name)) } };
+    }
     case "tools/call": {
       const call = callParamsSchema.safeParse(params);
       if (!call.success) return failure(id, rpcCodes.invalidParams, "tools/call needs a tool name and object arguments");
-      const outcome = runTool(call.data.name, call.data.arguments ?? {});
+      const outcome = handlers.runTool(call.data.name, call.data.arguments ?? {});
       return { jsonrpc: "2.0", id, result: { content: [{ type: "text", text: outcome.text }], isError: outcome.isError } };
     }
     default:
@@ -104,7 +113,7 @@ export function answerMcpMessage(message: unknown, runTool: RunTool): RpcReply |
 export type McpBody = { readonly kind: "replies"; readonly replies: RpcReply | readonly RpcReply[] } | { readonly kind: "accepted" };
 
 /** Answers a POSTed body holding one message or a batch; a body made only of notifications is accepted without content. */
-export function answerMcpBody(text: string, runTool: RunTool): McpBody {
+export function answerMcpBody(text: string, handlers: McpHandlers): McpBody {
   let message: unknown;
   try {
     message = JSON.parse(text);
@@ -113,9 +122,9 @@ export function answerMcpBody(text: string, runTool: RunTool): McpBody {
     throw error;
   }
   if (!Array.isArray(message)) {
-    const reply = answerMcpMessage(message, runTool);
+    const reply = answerMcpMessage(message, handlers);
     return reply === null ? { kind: "accepted" } : { kind: "replies", replies: reply };
   }
-  const replies = message.map((item: unknown) => answerMcpMessage(item, runTool)).filter((reply): reply is RpcReply => reply !== null);
+  const replies = message.map((item: unknown) => answerMcpMessage(item, handlers)).filter((reply): reply is RpcReply => reply !== null);
   return replies.length === 0 ? { kind: "accepted" } : { kind: "replies", replies };
 }

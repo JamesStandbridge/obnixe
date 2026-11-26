@@ -11,10 +11,10 @@ export interface ConnectionPeer {
 
 export function readPermissions(db: ObnixeDatabase): AgentPermissions {
   const row = db
-    .select({ canReadBody: settings.agentCanReadBody, canWrite: settings.agentCanWrite, canReadPhotos: settings.agentCanReadPhotos })
+    .select({ canReadBody: settings.agentCanReadBody, canWrite: settings.agentCanWrite, canReadPhotos: settings.agentCanReadPhotos, canReadLocation: settings.agentCanReadLocation })
     .from(settings)
     .get();
-  return row ?? { canReadBody: false, canWrite: false, canReadPhotos: false };
+  return row ?? { canReadBody: false, canWrite: false, canReadPhotos: false, canReadLocation: false };
 }
 
 export function openConnection(db: ObnixeDatabase, env: Environment, peer: ConnectionPeer): Id {

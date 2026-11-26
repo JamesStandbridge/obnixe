@@ -5,6 +5,7 @@ import type { Id } from "@obnixe/schema";
 import type { Environment, ObnixeDatabase } from "../database.ts";
 import { DependentRowsError, DuplicateRowError, RowNotFoundError } from "../writer.ts";
 import type { Actor } from "../writer.ts";
+import { getActivity, getActivityTrack } from "./activity.ts";
 import { logCheckIn, logMeasurements, logWeighIn, reportPain } from "./body.ts";
 import { listAgentChanges } from "./changes.ts";
 import { isConnectionOpen, readPermissions } from "./connection.ts";
@@ -12,7 +13,7 @@ import { isToolName, toolContracts } from "./contract.ts";
 import { deleteSession, mergeExercises, setProgramStatus, updateExercise, updateSession, updateStrengthSession } from "./edits.ts";
 import type { AgentPermission, ToolInput, ToolName } from "./contract.ts";
 import { PermissionDeniedError, ToolInputError, hasPermission } from "./environment.ts";
-import type { AgentEnvironment, ToolResult } from "./environment.ts";
+import type { AgentEnvironment, ToolResult, TrackReader } from "./environment.ts";
 import { getNextSession } from "./planning.ts";
 import type { ToolOutcome } from "./protocol.ts";
 import { getBodySignals, getExerciseProgress, getHistory, getProgram, listExercises, listPhotos, listPrograms, listSports } from "./reads.ts";
@@ -23,6 +24,8 @@ type Handler<N extends ToolName> = (db: ObnixeDatabase, env: AgentEnvironment, a
 const handlers: { readonly [N in ToolName]: Handler<N> } = {
   list_sports: () => listSports(),
   get_history: (db, env, _actor, input) => getHistory(db, env, input),
+  get_activity: (db, env, _actor, input) => getActivity(db, env, input),
+  get_activity_track: (db, env, _actor, input) => getActivityTrack(db, env, input),
   get_exercise_progress: (db, env, _actor, input) => getExerciseProgress(db, env, input),
   get_body_signals: (db, env, _actor, input) => getBodySignals(db, env, input),
   list_photos: (db, env, _actor, input) => listPhotos(db, env, input),
@@ -52,6 +55,7 @@ export interface AgentCallRequest {
   readonly tool: string;
   readonly arguments: unknown;
   readonly timeZone: string;
+  readonly readTrack: TrackReader;
 }
 
 function failure(text: string): ToolOutcome {
@@ -71,7 +75,7 @@ export function runAgentTool(db: ObnixeDatabase, env: Environment, request: Agen
   const name = request.tool;
   const contract = toolContracts[name];
   const permissions = readPermissions(db);
-  const agentEnv: AgentEnvironment = { now: env.now, newId: env.newId, timeZone: request.timeZone, permissions };
+  const agentEnv: AgentEnvironment = { now: env.now, newId: env.newId, timeZone: request.timeZone, permissions, readTrack: request.readTrack };
   const actor: Actor = { author: "agent", connectionId: request.connectionId };
   try {
     const missing: AgentPermission | undefined = contract.permissions.find((permission) => !hasPermission(permissions, permission));

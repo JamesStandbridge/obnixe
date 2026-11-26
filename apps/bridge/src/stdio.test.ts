@@ -42,7 +42,7 @@ it("runs under node type stripping, serves MCP over stdio and creates a private 
   const client = new Client({ name: "codex-mcp-client", version: "1.0.0" });
   await client.connect(transport);
   const { tools } = await client.listTools();
-  expect(tools).toHaveLength(24);
+  expect(tools).toHaveLength(26);
   const result = await client.callTool({ name: "list_programs", arguments: {} });
   expect(result.isError).toBe(true);
   await client.close();

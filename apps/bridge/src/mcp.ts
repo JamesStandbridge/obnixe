@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { hostname } from "node:os";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { RegisteredTool } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { clientLabel, destructiveTools, toolContracts, toolNames } from "@obnixe/core/agent/wire";
 import type { ToolName } from "@obnixe/core/agent/wire";
@@ -27,17 +28,23 @@ export function hostLabel(): string {
 
 export function createMcpServer(endpoint: PhoneEndpoint): McpServer {
   const server = new McpServer({ name: "obnixe", title: "Obnixe", version: bridgeVersion }, { instructions });
-  for (const name of toolNames) register(server, endpoint, name);
+  const registered = toolNames.map((name) => ({ name, tool: register(server, endpoint, name) }));
+  endpoint.watchTools((tools) => {
+    const exposed: ReadonlySet<string> = new Set(tools);
+    for (const { name, tool } of registered) {
+      if (exposed.has(name) !== tool.enabled) tool.update({ enabled: exposed.has(name) });
+    }
+  });
   server.server.oninitialized = () => {
     endpoint.setClient(clientLabel(server.server.getClientVersion()?.name));
   };
   return server;
 }
 
-function register(server: McpServer, endpoint: PhoneEndpoint, name: ToolName): void {
+function register(server: McpServer, endpoint: PhoneEndpoint, name: ToolName): RegisteredTool {
   const contract = toolContracts[name];
   const isRead = contract.kind === "read";
-  server.registerTool(
+  return server.registerTool(
     name,
     {
       title: contract.title,

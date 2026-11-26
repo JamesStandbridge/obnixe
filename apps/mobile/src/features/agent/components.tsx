@@ -313,7 +313,14 @@ export function AgentPermissions({ settings, connected, photoCount, onChange }: 
         value={settings.canWrite}
         onChange={(value) => onChange("agentCanWrite", value)}
       />
-      <PermissionRow label="Voir les photos" {...(photoDetail === undefined ? {} : { detail: photoDetail })} value={settings.canReadPhotos} onChange={(value) => onChange("agentCanReadPhotos", value)} last />
+      <PermissionRow label="Voir les photos" {...(photoDetail === undefined ? {} : { detail: photoDetail })} value={settings.canReadPhotos} onChange={(value) => onChange("agentCanReadPhotos", value)} />
+      <PermissionRow
+        label="Lire les traces"
+        {...(connected ? {} : { detail: "positions GPS, zones de confidentialité masquées" })}
+        value={settings.canReadLocation}
+        onChange={(value) => onChange("agentCanReadLocation", value)}
+        last
+      />
     </Section>
   );
 }

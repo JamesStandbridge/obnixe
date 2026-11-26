@@ -4,6 +4,7 @@ import { parseRelayFrame, remoteConnectUrl, remotePhoneOrigin, RemoteServer, sig
 import type { PendingAuthorization, PhoneFrame, RemoteGrant, RemoteIdentity, RemoteResponse } from "@obnixe/core";
 import { db, environment } from "@/data/database";
 import { deviceTimeZone } from "@/format/dates";
+import { readTrackFile } from "@/features/agent/trackFiles";
 import { askApprovalNotifications } from "@/features/remote/notifications";
 import { createIdentity, openVault, readEnabled, readGrants, readIdentity, saveEnabled } from "@/features/remote/vault";
 import { relayLink } from "../../../modules/obnixe-remote";
@@ -80,6 +81,7 @@ class RemoteAccess {
       vault: openVault(randomBytes),
       randomBytes,
       timeZone: deviceTimeZone,
+      readTrack: readTrackFile,
       listener: {
         onAuthorizations: (pending) => this.update({ pending }),
         onGrants: (grants) => this.update({ grants }),

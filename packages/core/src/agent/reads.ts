@@ -36,6 +36,7 @@ import type { AgentEnvironment, Json, ToolResult } from "./environment.ts";
 import { ToolInputError } from "./environment.ts";
 import { findExercise } from "./exercises.ts";
 import { frenchSpan, lowerFirst } from "./format.ts";
+import { recordingSummaries } from "./recordings.ts";
 
 const dayMs = 86_400_000;
 
@@ -129,6 +130,7 @@ export function getHistory(db: ObnixeDatabase, env: AgentEnvironment, input: Too
   const sets = entryIds.length === 0 ? [] : db.select().from(strengthSet).where(inArray(strengthSet.entryId, entryIds)).orderBy(asc(strengthSet.position)).all();
   const items = ids.length === 0 ? [] : db.select().from(sessionItem).where(inArray(sessionItem.sessionId, ids)).orderBy(asc(sessionItem.position)).all();
   const pains = ids.length === 0 ? [] : db.select().from(painReport).where(and(inArray(painReport.sessionId, ids), isNull(painReport.deletedAt))).orderBy(asc(painReport.occurredAt)).all();
+  const recordings = recordingSummaries(db, rows.map((row) => row.session));
   const sessions = rows.map(({ session: row, slotName }) => ({
     id: row.id,
     sport: row.sport,
@@ -158,6 +160,7 @@ export function getHistory(db: ObnixeDatabase, env: AgentEnvironment, input: Too
     pain: pains
       .filter((pain) => pain.sessionId === row.id)
       .map((pain) => ({ zone: pain.zone, zoneLabel: zones[pain.zone].label, level: pain.level, phase: pain.phase, note: pain.note })),
+    recording: recordings.get(row.id) ?? null,
   }));
   const sportLabel = input.sport === undefined ? "" : `, ${lowerFirst(sports[input.sport].label)}`;
   return { kind: "read", summary: `${rangeSummary("Historique", input.from as LocalDate, input.to as LocalDate, env)}${sportLabel}`, data: { from: input.from, to: input.to, sessions } };

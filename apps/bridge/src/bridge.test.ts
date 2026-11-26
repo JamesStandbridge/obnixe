@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { PassThrough } from "node:stream";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { ToolListChangedNotificationSchema } from "@modelcontextprotocol/sdk/types.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { WebSocket } from "ws";
@@ -15,12 +16,14 @@ import {
   closeConnection,
   decodeFrame,
   encodeFrame,
+  exposedToolNames,
   generateIdentity,
   inviteTtlMs,
   openConnection,
   pairingCodeTtlMs,
   parseInvite,
   phoneRevocation,
+  readPermissions,
   renameConnectionClient,
   runAgentTool,
 } from "@obnixe/core";
@@ -112,7 +115,8 @@ function connectPhone(code: string, options: PhoneOptions = {}): SimulatedPhone 
       onStatus: (status) => statuses.push(status),
       onOpen: (peer) => openConnection(context.db, context.env, peer),
       onClient: (connectionId, name) => renameConnectionClient(context.db, connectionId, name),
-      onCall: (connectionId, tool, args) => runAgentTool(context.db, context.env, { connectionId, tool, arguments: args, timeZone: "Europe/Paris" }),
+      onCall: (connectionId, tool, args) => runAgentTool(context.db, context.env, { connectionId, tool, arguments: args, timeZone: "Europe/Paris", readTrack: () => null }),
+      exposedTools: () => exposedToolNames(readPermissions(context.db)),
       onRejected: (reason) => rejections.push(reason),
       onPaired: (pairing) => paired.push(pairing),
       onHosts: (announced) => hosts.push(announced),
@@ -245,6 +249,8 @@ describe("MCP surface", () => {
     expect(tools.map((tool) => tool.name)).toEqual([
       "list_sports",
       "get_history",
+      "get_activity",
+      "get_activity_track",
       "get_exercise_progress",
       "get_body_signals",
       "list_photos",
@@ -693,6 +699,23 @@ describe("relayed tool calls", () => {
     const catalog = await client.callTool({ name: "log_activity", arguments: { ...activity, values: { distance: -3 } } });
     expect(catalog.isError).toBe(true);
     expect(context.db.select().from(agentCall).all().map((row) => row.tool)).toEqual(["list_sports", "log_activity"]);
+  });
+
+  it("hides the track tool while the phone does not share tracks and tells the client", async () => {
+    let changes = 0;
+    client.setNotificationHandler(ToolListChangedNotificationSchema, () => {
+      changes += 1;
+    });
+    const names = async (): Promise<readonly string[]> => (await client.listTools()).tools.map((tool) => tool.name);
+    context.db.update(settings).set({ agentCanReadLocation: false }).run();
+    const phone = await pairedPhone();
+    await until(() => changes === 1, "tool list change on open");
+    expect(await names()).not.toContain("get_activity_track");
+    expect(await names()).toContain("get_activity");
+    context.db.update(settings).set({ agentCanReadLocation: true }).run();
+    phone.session.announceTools();
+    await until(() => changes === 2, "tool list change on announce");
+    expect(await names()).toContain("get_activity_track");
   });
 
   it("ends the session when the phone leaves", async () => {

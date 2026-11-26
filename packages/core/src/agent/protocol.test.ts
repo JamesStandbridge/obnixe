@@ -125,6 +125,8 @@ function welcomeFor(secrets: PairingSecrets, commitment: Commitment): Frame {
   return { type: "welcome", opening: toBase64(commitment.opening), proof: toBase64(bridgeProof(secrets)) };
 }
 
+const initialTools: readonly string[] = ["get_history", "get_activity_track"];
+
 interface Harness {
   readonly session: PhoneSession;
   readonly sent: Frame[];
@@ -134,6 +136,7 @@ interface Harness {
   readonly hosts: (readonly string[])[];
   readonly rejections: RejectionReason[];
   readonly revocationsAcknowledged: PhoneRevocation[];
+  readonly exposed: { tools: readonly string[] };
   readonly closed: boolean;
 }
 
@@ -152,6 +155,7 @@ function harness(phoneCode: string, trust: Trust = {}): Harness {
   const hosts: (readonly string[])[] = [];
   const rejections: RejectionReason[] = [];
   const revocationsAcknowledged: PhoneRevocation[] = [];
+  const exposed = { tools: initialTools };
   const state = { closed: false };
   const session = new PhoneSession({
     secret: trust.secret ?? { kind: "code", code: phoneCode },
@@ -176,6 +180,7 @@ function harness(phoneCode: string, trust: Trust = {}): Harness {
       onPaired: (pairing) => paired.push(pairing),
       onHosts: (announced) => hosts.push(announced),
       onRevocationAcknowledged: (revocation) => revocationsAcknowledged.push(revocation),
+      exposedTools: () => exposed.tools,
     },
   });
   return {
@@ -187,6 +192,7 @@ function harness(phoneCode: string, trust: Trust = {}): Harness {
     hosts,
     rejections,
     revocationsAcknowledged,
+    exposed,
     get closed() {
       return state.closed;
     },
@@ -233,7 +239,7 @@ describe("pairing handshake", () => {
     const target = harness(code);
     const { channel } = await pair(target);
     await target.session.receive(encodeFrame(channel.seal({ jsonrpc: "2.0", id: 1, method: "session.open", params: { client: "Cursor", host: "MacBook Pro", hosts: macHosts } })));
-    expect(parsePhoneMessage(channel.open(lastSent(target, "sealed")))).toEqual({ jsonrpc: "2.0", id: 1, result: { connectionId: "connection-1" } });
+    expect(parsePhoneMessage(channel.open(lastSent(target, "sealed")))).toEqual({ jsonrpc: "2.0", id: 1, result: { connectionId: "connection-1", tools: initialTools } });
   });
 
   it("keeps a recorded transcript sealed from an observer who knows the code", async () => {
@@ -373,7 +379,7 @@ describe("trusted resume", () => {
     await target.session.receive(encodeFrame({ type: "resumed", proof: toBase64(resumeBridgeProof(resumed)) }));
     const channel = new SealedChannel(resumed.sessionKeys.toPhone, resumed.sessionKeys.toBridge);
     await target.session.receive(encodeFrame(channel.seal(openSession)));
-    expect(parsePhoneMessage(channel.open(lastSent(target, "sealed")))).toEqual({ jsonrpc: "2.0", id: 1, result: { connectionId: "connection-1" } });
+    expect(parsePhoneMessage(channel.open(lastSent(target, "sealed")))).toEqual({ jsonrpc: "2.0", id: 1, result: { connectionId: "connection-1", tools: initialTools } });
     expect(target.statuses.at(-1)).toBe("open");
     expect(target.paired).toEqual([]);
     expect(target.hosts).toEqual([macHosts]);
@@ -568,7 +574,7 @@ describe("PhoneSession", () => {
     expect(target.statuses).toEqual(["proving", "waiting"]);
     await target.session.receive(encodeFrame(channel.seal({ jsonrpc: "2.0", id: 1, method: "session.open", params: { client: "Cursor", host: "MacBook Pro", hosts: macHosts } })));
     expect(target.session.connectionId).toBe("connection-1");
-    expect(parsePhoneMessage(channel.open(lastSent(target, "sealed")))).toEqual({ jsonrpc: "2.0", id: 1, result: { connectionId: "connection-1" } });
+    expect(parsePhoneMessage(channel.open(lastSent(target, "sealed")))).toEqual({ jsonrpc: "2.0", id: 1, result: { connectionId: "connection-1", tools: initialTools } });
     await target.session.receive(encodeFrame(channel.seal({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "list_sports", arguments: {} } })));
     expect(parsePhoneMessage(channel.open(lastSent(target, "sealed")))).toEqual({ jsonrpc: "2.0", id: 2, result: { text: "{}", isError: false } });
     expect(target.calls).toEqual(["list_sports"]);
@@ -576,6 +582,22 @@ describe("PhoneSession", () => {
     expect(parsePhoneMessage(channel.open(lastSent(target, "sealed")))).toEqual({ jsonrpc: "2.0", method: "session.close", params: { reason: "user" } });
     expect(target.closed).toBe(true);
     expect(target.statuses.at(-1)).toBe("closed");
+  });
+
+  it("announces the exposed tools only after the session opened and only when they changed", async () => {
+    const target = harness(code);
+    const { channel } = await pair(target);
+    target.exposed.tools = ["get_history"];
+    target.session.announceTools();
+    expect(target.sent.at(-1)?.type).not.toBe("sealed");
+    await target.session.receive(encodeFrame(channel.seal({ jsonrpc: "2.0", id: 1, method: "session.open", params: { client: "Cursor", host: "MacBook Pro", hosts: macHosts } })));
+    expect(parsePhoneMessage(channel.open(lastSent(target, "sealed")))).toEqual({ jsonrpc: "2.0", id: 1, result: { connectionId: "connection-1", tools: ["get_history"] } });
+    const opened = target.sent.length;
+    target.session.announceTools();
+    expect(target.sent).toHaveLength(opened);
+    target.exposed.tools = initialTools;
+    target.session.announceTools();
+    expect(parsePhoneMessage(channel.open(lastSent(target, "sealed")))).toEqual({ jsonrpc: "2.0", method: "session.tools", params: { tools: initialTools } });
   });
 
   it("answers and closes with reason error when a tool handler throws", async () => {
@@ -614,7 +636,7 @@ describe("PhoneSession", () => {
       target.session.receive(encodeFrame(welcomeFor(secrets, commitment))),
       target.session.receive(encodeFrame(channel.seal(openSession))),
     ]);
-    expect(parsePhoneMessage(channel.open(lastSent(target, "sealed")))).toEqual({ jsonrpc: "2.0", id: 1, result: { connectionId: "connection-1" } });
+    expect(parsePhoneMessage(channel.open(lastSent(target, "sealed")))).toEqual({ jsonrpc: "2.0", id: 1, result: { connectionId: "connection-1", tools: initialTools } });
   });
 
   it("refuses sealed frames before pairing", async () => {
