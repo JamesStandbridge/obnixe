@@ -27,6 +27,10 @@ describe.each([
     expect(readJournal(bytes)).toEqual({ ...expected, header: { ...expected.header, monotonicOriginNs: BigInt(expected.header.monotonicOriginNs) } });
   });
 
+  it("reads the marks written before guided workouts with their codes unchanged", () => {
+    expect(readJournal(bytes).marks.map((mark) => mark.kind)).toEqual(["start", "pause", "resume", "lap", "stop"]);
+  });
+
   it("reads every truncation of it as a prefix of its batches", () => {
     for (let length = 0; length < expected.validLength; length += 1) {
       const contents = readJournal(bytes.subarray(0, length));

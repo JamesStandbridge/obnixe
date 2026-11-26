@@ -1,9 +1,11 @@
+import { readFileSync } from "node:fs";
 import { deflateSync } from "fflate";
 import { describe, expect, it } from "vitest";
 import type { EpochMs } from "@obnixe/schema";
 import { toSampleColumns } from "../types.ts";
 import type { Fix, Sample } from "../types.ts";
 import { crc32 } from "./crc32.ts";
+import { markCodes } from "./marks.ts";
 import { decodeTrack, encodeTrack, TrackDecodeError, TrackEncodeError } from "./track.ts";
 import type { Track } from "./track.ts";
 import { syntheticActivity } from "./testSamples.ts";
@@ -204,5 +206,26 @@ describe("track .otrk", () => {
       rejects(forge([{ kind: 7, count: 1, bytes: varints([0, 65_536], [false, true]) }]), /cadence 0 is out of range/);
       rejects(forge([{ kind: 3, count: 2, bytes: varints([4_294_967_295, 1, 0, 0], []) }]), /time 1 overflows/);
     });
+  });
+});
+
+describe("tracks written before guided workouts", () => {
+  /** Encoded by the codec of main at 7fbc84c, whose marks had no `extend`. */
+  const legacy = decodeTrack(new Uint8Array(readFileSync(new URL("../../../test/fixtures/track/v1.otrk", import.meta.url))));
+
+  it("decode with their marks unchanged", () => {
+    expect(legacy.startedAt).toBe(Date.UTC(2026, 10, 20, 7, 0));
+    expect(legacy.samples.fixes.length).toBe(6);
+    expect(legacy.marks).toEqual([
+      { kind: "start", t: 0 },
+      { kind: "pause", t: 3100 },
+      { kind: "resume", t: 9200 },
+      { kind: "lap", t: 10_500 },
+      { kind: "stop", t: 11_000 },
+    ]);
+  });
+
+  it("keep the persisted mark codes, `extend` taking the code 4 the journal contract reserved for it", () => {
+    expect(markCodes).toEqual({ start: 0, pause: 1, resume: 2, lap: 3, extend: 4, stop: 5 });
   });
 });
