@@ -1,7 +1,7 @@
 import { and, desc, eq, getTableColumns, inArray, isNotNull, isNull, lt, ne, sql } from "drizzle-orm";
 import type { SQLiteColumn, SQLiteTable } from "drizzle-orm/sqlite-core";
-import { agentCall, backup, change, changeset, checkIn, journaled, journaledTables, measurement, painReport, photo, privacyZone, segment, session, weighIn } from "@obnixe/schema";
-import type { Backup, CheckIn, EpochMs, Id, JournaledTable, Measurement, PainReport, Photo, PrivacyZone, RowImage, Segment, Session, WeighIn } from "@obnixe/schema";
+import { agentCall, backup, change, changeset, checkIn, journaled, journaledTables, measurement, painReport, photo, privacyZone, route, segment, session, weighIn } from "@obnixe/schema";
+import type { Backup, CheckIn, EpochMs, Id, JournaledTable, Measurement, PainReport, Photo, PrivacyZone, Route, RowImage, Segment, Session, WeighIn } from "@obnixe/schema";
 import type { Environment, ObnixeDatabase } from "../database.ts";
 import { rowKey } from "../keys.ts";
 import { keyCondition } from "../writer.ts";
@@ -18,11 +18,12 @@ export type TrashItem =
   | { readonly table: "check_in"; readonly row: CheckIn; readonly expiresAt: EpochMs }
   | { readonly table: "pain_report"; readonly row: PainReport; readonly expiresAt: EpochMs }
   | { readonly table: "privacy_zone"; readonly row: PrivacyZone; readonly expiresAt: EpochMs }
-  | { readonly table: "segment"; readonly row: Segment; readonly expiresAt: EpochMs };
+  | { readonly table: "segment"; readonly row: Segment; readonly expiresAt: EpochMs }
+  | { readonly table: "route"; readonly row: Route; readonly expiresAt: EpochMs };
 
 export type TrashableTable = TrashItem["table"];
 
-export const trashableTables: readonly TrashableTable[] = ["session", "weigh_in", "measurement", "photo", "check_in", "pain_report", "privacy_zone", "segment"];
+export const trashableTables: readonly TrashableTable[] = ["session", "weigh_in", "measurement", "photo", "check_in", "pain_report", "privacy_zone", "segment", "route"];
 
 const expiry = (deletedAt: EpochMs | null): EpochMs => ((deletedAt ?? 0) + trashRetentionMs) as EpochMs;
 
@@ -36,6 +37,7 @@ export function trashItems(db: ObnixeDatabase): readonly TrashItem[] {
     ...db.select().from(painReport).where(isNotNull(painReport.deletedAt)).all().map((row): TrashItem => ({ table: "pain_report", row, expiresAt: expiry(row.deletedAt) })),
     ...db.select().from(privacyZone).where(isNotNull(privacyZone.deletedAt)).all().map((row): TrashItem => ({ table: "privacy_zone", row, expiresAt: expiry(row.deletedAt) })),
     ...db.select().from(segment).where(isNotNull(segment.deletedAt)).all().map((row): TrashItem => ({ table: "segment", row, expiresAt: expiry(row.deletedAt) })),
+    ...db.select().from(route).where(isNotNull(route.deletedAt)).all().map((row): TrashItem => ({ table: "route", row, expiresAt: expiry(row.deletedAt) })),
   ];
   return items.sort((left, right) => (right.row.deletedAt ?? 0) - (left.row.deletedAt ?? 0));
 }
@@ -85,6 +87,7 @@ export function restoreBlocker(db: ObnixeDatabase, item: TrashItem): RestoreBloc
     case "photo":
     case "privacy_zone":
     case "segment":
+    case "route":
       return null;
     default: {
       const unreachable: never = item;
@@ -114,7 +117,7 @@ export interface PurgePlan {
 export interface PurgeResult {
   readonly purgedRows: number;
   readonly photoFiles: readonly string[];
-  /** `INT-031`: deleted after the rows; a file left behind is swept at the next launch. */
+  /** `INT-031`: track files of recordings and routes, deleted after the rows; a file left behind is swept at the next launch. */
   readonly trackFiles: readonly string[];
 }
 
@@ -171,6 +174,7 @@ function expiredRoots(db: ObnixeDatabase, cutoff: EpochMs): readonly PurgeTarget
   add("pain_report", db.select().from(painReport).where(lt(painReport.deletedAt, cutoff)).all());
   add("privacy_zone", db.select().from(privacyZone).where(lt(privacyZone.deletedAt, cutoff)).all());
   add("segment", db.select().from(segment).where(lt(segment.deletedAt, cutoff)).all());
+  add("route", db.select().from(route).where(lt(route.deletedAt, cutoff)).all());
   return roots;
 }
 
@@ -185,7 +189,7 @@ export function planTrashPurge(db: ObnixeDatabase, now: EpochMs): PurgePlan {
   }
   const deletions = [...deletes.values()].sort((left, right) => (tableOrder.get(right.table) ?? 0) - (tableOrder.get(left.table) ?? 0));
   const photoFiles = deletions.filter((target) => target.table === "photo").map((target) => String(target.row.file));
-  const trackFiles = deletions.flatMap((target) => (target.table === "recording" && typeof target.row.trackFile === "string" ? [target.row.trackFile] : []));
+  const trackFiles = deletions.flatMap((target) => ((target.table === "recording" || target.table === "route") && typeof target.row.trackFile === "string" ? [target.row.trackFile] : []));
   return { releases: [...releases].filter(([key]) => !deletes.has(key)).map(([, release]) => release), deletions, photoFiles, trackFiles };
 }
 

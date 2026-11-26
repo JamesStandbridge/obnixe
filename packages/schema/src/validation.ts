@@ -61,6 +61,9 @@ export const rowSchemas = {
     bbox: boundingBoxE7Schema.nullable().optional(),
     trackSha256: sha256.nullable().optional(),
   }),
+  route: createInsertSchema(tables.route)
+    .extend({ name: label, bbox: boundingBoxE7Schema, trackSha256: sha256 })
+    .refine((row) => sports[row.sport].recording !== null, { path: ["sport"], message: "A route is followed by a sport with a recording profile" }),
   lap: createInsertSchema(tables.lap),
   privacy_zone: createInsertSchema(tables.privacyZone).extend({ label }),
   segment: createInsertSchema(tables.segment)

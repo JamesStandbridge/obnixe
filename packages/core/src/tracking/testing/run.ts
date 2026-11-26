@@ -6,10 +6,12 @@ import { LiveTracker } from "../live.ts";
 import type { LiveEvent, LivePoint, LiveSnapshot } from "../live.ts";
 import { resolveProfile } from "../profile.ts";
 import type { ResolvedProfile } from "../profile.ts";
+import { RouteGeometry } from "../route.ts";
+import { routePathOf } from "../routes.ts";
 import type { AutoLap } from "../stages/derive.ts";
 import { toSampleColumns } from "../types.ts";
 import type { Fix, Sample, TrackerMark } from "../types.ts";
-import type { Scenario } from "./scenarios.ts";
+import type { Scenario, Truth } from "./scenarios.ts";
 
 export function profileOf(scenario: Pick<Scenario, "sport">): ResolvedProfile {
   const profile = resolveProfile(scenario.sport, {});
@@ -46,8 +48,9 @@ export interface LiveRun {
 }
 
 /** Streams the samples and the marks in journal order, a mark before the samples of its instant. */
-export function runLive(scenario: Pick<Scenario, "sport" | "samples">, marks: readonly TrackerMark[] = [], autoLap: AutoLap = null): LiveRun {
+export function runLive(scenario: Pick<Scenario, "sport" | "samples">, marks: readonly TrackerMark[] = [], autoLap: AutoLap = null, route: RouteGeometry | null = null): LiveRun {
   const tracker = new LiveTracker(profileOf(scenario), autoLap);
+  tracker.followRoute(route);
   const events: TimedEvent[] = [];
   const snapshots: LiveSnapshot[] = [];
   const track: LivePoint[] = [];
@@ -77,4 +80,14 @@ export function fixesOf(samples: readonly Sample[]): readonly Fix[] {
 export function percentile(values: Float64Array, fraction: number): number {
   const sorted = Float64Array.from(values).sort();
   return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * fraction))] ?? 0;
+}
+
+/** The route drawn by the ground truth, with its altitude as measured by a barometer. */
+export function routeOfTruth(truth: Truth): RouteGeometry {
+  const points = Array.from({ length: truth.length }, (_, index) => ({
+    latitudeE7: Math.round((truth.latitude[index] ?? 0) * 1e7),
+    longitudeE7: Math.round((truth.longitude[index] ?? 0) * 1e7),
+    altitudeMm: Math.round((truth.altitude[index] ?? 0) * 1000),
+  }));
+  return new RouteGeometry(routePathOf(points), "barometer");
 }

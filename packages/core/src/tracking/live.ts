@@ -3,6 +3,8 @@ import { ellipsoidDistance } from "./geo.ts";
 import { SignalPipeline } from "./pipeline.ts";
 import type { SettledFix } from "./pipeline.ts";
 import type { ResolvedProfile } from "./profile.ts";
+import { RouteMatcher } from "./route.ts";
+import type { RouteEvent, RouteGeometry, RouteProgress } from "./route.ts";
 import { ElevationHysteresis, elevationThresholdMeters, gnssAltitudeFilter, GradeMeter, VamMeter, verticalSigma, VerticalSpeedMeter } from "./stages/altitude.ts";
 import type { ScalarKalman } from "./stages/altitude.ts";
 import { AutoLapper, gradeAdjustmentFactor, intervalKind, isCounted, PauseLedger, slowestPaceSecondsPerKm, SpeedSmoother } from "./stages/derive.ts";
@@ -29,11 +31,12 @@ export function signalLevelOf(accuracy: number | null): SignalLevel {
   return accuracy > signalLevelAccuracy.good ? "fair" : "good";
 }
 
-/** Recorder events raised by the tracker (`REC-030`, `REC-041`); an automatic lap is an alert, never a journal mark. */
+/** Recorder events raised by the tracker (`REC-030`, `REC-041`, `RTE-005`); an automatic lap is an alert, never a journal mark. */
 export type LiveEvent =
   | { readonly type: "motion_started"; readonly t: number }
   | { readonly type: "motion_stopped"; readonly t: number }
-  | { readonly type: "lap"; readonly trigger: "distance" | "duration"; readonly t: number };
+  | { readonly type: "lap"; readonly trigger: "distance" | "duration"; readonly t: number }
+  | RouteEvent;
 
 /** A point of the live map; `dashed` when the segment from the previous point crosses a pause or an unfilled gap. */
 export interface LivePoint {
@@ -79,6 +82,8 @@ export interface LiveSnapshot {
   readonly speed: number;
   /** Latest heart-rate reading still held, whatever the profile's metrics. */
   readonly heartRate: number | null;
+  /** The route followed (`RTE-004`), `null` without one. */
+  readonly route: RouteProgress | null;
 }
 
 /** A point of the live elevation profile (`UX-002`), in meters along the counted distance. */
@@ -217,6 +222,7 @@ export class LiveTracker {
   private displayed: LivePoint | null = null;
   private dashedSinceDisplay = false;
   private track: LivePoint[] = [];
+  private route: RouteMatcher | null = null;
 
   constructor(profile: ResolvedProfile, autoLap: AutoLap) {
     this.profile = profile;
@@ -229,6 +235,11 @@ export class LiveTracker {
 
   get motion(): MotionState {
     return this.classifier.state;
+  }
+
+  /** Follows the route from the next position on, from its start whatever was covered before; `null` stops following. */
+  followRoute(route: RouteGeometry | null): void {
+    this.route = route === null ? null : new RouteMatcher(route);
   }
 
   /** Takes one sample of the journal, in journal order, and returns the events it raised (`PRF-010`). */
@@ -322,6 +333,7 @@ export class LiveTracker {
       position: estimate === null ? null : { latitude: estimate.latitude, longitude: estimate.longitude },
       speed: this.speedNow,
       heartRate: this.heldReading(now),
+      route: this.route?.state ?? null,
     };
   }
 
@@ -336,15 +348,19 @@ export class LiveTracker {
     const altitude = this.liveAltitude(settled);
     const paused = this.ledger.isPaused(t);
     const speed = Math.hypot(settled.estimate.velocityEast, settled.estimate.velocityNorth);
+    const accuracy = settled.fix.horizontalAccuracyDm === null ? null : settled.fix.horizontalAccuracyDm / 10;
     const before = this.classifier.state;
     const state = this.classifier.push({
       t,
       speed,
       verticalSpeed: this.pipeline.hasBarometer && settled.fusedAltitude !== null ? this.motionVerticalSpeed.push(t, settled.fusedAltitude) : null,
       cadence: settled.cadence,
-      accuracy: settled.fix.horizontalAccuracyDm === null ? null : settled.fix.horizontalAccuracyDm / 10,
+      accuracy,
       paused,
     });
+    const { estimate } = settled;
+    const routeEvent = this.route?.push({ t, latitude: estimate.latitude, longitude: estimate.longitude, accuracy, velocityEast: estimate.velocityEast, velocityNorth: estimate.velocityNorth }) ?? null;
+    if (routeEvent !== null) events.push(routeEvent);
     if (state !== before) {
       const since = this.classifier.since ?? t;
       for (const interval of this.pending) if (interval.startMs >= since) interval.state = state;

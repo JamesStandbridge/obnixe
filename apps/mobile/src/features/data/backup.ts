@@ -27,7 +27,7 @@ import { db, deleteSafetyCopy, environment } from "@/data/database";
 import { deleteKept, deletePhoto, readKept, readPhoto, shareFile, writeKept, writePhoto } from "@/features/data/files";
 import type { PickedFile } from "@/features/data/files";
 import { fileStamp } from "@/features/data/format";
-import { deleteTrack, readTrack, writeTrack } from "@/features/tracking/trackStore";
+import { deleteTrack, readTrack, writeRouteTrack, writeTrack } from "@/features/tracking/trackStore";
 
 const fillRandom = (bytes: Uint8Array): void => {
   getRandomValues(bytes);
@@ -60,18 +60,22 @@ async function readPhotos(rows: readonly TableRow<"photo">[]): Promise<PhotoFile
   return files;
 }
 
-async function readTracks(rows: readonly TableRow<"recording">[]): Promise<TrackFile[]> {
+async function readTracks(tables: Snapshot["tables"]): Promise<TrackFile[]> {
   const files: TrackFile[] = [];
-  for (const row of rows) {
+  for (const row of tables.recording) {
     const bytes = row.trackFile === null ? null : await readTrack(row.trackFile);
-    if (bytes !== null) files.push({ recordingId: row.id, bytes });
+    if (bytes !== null) files.push({ kind: "recording", rowId: row.id, bytes });
+  }
+  for (const row of tables.route) {
+    const bytes = await readTrack(row.trackFile);
+    if (bytes !== null) files.push({ kind: "route", rowId: row.id, bytes });
   }
   return files;
 }
 
 async function currentSnapshot(now: EpochMs, includePhotos: boolean): Promise<Snapshot> {
   const base = buildSnapshot(db(), now);
-  return { ...base, photos: includePhotos ? await readPhotos(base.tables.photo) : [], tracks: await readTracks(base.tables.recording) };
+  return { ...base, photos: includePhotos ? await readPhotos(base.tables.photo) : [], tracks: await readTracks(base.tables) };
 }
 
 function record(kind: BackupKind, snapshot: Snapshot, includesPhotos: boolean, sizeBytes: number, snapshotFile: string | null, createdAt: EpochMs): void {
@@ -138,8 +142,21 @@ async function writePhotos(snapshot: Snapshot, photoIds: ReadonlySet<Id> | null)
 }
 
 /** Track files are written after the commit; a track whose write fails is rebuilt or reported « Trace indisponible » at the next launch. */
-async function writeTracks(snapshot: Snapshot, recordingIds: ReadonlySet<Id> | null): Promise<void> {
-  for (const track of restorableTracks(snapshot, recordingIds)) await writeTrack(track.recordingId, track.bytes);
+async function writeTracks(snapshot: Snapshot, rowIds: ReadonlySet<Id> | null): Promise<void> {
+  for (const track of restorableTracks(snapshot, rowIds)) {
+    switch (track.kind) {
+      case "recording":
+        await writeTrack(track.rowId, track.bytes);
+        break;
+      case "route":
+        await writeRouteTrack(track.rowId, track.bytes);
+        break;
+      default: {
+        const unreachable: never = track.kind;
+        throw new Error(`Unhandled track file kind ${String(unreachable)}`);
+      }
+    }
+  }
 }
 
 async function keepCurrent(now: EpochMs): Promise<{ readonly snapshot: Snapshot; readonly name: string; readonly size: number }> {
@@ -156,7 +173,7 @@ export async function importBackup(snapshot: Snapshot, mode: ImportMode): Promis
     case "merge": {
       const result = mergeSnapshot(db(), environment, snapshot);
       await writePhotos(snapshot, new Set(result.photoIds));
-      await writeTracks(snapshot, new Set(result.recordingIds));
+      await writeTracks(snapshot, new Set(result.trackRowIds));
       record("import_merge", snapshot, snapshot.photos.length > 0, 0, null, now);
       return { mode, changesetId: result.changesetId, counts: result.counts };
     }
@@ -168,8 +185,9 @@ export async function importBackup(snapshot: Snapshot, mode: ImportMode): Promis
       if (kept !== null) {
         const remaining = new Set(snapshot.tables.photo.map((row) => row.file));
         for (const row of kept.snapshot.tables.photo) if (!remaining.has(row.file)) deletePhoto(row.file);
-        const remainingTracks = new Set(snapshot.tables.recording.map((row) => row.trackFile));
-        for (const row of kept.snapshot.tables.recording) if (row.trackFile !== null && !remainingTracks.has(row.trackFile)) await deleteTrack(row.trackFile);
+        const remainingTracks = new Set([...snapshot.tables.recording.map((row) => row.trackFile), ...snapshot.tables.route.map((row) => row.trackFile)]);
+        const keptTracks = [...kept.snapshot.tables.recording.map((row) => row.trackFile), ...kept.snapshot.tables.route.map((row) => row.trackFile)];
+        for (const file of keptTracks) if (file !== null && !remainingTracks.has(file)) await deleteTrack(file);
       }
       record("import_replace", kept?.snapshot ?? snapshot, snapshot.photos.length > 0, kept?.size ?? 0, kept?.name ?? null, now);
       return { mode, changesetId };

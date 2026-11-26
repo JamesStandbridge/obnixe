@@ -148,7 +148,7 @@ const writer = {
   },
 };
 
-const start: RecordingStart = { request: { sport: "run", values: {}, gearId: null, slot: null, timeZone: "Europe/Paris" }, autoPause: false, power: "normal", replay: null };
+const start: RecordingStart = { request: { sport: "run", values: {}, gearId: null, slot: null, timeZone: "Europe/Paris", routeId: null }, autoPause: false, power: "normal", replay: null };
 
 let tracker: FakeTracker;
 let feedback: RecorderFeedback & { readonly calls: string[] };

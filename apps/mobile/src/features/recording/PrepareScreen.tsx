@@ -330,7 +330,7 @@ function Preparation({ sport: requested, kind: requestedKind, slotId, variantId,
     if (profile === null) return;
     launched.current = true;
     const outcome = await recorder.start({
-      request: { sport, values, gearId, slot: slotApplies && start !== null ? { slotId: start.slot.id, variantId: start.variantId, countsInRotation: true } : null, timeZone: deviceTimeZone() },
+      request: { sport, values, gearId, slot: slotApplies && start !== null ? { slotId: start.slot.id, variantId: start.variantId, countsInRotation: true } : null, timeZone: deviceTimeZone(), routeId: null },
       autoPause: autoPauseOn,
       power: "normal",
       replay: null,

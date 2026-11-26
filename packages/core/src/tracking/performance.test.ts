@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { processTrack } from "./batch.ts";
 import { mountainOuting } from "./testing/scenarios.ts";
 import type { Scenario } from "./testing/scenarios.ts";
-import { fixesOf, percentile, profileOf, recordedLaps, runLive, trackOf, untrimmed } from "./testing/run.ts";
+import { fixesOf, percentile, profileOf, recordedLaps, routeOfTruth, runLive, trackOf, untrimmed } from "./testing/run.ts";
 
 /** Node timings guard against regressions; the budgets themselves bind on the reference phone (`PLT-030`). */
 const budgetMs = { liveSampleP95: 0.5, batch3h: 600, batch6h: 800 } as const;
@@ -26,6 +26,13 @@ describe("performance budgets", () => {
   it("processes a live sample within 0.5 ms at the 95th percentile (PRF-010)", () => {
     let best = Number.POSITIVE_INFINITY;
     for (let attempt = 0; attempt < attempts; attempt += 1) best = Math.min(best, percentile(runLive(threeHours).timings, 0.95));
+    expect(best).toBeLessThanOrEqual(budgetMs.liveSampleP95);
+  }, 60_000);
+
+  it("stays within the live budget while following the route of the outing (RTE-007, PRF-010)", () => {
+    const route = routeOfTruth(threeHours.truth);
+    let best = Number.POSITIVE_INFINITY;
+    for (let attempt = 0; attempt < attempts; attempt += 1) best = Math.min(best, percentile(runLive(threeHours, [], null, route).timings, 0.95));
     expect(best).toBeLessThanOrEqual(budgetMs.liveSampleP95);
   }, 60_000);
 

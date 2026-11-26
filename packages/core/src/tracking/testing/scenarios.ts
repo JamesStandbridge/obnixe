@@ -376,3 +376,36 @@ export function mountainOuting(hours: number, seed: number): Scenario {
     seed,
   );
 }
+
+export interface RouteScenario extends Scenario {
+  /** The route followed, drawn without the noise of the fixes. */
+  readonly planned: Truth;
+}
+
+function routeScenario(planned: readonly Leg[], followed: readonly Leg[], seed: number): RouteScenario {
+  const start = { ...grenoble, altitude: 214 };
+  return { ...scenario("run", { ...start, legs: followed }, clearSky, seed), planned: buildTruth({ ...start, legs: planned }) };
+}
+
+/** Each of the three legs of the detour, north, east and back south of a route heading east. */
+export const detourLegMeters = 100;
+
+/** The synthetic scenarios of route following (`TST-002`, `RTE-004`, `RTE-005`). */
+export const routeScenarios = {
+  outAndBack: (seed: number): RouteScenario => {
+    const legs = [move(2500, 3.3, 30), move(2500, 3.3, 210)];
+    return routeScenario(legs, legs, seed);
+  },
+
+  figureEight: (seed: number): RouteScenario => {
+    const legs = [move(1000, 3.3, 0), move(500, 3.3, 90), move(500, 3.3, 180), move(1000, 3.3, 270), move(500, 3.3, 180), move(500, 3.3, 90)];
+    return routeScenario(legs, legs, seed);
+  },
+
+  detour: (seed: number): RouteScenario =>
+    routeScenario(
+      [move(3000, 3.3, 90)],
+      [move(1000, 3.3, 90), move(detourLegMeters, 3.3, 0), move(detourLegMeters, 3.3, 90), move(detourLegMeters, 3.3, 180), move(1900, 3.3, 90)],
+      seed,
+    ),
+} as const;

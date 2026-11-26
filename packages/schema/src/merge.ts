@@ -54,6 +54,7 @@ export const mergePolicies: { readonly [T in JournaledTable]: MergePolicy<T> } =
   check_in: { kind: "day_singleton", columns: ["localDate"] },
   pain_report: { kind: "owned", owners: [{ parent: "session", via: "sessionId" }, { parent: "check_in", via: "checkInId" }], order: null },
   zone_tracking: { kind: "newest", unique: [{ index: "zone_tracking_open", patchIncoming: (incoming, local) => ({ endedAt: incoming.startedAt > local.startedAt ? incoming.startedAt : local.startedAt }) }] },
+  route: { kind: "newest", unique: [] },
   recording: { kind: "owned", owners: [{ parent: "session", via: "sessionId" }], order: null },
   lap: { kind: "owned", owners: [{ parent: "session", via: "sessionId" }], order: "position" },
   privacy_zone: { kind: "newest", unique: [] },

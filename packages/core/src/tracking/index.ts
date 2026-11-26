@@ -25,6 +25,8 @@ export * from "./privacy.ts";
 export * from "./privacyZones.ts";
 export * from "./profile.ts";
 export * from "./reconcile.ts";
+export * from "./route.ts";
+export * from "./routes.ts";
 export * from "./recordAnnouncements.ts";
 export * from "./records.ts";
 export * from "./recorder.ts";

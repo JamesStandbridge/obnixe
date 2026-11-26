@@ -1,5 +1,5 @@
 import { asc, eq } from "drizzle-orm";
-import { gear, lap, programSlot, recording, session, sportPreference } from "@obnixe/schema";
+import { gear, lap, programSlot, recording, route, session, sportPreference } from "@obnixe/schema";
 import type { EpochMs, FieldValues, Id, Lap, PainLevel, Recording, RecordingSettings, Session, SportKey, ZoneKey } from "@obnixe/schema";
 import { sportOf } from "../activity/catalog.ts";
 import { OpenSessionExistsError } from "../activity/climb.ts";
@@ -62,6 +62,8 @@ export interface RecordingStartRequest {
   /** `INT-002`: a recording started from a slot carries it like a free session does. */
   readonly slot: SlotLink | null;
   readonly timeZone: string;
+  /** The route followed (`RTE-003`), of the same sport. */
+  readonly routeId: Id | null;
 }
 
 export interface RecordingStartPlan {
@@ -78,18 +80,29 @@ export interface StartedJournal {
   readonly device: string;
 }
 
-/** Checks `REC-003` (one open session at a time) and the profile before the tracker starts, and picks the ids. */
+export class RouteUnavailableError extends Error {
+  constructor(readonly routeId: Id, readonly sport: SportKey) {
+    super(`Route ${routeId} is not a route of ${sport}`);
+  }
+}
+
+/** Checks `REC-003` (one open session at a time), the profile and the route before the tracker starts, and picks the ids. */
 export function planRecordingStart(db: ObnixeDatabase, env: Environment, request: RecordingStartRequest): RecordingStartPlan {
   const open = openSessionRow(db);
   if (open !== null) throw new OpenSessionExistsError(open.id);
   const profile = resolveProfile(request.sport, request.values);
   if (profile === null) throw new NotRecordableError(request.sport);
+  if (request.routeId !== null) {
+    const followed = db.select({ sport: route.sport, deletedAt: route.deletedAt }).from(route).where(eq(route.id, request.routeId)).get();
+    if (followed === undefined || followed.deletedAt !== null || followed.sport !== request.sport) throw new RouteUnavailableError(request.routeId, request.sport);
+  }
   return { sessionId: env.newId(), recordingId: env.newId(), request, profile, settings: recordingSettingsOf(db, profile) };
 }
 
-/** The « Sortie démarrée » changeset (`INT-030`): the open session and its recording, summarized at the stop. */
+/** The « Sortie démarrée » changeset (`INT-030`): the open session and its recording, summarized at the stop; the route followed is marked used (`RTE-002`). */
 export function recordingStartMutations(plan: RecordingStartPlan, started: StartedJournal): readonly Mutation[] {
   const { request } = plan;
+  const routeUse: readonly Mutation[] = request.routeId === null ? [] : [{ kind: "update", table: "route", key: request.routeId, patch: { lastUsedAt: started.startedAt } }];
   return [
     {
       kind: "insert",
@@ -152,6 +165,7 @@ export function recordingStartMutations(plan: RecordingStartPlan, started: Start
         energyMethod: null,
         importedEnergyKcal: null,
         weather: null,
+        routeId: request.routeId,
         goodFixPermille: 0,
         bbox: null,
         previewPolyline: null,
@@ -161,6 +175,7 @@ export function recordingStartMutations(plan: RecordingStartPlan, started: Start
         pointCount: 0,
       },
     },
+    ...routeUse,
   ];
 }
 

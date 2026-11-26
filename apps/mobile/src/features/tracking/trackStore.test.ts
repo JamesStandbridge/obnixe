@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decodeTrack, encodeTrack, toSampleColumns, trackDigest, trackFilePath } from "@obnixe/core";
+import { decodeTrack, encodeTrack, routeFilePath, toSampleColumns, trackDigest, trackFilePath } from "@obnixe/core";
 import type { Track } from "@obnixe/core";
 import type { EpochMs, Id } from "@obnixe/schema";
 import {
@@ -12,12 +12,14 @@ import {
   readTrackFile,
   storedTrackFiles,
   sweepTemporaryTracks,
+  writeRouteTrack,
   writeTrack,
 } from "@/features/tracking/trackStore";
 import { Paths, storedFiles } from "../../../test/mocks/expoFileSystem.ts";
 
 const recordingId = "0190a3f2-7c4e-7d21-9b1a-5f2e8c3d4a10" as Id;
 const sessionId = "0190a3f2-7c4e-7d21-9b1a-5f2e8c3d4a11" as Id;
+const routeId = "0190a3f2-7c4e-7d21-9b1a-5f2e8c3d4a12" as Id;
 
 const track: Track = {
   startedAt: Date.UTC(2026, 10, 20, 7, 0) as EpochMs,
@@ -58,6 +60,20 @@ describe("track store", () => {
     expect([...storedFiles.keys()]).toEqual([`${Paths.document.uri}/${stored.file}`]);
     await deleteTrack(stored.file);
     expect(readTrackFile(stored.file)).toBeNull();
+  });
+
+  it("writes route files beside the tracks, listed and swept with them (DEC-11)", async () => {
+    const bytes = encodeTrack(track);
+    await writeTrack(recordingId, bytes);
+    const stored = await writeRouteTrack(routeId, bytes);
+    expect(stored).toEqual({ file: routeFilePath(routeId), sha256: trackDigest(bytes), bytes: bytes.length });
+    expect(await readTrack(stored.file)).toEqual(bytes);
+    expect(await storedTrackFiles()).toEqual([trackFilePath(recordingId), routeFilePath(routeId)]);
+    storedFiles.set(`${Paths.document.uri}/routes/${routeId}.otrk.tmp`, new Uint8Array([9]));
+    await sweepTemporaryTracks();
+    expect([...storedFiles.keys()].filter((uri) => uri.endsWith(".tmp"))).toEqual([]);
+    await deleteTrack(stored.file);
+    expect(await storedTrackFiles()).toEqual([trackFilePath(recordingId)]);
   });
 
   it("keeps one raw journal per session", async () => {
