@@ -252,6 +252,7 @@ function lapEnergy(input: ActivityExportInput, lap: ExportStretch, totals: Expor
 function tcxTrigger(trigger: LapTrigger): TcxTrigger {
   switch (trigger) {
     case "manual":
+    case "workout":
     case "import":
       return "Manual";
     case "distance":

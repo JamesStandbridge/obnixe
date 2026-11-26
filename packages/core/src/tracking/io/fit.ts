@@ -628,6 +628,7 @@ const fitByte = (value: number | null): number | null => (value === null ? null 
 function fitLapTrigger(trigger: LapTrigger): number {
   switch (trigger) {
     case "manual":
+    case "workout":
     case "import":
       return 0;
     case "duration":

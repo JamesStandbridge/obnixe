@@ -156,6 +156,19 @@ describe("FIT export (IO-003)", () => {
     expect(messages.activityMesgs?.[0]).toMatchObject({ numSessions: 1, type: "manual" });
   });
 
+  it("marks the laps of a guided workout as manual in FIT and TCX", () => {
+    const computation = computed("venu3s-run.fit");
+    const processed = computation.processed;
+    if (processed === null) throw new Error("No processed track");
+    const triggers = ["workout", "distance", "duration"] as const;
+    const guided = { ...processed, laps: processed.laps.map((lap, index) => ({ ...lap, bounds: { ...lap.bounds, trigger: triggers[index % triggers.length] ?? "workout" } })) };
+    const expected = guided.laps.map((lap) => lap.bounds.trigger);
+    const fitLaps = decodedFit(exportFit(inputOf(computation, { processed: guided }))).lapMesgs ?? [];
+    expect(fitLaps.map((lap) => lap.lapTrigger)).toEqual(expected.map((trigger) => ({ workout: "manual", distance: "distance", duration: "time" })[trigger]));
+    const tcx = exportTcx(inputOf(computation, { processed: guided }));
+    expect([...tcx.matchAll(/<TriggerMethod>(\w+)<\/TriggerMethod>/g)].map((match) => match[1])).toEqual(expected.map((trigger) => ({ workout: "Manual", distance: "Distance", duration: "Time" })[trigger]));
+  });
+
   it("reads back the same points, pauses, laps and sport", () => {
     const computation = computed("venu3s-run.fit");
     const back = reread(computation, "fit");
