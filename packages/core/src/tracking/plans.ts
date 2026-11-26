@@ -473,6 +473,15 @@ export interface TrackReplacement {
 export function planTrackReplacement(db: ObnixeDatabase, env: Environment, sessionId: Id, replacement: TrackReplacement): RecordingRewrite {
   const live = liveRecordingOf(db, sessionId);
   if (live.session.status !== "completed") throw new SessionStateError(live.session.id, "completed");
+  return replaceTrack(db, env, live, replacement);
+}
+
+/** `ELE-003`: a measured recording, live or imported, moved onto its track with the DEM altitude added or removed. */
+export function planTerrainReplacement(db: ObnixeDatabase, env: Environment, sessionId: Id, replacement: TrackReplacement): RecordingRewrite {
+  return replaceTrack(db, env, measuredRecordingOf(db, sessionId), replacement);
+}
+
+function replaceTrack(db: ObnixeDatabase, env: Environment, live: SessionRecording, replacement: TrackReplacement): RecordingRewrite {
   const profile = profileOfSession(live.session);
   const trim = storedTrim(live.recording);
   const processed = reprocessRecording(db, live, replacement.track, trim, profile);

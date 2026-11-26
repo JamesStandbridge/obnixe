@@ -26,6 +26,8 @@ import { heartRateMaxBetween, PauseLedger } from "../stages/derive.ts";
 import type { LapBounds } from "../stages/derive.ts";
 import { importedSummary, sessionValuesFromRecording } from "../summary.ts";
 import type { RecordingSummary } from "../summary.ts";
+import { noTerrain } from "../types.ts";
+import type { TerrainColumns } from "../types.ts";
 import { trackingAlgorithmVersion } from "../version.ts";
 import { forEachHeartRateSpan, isHeartRateReading } from "../zones.ts";
 import type { TimeSpan } from "../zones.ts";
@@ -184,8 +186,18 @@ function importedValues(sport: SportGuess, derived: FieldValues, activity: Impor
  * choice (`IO-010`).
  */
 export function computeImport(activity: ImportedActivity, sport: SportGuess): ImportComputation {
+  return measureImport(activity, sport, noTerrain);
+}
+
+/** `ELE-003`: an import without altitude measured again on the DEM altitude of its fixes, before it is written. */
+export function computeDemImport(computation: ImportComputation, terrain: TerrainColumns): ImportComputation {
+  return measureImport(computation.activity, computation.sport, terrain);
+}
+
+function measureImport(activity: ImportedActivity, sport: SportGuess, terrain: TerrainColumns): ImportComputation {
   const profile = resolveProfile(sport.sport, sport.values);
-  const track = importedTrack(activity, profile?.cadence === "steps");
+  const file = importedTrack(activity, profile?.cadence === "steps");
+  const track: Track = { ...file, samples: { ...file.samples, terrain } };
   const trim = { startMs: 0, endMs: null };
   const window = activityWindow(track.samples, track.marks, trim);
   const laps = fileLaps(activity, window);

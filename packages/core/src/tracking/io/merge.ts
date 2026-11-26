@@ -8,7 +8,7 @@ import { encodeTrack, trackDigest, trackFilePath } from "../codec/track.ts";
 import type { Track } from "../codec/track.ts";
 import { planTrackReplacement } from "../plans.ts";
 import { bridgeMaximumMs } from "../stages/derive.ts";
-import { absentValue } from "../types.ts";
+import { absentValue, noTerrain } from "../types.ts";
 import type { FixColumns, HeartRateColumns, PressureColumns } from "../types.ts";
 import { fileVerticalAccuracyDm } from "./activity.ts";
 import type { ImportedActivity } from "./activity.ts";
@@ -104,7 +104,7 @@ const noPressure: PressureColumns = { length: 0, t: new Uint32Array(0), pascals:
 
 /**
  * The phone track with the file heart rate when it had none, and with the file altitudes instead of its own; the phone
- * barometer goes with them, since it would otherwise drive the altitude again (`ELE-002`).
+ * barometer and any DEM correction go with them, since they would otherwise drive the altitude again (`ELE-002`, `ELE-003`).
  */
 function mergedTrack(phone: Track, computation: ImportComputation, heartRate: boolean, altitudes: FileAltitudes | null): Track {
   const offsetMs = computation.activity.startedAt - phone.startedAt;
@@ -119,6 +119,7 @@ function mergedTrack(phone: Track, computation: ImportComputation, heartRate: bo
       heartRate: heartRate ? shiftedHeartRate(computation.track.samples.heartRate, offsetMs) : samples.heartRate,
       cadence: samples.cadence,
       power: samples.power,
+      terrain: altitudes === null ? samples.terrain : noTerrain,
     },
   };
 }

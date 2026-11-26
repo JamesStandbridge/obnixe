@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { router } from "expo-router";
 import { CodedError } from "expo";
-import { AlreadyImportedError, computeImport, DependentRowsError, NothingToMergeError, ReplacedSessionNotFoundError, RevertConflictError, TrackDecodeError } from "@obnixe/core";
+import { AlreadyImportedError, computeDemImport, computeImport, DependentRowsError, NothingToMergeError, ReplacedSessionNotFoundError, RevertConflictError, TrackDecodeError } from "@obnixe/core";
 import type { ImportComputation, ImportedActivity, SportGuess } from "@obnixe/core";
 import { sports } from "@obnixe/schema";
 import type { Id } from "@obnixe/schema";
@@ -27,6 +27,7 @@ import { pickActivityFile, readOpenedFile, releaseOpenedFile } from "@/features/
 import type { PickedFile } from "@/features/data/files";
 import { fileSize, longDateTime } from "@/features/data/format";
 import { BackButton, BottomPanel, NoticeMark, SwitchRow } from "@/features/data/parts";
+import { terrainUnder } from "@/features/maps/terrain";
 import { TrackWriteError } from "@/features/tracking/trackStore";
 import { formatLongClock } from "@/format/durations";
 import { formatInteger, formatNumber } from "@/format/numbers";
@@ -137,7 +138,18 @@ export function ImportActivityScreen({ openedFile }: ImportActivityScreenProps) 
       setResolution(defaultResolution(match));
       setReplaceAltitude(false);
       setStage({ kind: "chosen", file, measured: { computation, match, matched: matchedSession(match, file.activity.startedAt), path: previewPath(computation) }, error });
+      if (computation.processed !== null && computation.summary.elevationSource === "none") void measureOnRelief(token, computation);
     }, 0);
+  };
+
+  /** `ELE-003`: a file without altitude is measured again on the DEM when the relief can be downloaded. */
+  const measureOnRelief = async (token: number, computation: ImportComputation): Promise<void> => {
+    const terrain = await terrainUnder(computation.track.samples.fixes);
+    if (terrain === null || token !== measuring.current) return;
+    const corrected = computeDemImport(computation, terrain);
+    setStage((current) =>
+      current.kind === "chosen" && current.measured?.computation === computation ? { ...current, measured: { ...current.measured, computation: corrected, path: previewPath(corrected) } } : current,
+    );
   };
 
   const open = (picked: PickedFile): void => {

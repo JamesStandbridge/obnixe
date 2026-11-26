@@ -1,10 +1,11 @@
-import { useEffect, useImperativeHandle, useRef } from "react";
+import { useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
 import type { AddLayerObject, GeoJSONSource, StyleSpecification } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { mapAssetsUrl } from "@/features/maps/assets";
 import type { MapOverlay, MapSurfaceProps, MapView } from "@/features/maps/surface";
 import { headingImage } from "@/features/maps/trackLayers";
+import { useContours } from "@/features/maps/useContours";
 
 const headingUrl = `${mapAssetsUrl}/overlay/heading@2x.png`;
 
@@ -28,10 +29,13 @@ function syncOverlays(map: maplibregl.Map, overlays: readonly MapOverlay[], appl
     if (source === undefined) map.addSource(overlay.id, { type: "geojson", data: JSON.parse(overlay.data), lineMetrics: overlay.lineMetrics });
     else if (previous?.data !== overlay.data) source.setData(JSON.parse(overlay.data));
     if (previous?.layers !== layers) {
-      const before = overlays
-        .slice(position + 1)
-        .flatMap((later) => later.layers)
-        .find((layer) => map.getLayer(layer.id) !== undefined)?.id;
+      const before =
+        overlay.beforeId !== undefined && map.getLayer(overlay.beforeId) !== undefined
+          ? overlay.beforeId
+          : overlays
+              .slice(position + 1)
+              .flatMap((later) => later.layers)
+              .find((layer) => map.getLayer(layer.id) !== undefined)?.id;
       for (const layer of overlay.layers) {
         if (map.getLayer(layer.id)) map.removeLayer(layer.id);
         map.addLayer(layer as AddLayerObject, before);
@@ -47,14 +51,29 @@ function viewOf(map: maplibregl.Map): MapView {
   return { center: [center.lng, center.lat], bounds: [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()], zoom: map.getZoom() };
 }
 
-export function MapSurface({ mapStyle, fallbackStyle, initialCamera, overlays = [], interactive = true, onUserGesture, onViewChanging, onViewChanged, onPress, ref }: MapSurfaceProps) {
+export function MapSurface({
+  mapStyle,
+  fallbackStyle,
+  initialCamera,
+  overlays = [],
+  contours = null,
+  interactive = true,
+  onUserGesture,
+  onViewChanging,
+  onViewChanged,
+  onPress,
+  ref,
+}: MapSurfaceProps) {
   const container = useRef<HTMLDivElement>(null);
+  const [view, setView] = useState<MapView | null>(null);
+  const contourOverlay = useContours(contours, view);
+  const drawn = useMemo(() => (contourOverlay === null ? overlays : [contourOverlay, ...overlays]), [contourOverlay, overlays]);
   const map = useRef<maplibregl.Map | null>(null);
   const applied = useRef(new Map<string, AppliedOverlay>());
   const styleReady = useRef(false);
   const shownStyle = useRef(mapStyle);
-  const latest = useRef({ overlays, onUserGesture, onViewChanging, onViewChanged, onPress, fallbackStyle });
-  latest.current = { overlays, onUserGesture, onViewChanging, onViewChanged, onPress, fallbackStyle };
+  const latest = useRef({ overlays: drawn, onUserGesture, onViewChanging, onViewChanged, onPress, fallbackStyle, contours });
+  latest.current = { overlays: drawn, onUserGesture, onViewChanging, onViewChanged, onPress, fallbackStyle, contours };
 
   useImperativeHandle(ref, () => ({
     moveTo: ({ center, zoom, bearing, durationMs }) =>
@@ -94,7 +113,11 @@ export function MapSurface({ mapStyle, fallbackStyle, initialCamera, overlays = 
     instance.on("dragstart", gesture);
     instance.on("zoomstart", gesture);
     instance.on("rotatestart", gesture);
-    const viewChanged = (): void => latest.current.onViewChanged?.(viewOf(instance));
+    const viewChanged = (): void => {
+      const changed = viewOf(instance);
+      if (latest.current.contours !== null) setView(changed);
+      latest.current.onViewChanged?.(changed);
+    };
     instance.once("load", viewChanged);
     instance.on("move", () => latest.current.onViewChanging?.(viewOf(instance)));
     instance.on("moveend", viewChanged);
@@ -115,8 +138,8 @@ export function MapSurface({ mapStyle, fallbackStyle, initialCamera, overlays = 
 
   useEffect(() => {
     const instance = map.current;
-    if (instance !== null && styleReady.current) syncOverlays(instance, overlays, applied.current);
-  }, [overlays]);
+    if (instance !== null && styleReady.current) syncOverlays(instance, drawn, applied.current);
+  }, [drawn]);
 
   return <div ref={container} style={{ position: "absolute", inset: 0 }} />;
 }

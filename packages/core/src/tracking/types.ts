@@ -127,6 +127,15 @@ export interface PowerColumns {
   readonly cadence: Int32Array;
 }
 
+/** Terrain altitude under fixes, sampled from the DEM (`ELE-003`), in orthometric mm; `t` are the times of those fixes. */
+export interface TerrainColumns {
+  readonly length: number;
+  readonly t: Uint32Array;
+  readonly altitudeMm: Int32Array;
+}
+
+export const noTerrain: TerrainColumns = { length: 0, t: new Uint32Array(0), altitudeMm: new Int32Array(0) };
+
 /** Columnar layout of a whole track, decoded straight into typed arrays (`PRF-031`); each stream is ordered by `t`. */
 export interface SampleColumns {
   readonly fixes: FixColumns;
@@ -135,6 +144,8 @@ export interface SampleColumns {
   readonly heartRate: HeartRateColumns;
   readonly cadence: CadenceColumns;
   readonly power: PowerColumns;
+  /** Empty until the altitude is corrected by the DEM; the recorded altitude stays in `fixes`. */
+  readonly terrain: TerrainColumns;
 }
 
 export class UnorderedSamplesError extends Error {
@@ -262,5 +273,5 @@ export function toSampleColumns(samples: readonly Sample[]): SampleColumns {
       }
     }
   }
-  return { fixes, pressure, steps, heartRate, cadence, power };
+  return { fixes, pressure, steps, heartRate, cadence, power, terrain: noTerrain };
 }

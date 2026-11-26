@@ -44,7 +44,7 @@ function RouteMapView({ path, sport, interactive, size }: Omit<RouteMapProps, "h
   }, [path, sport, colors, name]);
   return (
     <>
-      <MapSurface mapStyle={base.style} fallbackStyle={base.fallback} initialCamera={initialCamera} overlays={overlays} interactive={interactive} />
+      <MapSurface mapStyle={base.style} fallbackStyle={base.fallback} initialCamera={initialCamera} overlays={overlays} contours={interactive ? base.contours : null} interactive={interactive} />
       <View style={styles.attribution}>
         <AttributionButton attribution={base.attribution} />
       </View>

@@ -120,6 +120,16 @@ describe("track .otrk", () => {
     expect(encodeTrack(decodeTrack(encoded))).toEqual(encoded);
   });
 
+  it("round-trips the DEM altitude in its own stream and writes none for an uncorrected track (ELE-003)", () => {
+    const { fixes } = track.samples;
+    const terrain = { length: fixes.length, t: fixes.t.slice(), altitudeMm: Int32Array.from(fixes.t, (t, index) => 1_200_000 - index * 37 + (t % 7)) };
+    const corrected: Track = { ...track, samples: { ...track.samples, terrain } };
+    const bytes = encodeTrack(corrected);
+    expect(decodeTrack(bytes)).toEqual(corrected);
+    expect(new DataView(bytes.buffer, bytes.byteOffset).getUint16(14, true)).toBe(new DataView(encoded.buffer, encoded.byteOffset).getUint16(14, true) + 1);
+    expect(decodeTrack(encoded).samples.terrain.length).toBe(0);
+  });
+
   it("sets the ellipsoidal altitude and simulated flags from the fixes", () => {
     const flagsOf = (samples: readonly Sample[]): number => encodeTrack(trackOf(samples))[5] ?? -1;
     expect(flagsOf([{ ...baseFix, altitudeEllipsoidMm: 1000, altitudeMslMm: 950 }])).toBe(0);

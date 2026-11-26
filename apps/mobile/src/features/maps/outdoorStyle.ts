@@ -43,6 +43,7 @@ export interface OutdoorPalette {
   readonly shadow: string;
   readonly highlight: string;
   readonly accent: string;
+  readonly contour: string;
   /** Hillshade strength at z9, z12 and z16 (MAP-005). */
   readonly relief: readonly [number, number, number];
 }
@@ -89,6 +90,7 @@ export const outdoorPalettes: Readonly<Record<PaletteName, OutdoorPalette>> = {
     shadow: "#000000",
     highlight: "rgba(206, 222, 234, 0.3)",
     accent: "rgba(3, 7, 10, 0.5)",
+    contour: "#8a7458",
     relief: [0.32, 0.46, 0.32],
   },
   sunlight: {
@@ -130,6 +132,7 @@ export const outdoorPalettes: Readonly<Record<PaletteName, OutdoorPalette>> = {
     shadow: "#43503f",
     highlight: "#ffffff",
     accent: "#2c3529",
+    contour: "#a07d52",
     relief: [0.3, 0.46, 0.28],
   },
 };
@@ -600,5 +603,44 @@ export function outdoorLayers({ variant, emphasis, vector, relief }: OutdoorLaye
     ...trailLayers(vector, palette, emphasis),
     boundaryLayer(vector, palette),
     ...labelLayers(vector, palette),
+  ];
+}
+
+/** The base layer the contour lines are drawn under: above the ground and the relief, below water, roads and labels. */
+export const contourAnchor = "park-outline";
+
+/** Contour lines from a GeoJSON source of `ele` and `master` lines, master lines labelled with their elevation (`MAP-006`). */
+export function contourLayers(variant: PaletteName, source: string): LayerSpecification[] {
+  const palette = outdoorPalettes[variant];
+  const master: ExpressionSpecification = ["==", ["get", "master"], true];
+  return [
+    {
+      id: "contour-line",
+      type: "line",
+      source,
+      minzoom: 12,
+      layout: { "line-join": "round" },
+      paint: {
+        "line-color": palette.contour,
+        "line-width": ["interpolate", ["exponential", 1.4], ["zoom"], 12, ["case", master, 0.8, 0.4], 16, ["case", master, 1.4, 0.8]],
+        "line-opacity": zoomRamp(1, [[12, 0.35], [14, 0.6]]),
+      },
+    },
+    {
+      id: "contour-label",
+      type: "symbol",
+      source,
+      minzoom: 13,
+      filter: master,
+      layout: {
+        "symbol-placement": "line",
+        "text-field": ["concat", ["to-string", ["get", "ele"]], " m"],
+        "text-font": fonts.figures,
+        "text-size": 10,
+        "symbol-spacing": 360,
+        "text-max-angle": 30,
+      },
+      paint: { "text-color": palette.contour, "text-halo-color": palette.halo, "text-halo-width": 1.2 },
+    },
   ];
 }

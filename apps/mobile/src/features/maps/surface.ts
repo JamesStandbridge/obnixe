@@ -8,6 +8,14 @@ export interface MapOverlay {
   readonly data: string;
   readonly lineMetrics: boolean;
   readonly layers: readonly LayerSpecification[];
+  /** A base style layer the overlay is drawn under; on top of the base when absent. */
+  readonly beforeId?: string;
+}
+
+/** Contour lines the map draws from DEM tiles from z12 (`MAP-006`). */
+export interface MapContours {
+  readonly layers: readonly LayerSpecification[];
+  readonly beforeId: string;
 }
 
 export type LngLat = readonly [number, number];
@@ -40,6 +48,7 @@ export interface MapSurfaceProps {
   readonly fallbackStyle: StyleSpecification;
   readonly initialCamera: MapCamera;
   readonly overlays?: readonly MapOverlay[];
+  readonly contours?: MapContours | null;
   readonly interactive?: boolean;
   readonly onUserGesture?: () => void;
   /** Every frame of a camera move, for overlays drawn in screen space. */

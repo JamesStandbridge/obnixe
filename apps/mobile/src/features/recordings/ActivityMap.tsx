@@ -149,7 +149,7 @@ export function ActivityMap({ activity, cursor, onCursor }: ActivityMapProps) {
     <View style={styles.root}>
       <View style={[styles.frame, { borderColor: colors.line, backgroundColor: colors.surface }]} onLayout={onLayout}>
         {camera === null ? null : (
-          <MapSurface mapStyle={base.style} fallbackStyle={base.fallback} initialCamera={camera} overlays={overlays} onPress={onPress} onViewChanged={onViewChanged} />
+          <MapSurface mapStyle={base.style} fallbackStyle={base.fallback} initialCamera={camera} overlays={overlays} contours={base.contours} onPress={onPress} onViewChanged={onViewChanged} />
         )}
         {mask === null ? null : (
           <View style={[styles.badge, { backgroundColor: colors.surface, borderColor: colors.line }]} pointerEvents="none">

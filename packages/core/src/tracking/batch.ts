@@ -1,5 +1,6 @@
 import type { ElevationSource } from "@obnixe/schema";
 import type { Track } from "./codec/track.ts";
+import { correctElevation } from "./dem.ts";
 import { ellipsoidDistance } from "./geo.ts";
 import { SignalPipeline } from "./pipeline.ts";
 import type { SettledFix } from "./pipeline.ts";
@@ -124,6 +125,22 @@ function settleFixes(pipeline: SignalPipeline, samples: SampleColumns, window: T
   return settled;
 }
 
+/** The DEM altitude of each settled fix from the terrain stream (`ELE-003`), `NaN` where absent; `null` for an uncorrected track. */
+function terrainAltitudes(samples: SampleColumns, settled: readonly SettledFix[]): Float64Array | null {
+  const { terrain } = samples;
+  if (terrain.length === 0) return null;
+  const values = new Float64Array(settled.length).fill(Number.NaN);
+  let next = 0;
+  let found = false;
+  settled.forEach((fix, index) => {
+    while (next < terrain.length && (terrain.t[next] ?? 0) < fix.fix.t) next += 1;
+    if (next >= terrain.length || terrain.t[next] !== fix.fix.t) return;
+    values[index] = (terrain.altitudeMm[next] ?? 0) / 1000;
+    found = true;
+  });
+  return found ? values : null;
+}
+
 /** Cumulative pedometer count at increasing times, linearly interpolated between samples. */
 function stepCounter(samples: SampleColumns): (t: number) => number {
   const { t: times, count, length } = samples.steps;
@@ -195,12 +212,12 @@ export function processTrack(track: Track, profile: ResolvedProfile, options: Pr
     }
   }
 
-  const altitude = new Float64Array(length).fill(Number.NaN);
+  const recorded = new Float64Array(length).fill(Number.NaN);
   let elevationSource: ElevationSource = "none";
   if (barometer) {
     const fused = pipeline.fusion.smoothRts();
     settled.forEach((fix, index) => {
-      if (fix.fusedIndex >= 0) altitude[index] = fused[fix.fusedIndex] ?? Number.NaN;
+      if (fix.fusedIndex >= 0) recorded[index] = fused[fix.fusedIndex] ?? Number.NaN;
     });
     if (fused.length > 0) elevationSource = "barometer";
   } else {
@@ -213,9 +230,22 @@ export function processTrack(track: Track, profile: ResolvedProfile, options: Pr
     });
     if (known.length > 0) {
       const averaged = distanceMovingAverage(Float64Array.from(known, (index) => distance[index] ?? 0), filter.smoothRts());
-      known.forEach((index, position) => (altitude[index] = averaged[position] ?? Number.NaN));
+      known.forEach((index, position) => (recorded[index] = averaged[position] ?? Number.NaN));
       elevationSource = "gnss";
     }
+  }
+  let altitude: Float64Array = recorded;
+  const terrain = terrainAltitudes(samples, settled);
+  if (terrain !== null) {
+    const known: number[] = [];
+    terrain.forEach((value, index) => {
+      if (!Number.isNaN(value)) known.push(index);
+    });
+    const averaged = distanceMovingAverage(Float64Array.from(known, (index) => distance[index] ?? 0), Float64Array.from(known, (index) => terrain[index] ?? 0));
+    const smoothedTerrain = new Float64Array(length).fill(Number.NaN);
+    known.forEach((index, position) => (smoothedTerrain[index] = averaged[position] ?? Number.NaN));
+    altitude = correctElevation(recorded, smoothedTerrain, distance);
+    elevationSource = "dem";
   }
 
   const countedFlags = interval.map((code) => (isCountedCode(code) ? 1 : 0));
@@ -223,7 +253,7 @@ export function processTrack(track: Track, profile: ResolvedProfile, options: Pr
   const ascent = new Float64Array(length);
   const descent = new Float64Array(length);
   const gradeAdjusted = profile.gradeAdjustedPace ? new Float64Array(length) : null;
-  const hysteresis = new ElevationHysteresis(barometer ? elevationThresholdMeters.barometer : elevationThresholdMeters.gnss);
+  const hysteresis = new ElevationHysteresis(elevationSource === "dem" ? elevationThresholdMeters.dem : barometer ? elevationThresholdMeters.barometer : elevationThresholdMeters.gnss);
   const vam = new VamMeter();
   for (let index = 0; index < length; index += 1) {
     const value = altitude[index] ?? Number.NaN;

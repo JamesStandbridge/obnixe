@@ -340,6 +340,8 @@ function elevationSourceText(source: ElevationSource): string {
       return "GPS";
     case "file":
       return "Fichier importé";
+    case "dem":
+      return "Modèle numérique de terrain";
     case "none":
       return "Aucune";
     default: {

@@ -107,6 +107,7 @@ function ZonePicker({ camera, size, others, radiusMeters, maskedMeters, onPlaced
         fallbackStyle={base.fallback}
         initialCamera={camera}
         overlays={overlays}
+        contours={base.contours}
         onUserGesture={() => {
           gestured.current = true;
         }}

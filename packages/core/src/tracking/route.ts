@@ -57,6 +57,8 @@ export function routeElevationThreshold(source: ElevationSource): number | null 
     case "gnss":
     case "file":
       return elevationThresholdMeters.gnss;
+    case "dem":
+      return elevationThresholdMeters.dem;
     case "none":
       return null;
     default: {

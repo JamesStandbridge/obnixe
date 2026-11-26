@@ -48,8 +48,8 @@ class OfflineRegionStore {
       {
         mapStyle: await packStyleUrl(request.mapStyle),
         bounds: [...request.bounds],
-        minZoom: base.offline.vector.min,
-        maxZoom: base.offline.vector.max,
+        minZoom: base.offline.base.zoom.min,
+        maxZoom: base.offline.base.zoom.max,
         metadata: { name: request.name, createdAt: now, mapStyle: request.mapStyle },
       },
       (target, status) => this.apply(target, status),

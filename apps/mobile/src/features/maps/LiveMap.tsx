@@ -112,6 +112,7 @@ function LiveMapView({ feed, sport, route, rejoin }: LiveMapViewProps) {
         fallbackStyle={base.fallback}
         initialCamera={initialCamera}
         overlays={overlays}
+        contours={base.contours}
         onUserGesture={() => dispatch({ type: "gesture", at: Date.now() })}
       />
       <View style={styles.controls} pointerEvents="box-none">
