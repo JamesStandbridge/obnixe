@@ -1,10 +1,17 @@
 import { getDocumentAsync } from "expo-document-picker";
 import { backupFileExtension } from "@obnixe/core";
+import type { ArchiveSource, ScratchFile, ScratchSpace } from "@obnixe/core";
 
 export interface PickedFile {
   readonly name: string;
   readonly size: number;
   readonly bytes: Uint8Array;
+}
+
+export interface PickedArchive {
+  readonly name: string;
+  readonly source: ArchiveSource;
+  release(): void;
 }
 
 const activityFileTypes = [".gpx", ".tcx", ".fit", ".gz", ".zip"];
@@ -71,6 +78,33 @@ export async function pickActivityFile(): Promise<PickedFile | null> {
   const file = asset?.file;
   if (asset === undefined || file === undefined) return null;
   return { name: asset.name, size: file.size, bytes: new Uint8Array(await file.arrayBuffer()) };
+}
+
+function blobSource(blob: Blob): ArchiveSource {
+  return { size: blob.size, read: async (offset, length) => new Uint8Array(await blob.slice(offset, offset + length).arrayBuffer()) };
+}
+
+export async function pickArchiveFile(): Promise<PickedArchive | null> {
+  const result = await getDocumentAsync({ type: [".zip"], multiple: false, base64: false });
+  if (result.canceled) return null;
+  const [asset] = result.assets;
+  const file = asset?.file;
+  if (asset === undefined || file === undefined) return null;
+  return { name: asset.name, source: blobSource(file), release: () => undefined };
+}
+
+/** Browsers may keep large `Blob` parts on disk, out of the JavaScript heap. */
+async function scratchFile(): Promise<ScratchFile> {
+  let parts: Blob[] = [];
+  return {
+    append: async (bytes) => void parts.push(new Blob([new Uint8Array(bytes)])),
+    finish: async () => blobSource(new Blob(parts)),
+    discard: async () => void (parts = []),
+  };
+}
+
+export function archiveScratch(): ScratchSpace {
+  return scratchFile;
 }
 
 export async function readOpenedFile(uri: string): Promise<PickedFile> {

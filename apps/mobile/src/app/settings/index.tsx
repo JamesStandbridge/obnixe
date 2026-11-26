@@ -78,6 +78,7 @@ export default function Settings() {
         <Section title="Stockage">
           <Row title="Importer une sauvegarde" trailing={<Chevron />} onPress={() => router.push("/import")} />
           <Row title="Importer une activité" detail="GPX, TCX ou FIT, depuis une montre ou une app" trailing={<Chevron />} onPress={() => router.push("/import-activity")} />
+          <Row title="Importer l'archive Garmin Connect" detail="tout l'historique, depuis l'export du compte" trailing={<Chevron />} onPress={() => router.push("/import-archive")} />
           <Row title="Corbeille" detail="30 jours" value={String(trash.items.length + trash.replaced.length)} trailing={<Chevron />} onPress={() => setSheet("trash")} />
           {aside.copies.length === 0 ? null : (
             <Row

@@ -12,7 +12,8 @@ import type { SportGuess } from "./sports.ts";
 export const fileHorizontalAccuracyDm = 50;
 export const fileVerticalAccuracyDm = 50;
 
-export type FileFormat = Exclude<ImportFormat, "garmin_archive">;
+export type ArchiveFormat = Extract<ImportFormat, "garmin_archive">;
+export type FileFormat = Exclude<ImportFormat, ArchiveFormat>;
 
 /** A track point as read from a file, at an absolute instant. */
 export interface FilePoint {
