@@ -24,3 +24,44 @@ jobs:
         working-directory: apps/mobile
       - run: pnpm dlx expo-doctor
         working-directory: apps/mobile
+
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      OBNIXE_ANDROID_SDK: ${{ github.workspace }}/../android-sdk
+      OBNIXE_ANDROID_PACKAGES: platforms;android-37.0 build-tools;36.0.0 build-tools;37.0.0 ndk;27.1.12297006 cmake;3.22.1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - id: sdk-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.OBNIXE_ANDROID_SDK }}
+          key: android-sdk-${{ runner.os }}-${{ env.OBNIXE_ANDROID_PACKAGES }}
+      # The runner's own SDK provides sdkmanager; the build uses the cached SDK only.
+      - if: steps.sdk-cache.outputs.cache-hit != 'true'
+        run: |
+          sdkmanager="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$sdkmanager" --sdk_root="$OBNIXE_ANDROID_SDK" --licenses > /dev/null
+          read -ra packages <<< "$OBNIXE_ANDROID_PACKAGES"
+          "$sdkmanager" --sdk_root="$OBNIXE_ANDROID_SDK" "${packages[@]}" > /dev/null
+      - uses: gradle/actions/setup-gradle@v4
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm expo prebuild --platform android --clean --no-install
+        working-directory: apps/mobile
+        env:
+          CI: 1
+      - run: ./gradlew assembleDebug :obnixe-tracker:testDebugUnitTest -PreactNativeArchitectures=x86_64
+        working-directory: apps/mobile/android
+        env:
+          ANDROID_HOME: ${{ env.OBNIXE_ANDROID_SDK }}
+          ANDROID_SDK_ROOT: ${{ env.OBNIXE_ANDROID_SDK }}
