@@ -25,6 +25,7 @@ export interface MapCameraMove {
 }
 
 export interface MapView {
+  readonly center: LngLat;
   readonly bounds: Bounds;
   readonly zoom: number;
 }
@@ -41,6 +42,8 @@ export interface MapSurfaceProps {
   readonly overlays?: readonly MapOverlay[];
   readonly interactive?: boolean;
   readonly onUserGesture?: () => void;
+  /** Every frame of a camera move, for overlays drawn in screen space. */
+  readonly onViewChanging?: (view: MapView) => void;
   readonly onViewChanged?: (view: MapView) => void;
   readonly ref?: Ref<MapSurfaceHandle>;
 }

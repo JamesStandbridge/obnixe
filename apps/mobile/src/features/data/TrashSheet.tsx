@@ -15,7 +15,7 @@ import { Sheet } from "@/ui/Overlays";
 import { Text } from "@/ui/Text";
 import { useTheme } from "@/ui/theme";
 
-const trashTables = ["session", "weigh_in", "measurement", "photo", "check_in", "pain_report", "backup"] as const;
+const trashTables = ["session", "weigh_in", "measurement", "photo", "check_in", "pain_report", "privacy_zone", "backup"] as const;
 
 export interface TrashContents {
   readonly items: readonly TrashItem[];
@@ -46,6 +46,8 @@ function itemTitle(item: TrashItem, unit: MassUnit): string {
       return `Forme du jour · ${shortDate(item.row.localDate)}`;
     case "pain_report":
       return `${zones[item.row.zone].label} · ${shortDate(item.row.localDate)}`;
+    case "privacy_zone":
+      return `Zone de confidentialité · ${item.row.label}`;
     default: {
       const unreachable: never = item;
       throw new Error(`Unhandled trash item ${JSON.stringify(unreachable)}`);
