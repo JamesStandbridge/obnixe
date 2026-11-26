@@ -16,7 +16,6 @@
   "REC-060": { "verifiedBy": "gap", "where": "not implemented: the native start needs the location permission; a refusal offers manual entry" },
   "REC-070": { "verifiedBy": "field", "where": "field protocol 4, background, call and other apps" },
   "REC-072": { "verifiedBy": "field", "where": "needs an iPhone with the Live Activity, not covered by the Pixel 9 Pro protocol" },
-  "REC-074": { "verifiedBy": "field", "where": "field protocol 4, Live Update on the lock screen" },
   "TST-001": { "verifiedBy": "ci", "where": "packages/core coverage gate (vitest thresholds and scripts/check-coverage.ts)" },
   "TST-020": { "verifiedBy": "field", "where": "field protocol 9, reference corpus collection" },
   "TST-030": { "verifiedBy": "field", "where": "field protocol 5, kills, reload, permission, storage and reboot" },
