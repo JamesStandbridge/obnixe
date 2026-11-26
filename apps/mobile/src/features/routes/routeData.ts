@@ -148,3 +148,21 @@ export function routeCorners(row: Pick<Route, "bbox">): readonly GeoPoint[] {
 export function routeById(routeId: Id): Route | null {
   return db().select().from(route).where(eq(route.id, routeId)).get() ?? null;
 }
+
+/** The route followed by a recording (`RTE-003`): its geometry for the matcher, its line and profile for the live screen. */
+export interface FollowedRoute {
+  readonly routeId: Id;
+  readonly name: string;
+  readonly geometry: RouteGeometry;
+  readonly path: PreviewPath;
+  readonly profile: readonly ElevationPoint[];
+}
+
+/** `null` when the row or its file is gone or damaged: the recording then goes on without guidance. */
+export async function followedRoute(routeId: Id): Promise<FollowedRoute | null> {
+  const row = routeById(routeId);
+  if (row === null) return null;
+  const load = await loadRouteGeometry(row);
+  if (load.kind !== "loaded") return null;
+  return { routeId, name: row.name, geometry: load.geometry, path: routeMapPath(load.geometry), profile: routeProfilePoints(load.geometry) };
+}

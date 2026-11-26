@@ -51,9 +51,10 @@ export function routeLayers(color: string, variant: PaletteName): LayerSpecifica
   ];
 }
 
-/** `RTE-005`: off the route, a dashed line from the position to the nearest route point downstream. */
-export function rejoinData(from: LngLat, to: LngLat): string {
-  return JSON.stringify({ type: "FeatureCollection", features: [{ type: "Feature", properties: { kind: "rejoin" }, geometry: { type: "LineString", coordinates: [from, to] } }] });
+/** `RTE-005`: off the route, a dashed line from the position to the nearest route point downstream; empty otherwise. */
+export function rejoinData(from: LngLat | null, to: LngLat | null): string {
+  const features = from === null || to === null ? [] : [{ type: "Feature", properties: { kind: "rejoin" }, geometry: { type: "LineString", coordinates: [from, to] } }];
+  return JSON.stringify({ type: "FeatureCollection", features });
 }
 
 export function rejoinLayers(color: string, variant: PaletteName): LayerSpecification[] {

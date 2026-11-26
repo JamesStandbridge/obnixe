@@ -112,6 +112,9 @@ function figure(key: MetricKey, input: SummaryInput): (FigureText & { readonly l
     case "heart_rate_zone":
     case "gps_quality":
     case "clock":
+    case "route_remaining":
+    case "route_ascent_remaining":
+    case "route_progress":
       return null;
     default: {
       const unreachable: never = key;

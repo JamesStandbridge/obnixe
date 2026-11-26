@@ -10,6 +10,7 @@ import type { EpochMs, MetricKey, ZoneKey } from "@obnixe/schema";
 import { updateSettings, useRecordingDisplay } from "@/data/settings";
 import { SwitchRow } from "@/features/activity/components";
 import { LiveMap } from "@/features/maps/LiveMap";
+import { rejoinText } from "@/features/recording/alerts";
 import { ElevationPage } from "@/features/recording/ElevationPage";
 import { LiveControls } from "@/features/recording/LiveControls";
 import { Chronometer, MetricTile, SignalBars } from "@/features/recording/LiveParts";
@@ -73,7 +74,12 @@ export function LiveScreen({ recording }: LiveScreenProps) {
   const { sessionId, profile, state, live, laps, clock } = recording;
   const phase = state.phase;
   const readout = useMemo(() => liveReadout(profile, recording.settings), [profile, recording.settings]);
-  const pages = useMemo((): readonly PageTab[] => (profile.metrics.includes("ascent") ? [metricsTab, lapsTab, profileTab, mapTab] : [metricsTab, lapsTab, mapTab]), [profile]);
+  const route = recording.route;
+  const routeProfile = route === null || route.profile.length < 2 ? null : route.profile;
+  const pages = useMemo(
+    (): readonly PageTab[] => (profile.metrics.includes("ascent") || routeProfile !== null ? [metricsTab, lapsTab, profileTab, mapTab] : [metricsTab, lapsTab, mapTab]),
+    [profile, routeProfile],
+  );
   const target = useMemo(() => sessionTargetOf(sessionId), [sessionId]);
   const timeZone = useMemo(() => deviceTimeZone(), []);
   const now = useNow(readout.main === "clock" || readout.secondary.includes("clock") ? 15_000 : 3_600_000);
@@ -220,16 +226,30 @@ export function LiveScreen({ recording }: LiveScreenProps) {
 
         {pages.includes(profileTab) ? (
           <View style={[styles.page, { width }]}>
-            <ElevationPage points={recording.elevation} sport={profile.sport} altitude={text("altitude")} ascent={text("ascent")} descent={text("descent")} />
+            <ElevationPage
+              points={recording.elevation}
+              sport={profile.sport}
+              altitude={text("altitude")}
+              ascent={text("ascent")}
+              descent={text("descent")}
+              route={routeProfile === null ? null : { points: routeProfile, progress: live.route?.progress ?? 0, remainingAscent: text("route_ascent_remaining") }}
+            />
           </View>
         ) : null}
 
         <View style={[styles.page, styles.mapPage, { width }]}>
-          {feed === null ? null : <LiveMap feed={feed} sport={profile.sport} visible={page === "map"} />}
-          <View style={[styles.mapCard, { backgroundColor: colors.bg, borderColor: colors.line }]} pointerEvents="none">
-            {[readout.main, ...readout.secondary.slice(0, 2)].map((key) => (
-              <MetricTile key={key} caption={metricCaptions[key]} text={text(key)} size={30} minimumScale={0.8} style={styles.mapTile} />
-            ))}
+          {feed === null ? null : <LiveMap feed={feed} sport={profile.sport} route={route?.path ?? null} rejoin={live.route?.rejoin ?? null} visible={page === "map"} />}
+          <View style={styles.mapCards} pointerEvents="none">
+            <View style={[styles.mapCard, { backgroundColor: colors.bg, borderColor: colors.line }]}>
+              {[readout.main, ...readout.secondary.slice(0, 2)].map((key) => (
+                <MetricTile key={key} caption={metricCaptions[key]} text={text(key)} size={30} minimumScale={0.8} style={styles.mapTile} />
+              ))}
+            </View>
+            {live.route?.offRoute === true ? (
+              <View style={[styles.rejoinCard, { backgroundColor: colors.bg, borderColor: colors.warn }]}>
+                <Text variant="small">{live.route.rejoin === null ? "Hors itinéraire : reviens sur le tracé" : `Itinéraire ${rejoinText(live.route.rejoin)}`}</Text>
+              </View>
+            ) : null}
           </View>
         </View>
       </ScrollView>
@@ -514,7 +534,9 @@ const styles = StyleSheet.create({
   cellWide: { width: "100%" },
   dimmed: { opacity: 0.55 },
   mapPage: { paddingHorizontal: 0 },
-  mapCard: { position: "absolute", top: 10, left: layout.gutter, right: layout.gutter, flexDirection: "row", gap: 12, paddingHorizontal: 14, paddingVertical: 10, borderRadius: radii.panel, borderWidth: 1 },
+  mapCards: { position: "absolute", top: 10, left: layout.gutter, right: layout.gutter, gap: 8 },
+  mapCard: { flexDirection: "row", gap: 12, paddingHorizontal: 14, paddingVertical: 10, borderRadius: radii.panel, borderWidth: 1 },
+  rejoinCard: { alignSelf: "flex-start", paddingHorizontal: 14, paddingVertical: 8, borderRadius: radii.panel, borderWidth: 1 },
   mapTile: { flex: 1 },
   controls: { paddingHorizontal: layout.gutter, paddingTop: 12, borderTopWidth: 1 },
   chip: { flexDirection: "row", alignItems: "center", gap: 7, height: 32, paddingHorizontal: 10, borderRadius: 16 },

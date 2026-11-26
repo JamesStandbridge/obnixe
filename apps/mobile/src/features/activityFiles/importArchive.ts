@@ -71,6 +71,7 @@ export function archiveRefusalMessage(reason: ArchiveRefusalReason): string {
     case "checksum":
     case "truncated":
     case "not_an_activity":
+    case "not_a_route":
     case "several_activities":
     case "no_activity_data":
     case "untimed":

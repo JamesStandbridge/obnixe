@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { EpochMs, Id } from "@obnixe/schema";
 import { db } from "@/data/database";
 import { dayMonth, fileSize } from "@/features/data/format";
-import { activityArea, activityRegionBounds, activityRegionMargins, regionOutline, regionOutlineLayers, regionOutlineSourceId } from "@/features/maps/activityRegion";
+import { activityArea, activityRegionBounds, routeArea, activityRegionMargins, regionOutline, regionOutlineLayers, regionOutlineSourceId } from "@/features/maps/activityRegion";
 import type { ActivityArea, ActivityRegionMargin } from "@/features/maps/activityRegion";
 import { MapButton } from "@/features/maps/MapControls";
 import { MapSurface } from "@/features/maps/MapSurface";
@@ -16,6 +16,7 @@ import type { MapCamera, MapOverlay, MapSurfaceHandle, MapView } from "@/feature
 import { estimateRegion, maxRegionTiles } from "@/features/maps/tiles";
 import type { Bounds, RegionEstimate } from "@/features/maps/tiles";
 import { useMapBase, useMapStyleSetting } from "@/features/maps/useMapBase";
+import { routeById } from "@/features/routes/routeData";
 import { fitCamera } from "@/features/maps/viewport";
 import type { ViewSize } from "@/features/maps/viewport";
 import { formatInteger } from "@/format/numbers";
@@ -39,13 +40,32 @@ function estimateLabel(bounds: Bounds | null, estimate: RegionEstimate | null, a
   return `Environ ${fileSize(estimate.bytes)} · ${formatInteger(estimate.tiles)} tuiles`;
 }
 
+/** The region frames this recorded activity or this route, widened by an adjustable margin, instead of the visible rectangle. */
+export type OfflineRegionTarget = { readonly kind: "visible" } | { readonly kind: "session"; readonly sessionId: Id } | { readonly kind: "route"; readonly routeId: Id };
+
+function areaOf(target: OfflineRegionTarget): ActivityArea | null {
+  switch (target.kind) {
+    case "visible":
+      return null;
+    case "session":
+      return activityArea(db(), target.sessionId);
+    case "route": {
+      const row = routeById(target.routeId);
+      return row === null ? null : routeArea(row);
+    }
+    default: {
+      const unreachable: never = target;
+      throw new Error(`Unhandled region target ${JSON.stringify(unreachable)}`);
+    }
+  }
+}
+
 interface OfflineRegionScreenProps {
-  /** Frames the region on this recorded activity, widened by an adjustable margin, instead of the visible rectangle. */
-  readonly sessionId: Id | null;
+  readonly target: OfflineRegionTarget;
 }
 
 /** Picks the visible rectangle, or the area around an activity, as a new offline region, with its size estimated before download (MAP-031). */
-export function OfflineRegionScreen({ sessionId }: OfflineRegionScreenProps) {
+export function OfflineRegionScreen({ target }: OfflineRegionScreenProps) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const base = useMapBase(null);
@@ -53,7 +73,7 @@ export function OfflineRegionScreen({ sessionId }: OfflineRegionScreenProps) {
   const regions = useOfflineRegions();
   const run = useNativeFailure();
   const [now] = useState(() => Date.now() as EpochMs);
-  const [area] = useState<ActivityArea | null>(() => (sessionId === null ? null : activityArea(db(), sessionId)));
+  const [area] = useState<ActivityArea | null>(() => areaOf(target));
   const [name, setName] = useState(() => (area === null ? `Région du ${dayMonth(now)}` : `Autour de ${area.title}`));
   const [margin, setMargin] = useState<ActivityRegionMargin>("2");
   const [view, setView] = useState<MapView | null>(null);
@@ -110,7 +130,7 @@ export function OfflineRegionScreen({ sessionId }: OfflineRegionScreenProps) {
         </View>
       </View>
       <View style={[styles.panel, { borderTopColor: colors.line, paddingBottom: insets.bottom + 12 }]}>
-        <Text variant="heading">{area === null ? "Nouvelle région" : "Autour de l'activité"}</Text>
+        <Text variant="heading">{area === null ? "Nouvelle région" : target.kind === "route" ? "Autour de l'itinéraire" : "Autour de l'activité"}</Text>
         <TextField value={name} onChangeText={setName} placeholder="Nom de la région" accessibilityLabel="Nom de la région" maxLength={60} />
         {area === null ? null : (
           <View accessibilityLabel="Marge autour de la trace">

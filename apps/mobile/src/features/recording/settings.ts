@@ -29,6 +29,8 @@ export function alertLabel(alert: RecordingAlert, profile: Pick<ResolvedProfile,
       return { title: "Pause et reprise automatiques", detail: "Quand tu t'arrêtes et repars" };
     case "segment":
       return { title: "Segments", detail: "À l'entrée, puis le temps et l'écart au meilleur passage" };
+    case "route":
+      return { title: "Sortie d'itinéraire", detail: "Hors de l'itinéraire suivi, puis de retour dessus" };
     case "gps":
       return { title: "Signal GPS", detail: "Perdu puis retrouvé" };
     case "sensor":

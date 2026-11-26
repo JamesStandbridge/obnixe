@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from "react";
 import { AppState, StyleSheet, View } from "react-native";
+import type { RouteRejoin } from "@obnixe/core";
 import type { SportKey } from "@obnixe/schema";
+import type { PreviewPath } from "@/features/activityFiles/importActivity";
 import { follow, followResumeDelayMs, initialFollow } from "@/features/maps/follow";
 import type { LiveMapFeed } from "@/features/maps/liveTrack";
 import { AttributionButton, MapButton } from "@/features/maps/MapControls";
 import { MapSurface } from "@/features/maps/MapSurface";
 import { outdoorPalettes } from "@/features/maps/outdoorStyle";
+import { rejoinData, rejoinLayers, rejoinSourceId, routeLayers, routeLineData, routeSourceId } from "@/features/maps/routeLayers";
 import type { MapOverlay, MapSurfaceHandle } from "@/features/maps/surface";
 import { pointLayers, pointsSourceId, trackLayers, trackSourceId } from "@/features/maps/trackLayers";
 import { useMapBase } from "@/features/maps/useMapBase";
@@ -31,24 +34,25 @@ function useAppActive(): boolean {
 interface LiveMapProps {
   readonly feed: LiveMapFeed;
   readonly sport: SportKey;
+  /** `RTE-003`: the followed route, drawn under the track. */
+  readonly route: PreviewPath | null;
+  /** `RTE-005`: off the route, where to join it again. */
+  readonly rejoin: RouteRejoin | null;
   /** False while another page of the live screen is shown. */
   readonly visible: boolean;
 }
 
 /** Live recording map (MAP-010..MAP-012): unmounted, so neither drawn nor fed, while hidden or in the background. */
-export function LiveMap({ feed, sport, visible }: LiveMapProps) {
+export function LiveMap({ feed, sport, route, rejoin, visible }: LiveMapProps) {
   const { name } = useTheme();
   const appActive = useAppActive();
   if (!visible || !appActive) return <View style={[StyleSheet.absoluteFill, { backgroundColor: outdoorPalettes[name].land }]} />;
-  return <LiveMapView feed={feed} sport={sport} />;
+  return <LiveMapView feed={feed} sport={sport} route={route} rejoin={rejoin} />;
 }
 
-interface LiveMapViewProps {
-  readonly feed: LiveMapFeed;
-  readonly sport: SportKey;
-}
+type LiveMapViewProps = Omit<LiveMapProps, "visible">;
 
-function LiveMapView({ feed, sport }: LiveMapViewProps) {
+function LiveMapView({ feed, sport, route, rejoin }: LiveMapViewProps) {
   const { name, colors } = useTheme();
   const base = useMapBase(sport);
   const frame = useSyncExternalStore(feed.subscribe, feed.frame);
@@ -59,16 +63,27 @@ function LiveMapView({ feed, sport }: LiveMapViewProps) {
   const [initialCamera] = useState(() => (frame.position === null ? franceOverview : { center: [frame.position.longitude, frame.position.latitude] as const, zoom: followZoom }));
 
   const trackColors = useMemo(() => ({ from: colors.sportDeep[sport], to: colors.sport[sport] }), [colors, sport]);
-  const layers = useMemo(() => ({ track: trackLayers(trackColors, name), points: pointLayers(trackColors, name) }), [trackColors, name]);
+  const layers = useMemo(
+    () => ({ track: trackLayers(trackColors, name), points: pointLayers(trackColors, name), route: routeLayers(colors.mark, name), rejoin: rejoinLayers(colors.mark, name) }),
+    [trackColors, colors.mark, name],
+  );
+  const routeLine = useMemo(() => (route === null ? null : routeLineData(route.coordinates)), [route]);
+  const position = frame.position;
+  const rejoinLine = rejoin === null || position === null ? null : rejoinData([position.longitude, position.latitude], [rejoin.longitude, rejoin.latitude]);
   const overlays = useMemo<MapOverlay[]>(
     () => [
+      ...(routeLine === null
+        ? []
+        : [
+            { id: routeSourceId, data: routeLine, lineMetrics: false, layers: layers.route },
+            { id: rejoinSourceId, data: rejoinLine ?? rejoinData(null, null), lineMetrics: false, layers: layers.rejoin },
+          ]),
       { id: trackSourceId, data: frame.track, lineMetrics: true, layers: layers.track },
       { id: pointsSourceId, data: frame.points, lineMetrics: false, layers: layers.points },
     ],
-    [frame.track, frame.points, layers],
+    [routeLine, rejoinLine, frame.track, frame.points, layers],
   );
 
-  const position = frame.position;
   const following = followState.following;
   useEffect(() => {
     if (!following || position === null) return;

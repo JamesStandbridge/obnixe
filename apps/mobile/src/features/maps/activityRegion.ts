@@ -1,6 +1,6 @@
 import { measuredRecordingOf, NotMeasuredError } from "@obnixe/core";
 import type { ObnixeDatabase } from "@obnixe/core";
-import type { Id } from "@obnixe/schema";
+import type { Id, Route } from "@obnixe/schema";
 import type { LayerSpecification } from "@maplibre/maplibre-gl-style-spec";
 import { bufferedBounds } from "@/features/maps/tiles";
 import type { Bounds, GeoPoint } from "@/features/maps/tiles";
@@ -32,6 +32,18 @@ export function activityArea(database: ObnixeDatabase, sessionId: Id): ActivityA
     if (error instanceof NotMeasuredError) return null;
     throw error;
   }
+}
+
+/** The extent of a route, for an offline region around it (`RTE-006`, `MAP-031`). */
+export function routeArea(row: Pick<Route, "name" | "bbox">): ActivityArea {
+  const { south, west, north, east } = row.bbox;
+  return {
+    title: row.name,
+    corners: [
+      { latitude: south / 1e7, longitude: west / 1e7 },
+      { latitude: north / 1e7, longitude: east / 1e7 },
+    ],
+  };
 }
 
 export function activityRegionBounds(area: ActivityArea, margin: ActivityRegionMargin): Bounds | null {
