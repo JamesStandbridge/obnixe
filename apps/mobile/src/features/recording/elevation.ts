@@ -13,12 +13,24 @@ export interface ElevationShape {
   readonly line: string;
   readonly area: string;
   readonly last: ChartPoint;
+  /** The point at the distance asked for, on the line; `null` when none was asked. */
+  readonly marker: ChartPoint | null;
   readonly lowest: number;
   readonly highest: number;
   readonly meters: number;
 }
 
-export function elevationShape(points: readonly ElevationPoint[], width: number, height: number): ElevationShape | null {
+function altitudeAt(points: readonly ElevationPoint[], distance: number): number {
+  const after = points.findIndex((point) => point.distance >= distance);
+  if (after <= 0) return (after === 0 ? points[0] : points[points.length - 1])?.altitude ?? 0;
+  const left = points[after - 1];
+  const right = points[after];
+  if (left === undefined || right === undefined) return 0;
+  const span = right.distance - left.distance;
+  return span <= 0 ? right.altitude : left.altitude + ((right.altitude - left.altitude) * (distance - left.distance)) / span;
+}
+
+export function elevationShape(points: readonly ElevationPoint[], width: number, height: number, markerDistance: number | null = null): ElevationShape | null {
   const first = points[0];
   const final = points[points.length - 1];
   if (first === undefined || final === undefined || points.length < 2 || final.distance <= first.distance) return null;
@@ -38,5 +50,7 @@ export function elevationShape(points: readonly ElevationPoint[], width: number,
   const chart = points.map(toPoint);
   const line = chart.map((point, index) => `${index === 0 ? "M" : "L"}${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(" ");
   const last = chart[chart.length - 1] ?? { x: width, y: height };
-  return { line, area: `${line} L${width} ${height} L0 ${height} Z`, last, lowest, highest, meters: final.distance };
+  const at = markerDistance === null ? null : Math.min(Math.max(markerDistance, first.distance), final.distance);
+  const marker = at === null ? null : toPoint({ distance: at, altitude: altitudeAt(points, at) });
+  return { line, area: `${line} L${width} ${height} L0 ${height} Z`, last, marker, lowest, highest, meters: final.distance };
 }
