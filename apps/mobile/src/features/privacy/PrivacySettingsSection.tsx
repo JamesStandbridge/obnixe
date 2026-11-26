@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Linking } from "react-native";
 import { router } from "expo-router";
 import { updateSettings } from "@/data/settings";
 import { Chevron, SwitchRow } from "@/features/data/parts";
@@ -9,6 +10,7 @@ import { Row, Section } from "@/ui/Layout";
 import { Sheet } from "@/ui/Overlays";
 
 const hideEndsChoices = ["0", "100", "200", "300", "500", "1000"] as const;
+const privacyPolicyUrl = "https://www.obnixe.app/privacy";
 
 function hideEndsLabel(meters: number): string {
   return meters === 0 ? "Visibles" : `${formatInteger(meters)} m`;
@@ -49,6 +51,15 @@ export function PrivacySettingsSection({ hideTrackEndsMeters, exportPrivacy, mas
         detail="départ arrondi à 11 km envoyé à Open-Meteo après l'activité"
         value={weatherEnabled}
         onChange={(value) => updateSettings({ weatherEnabled: value })}
+      />
+      <Row
+        title="Politique de confidentialité"
+        detail="obnixe.app/privacy"
+        trailing={<Chevron />}
+        onPress={() => {
+          Linking.openURL(privacyPolicyUrl).catch((error: unknown) => ErrorUtils.getGlobalHandler()(error, false));
+        }}
+        last
       />
       <Sheet open={endsOpen} title="Début et fin de trace" context="Masqués dans les exports, les aperçus et pour l'agent, sur cette distance" onClose={() => setEndsOpen(false)}>
         <Choices
