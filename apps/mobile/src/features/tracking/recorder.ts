@@ -76,6 +76,21 @@ export const weatherQueue = new WeatherQueue({
   report,
 });
 
+/** Weather waits for the derivation, which knows where a saved or imported activity starts. */
+export async function refreshDerivedAndWeather(): Promise<void> {
+  await derivedRebuild.request();
+  await weatherQueue.request();
+}
+
+/** Holds the derived rebuild while an archive import commits its batches, then refreshes once when released (`IO-026`). */
+export function holdDerivedRefresh(): () => void {
+  const release = derivedRebuild.hold();
+  return () => {
+    release();
+    void refreshDerivedAndWeather();
+  };
+}
+
 /** Runs the deferred weather requests again when the app returns to the foreground or the phone reconnects (`WTH-003`). */
 export function watchWeather(): () => void {
   const foreground = AppState.addEventListener("change", (state) => {

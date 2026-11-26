@@ -1,9 +1,13 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { archiveErrorReasons, importErrorReasons, openGarminArchive } from "@obnixe/core";
-import type { ArchiveControl, ArchiveSource, OpenedArchive, ScratchSpace } from "@obnixe/core";
-import { recording, settings } from "@obnixe/schema";
-import { analyseArchive, archiveControl, archiveErrorMessage, archiveRefusalMessage, importArchiveActivities, undoArchive } from "@/features/activityFiles/importArchive";
+import { archiveErrorReasons, commit, importErrorReasons, openGarminArchive, revert } from "@obnixe/core";
+import type { ArchiveControl, ArchiveImportReport, ArchiveSource, Mutation, OpenedArchive, ScratchSpace, WeatherTransport } from "@obnixe/core";
+import { recording, recordingDerivation, session, settings } from "@obnixe/schema";
+import type { EpochMs, Id } from "@obnixe/schema";
+import { analyseArchive, archiveControl, archiveErrorMessage, archiveRefusalMessage, importArchiveActivities, lastArchiveImport, saveLastArchiveImport, undoArchive } from "@/features/activityFiles/importArchive";
+import { readLocalState, writeLocalState } from "@/features/data/localState";
+import { DerivedRebuild } from "@/features/tracking/derivedRebuild";
 import { readTrackFile } from "@/features/tracking/trackStore";
+import { WeatherQueue } from "@/features/tracking/weatherQueue";
 import { db, environment } from "../../../test/mocks/database.ts";
 
 const encoder = new TextEncoder();
@@ -101,6 +105,41 @@ const quiet: ArchiveControl = archiveControl(
   () => undefined,
 );
 
+const hourMs = 3_600_000;
+const write = (summary: string, mutations: readonly Mutation[]): Id => commit(db(), environment, { actor: { author: "user", connectionId: null }, summary, revertsId: null, mutations });
+const fail = (error: unknown): void => {
+  throw error;
+};
+
+/** Open-Meteo forecast hours around the first activity, in unixtime and SI units. */
+const forecast: WeatherTransport = async () => {
+  const first = Math.floor(startedAt / hourMs) * hourMs - hourMs;
+  const time = [0, 1, 2, 3].map((index) => (first + index * hourMs) / 1000);
+  const series = (value: number): readonly number[] => time.map(() => value);
+  const body = {
+    hourly_units: { time: "unixtime", temperature_2m: "°C", apparent_temperature: "°C", relative_humidity_2m: "%", precipitation: "mm", wind_speed_10m: "m/s", wind_direction_10m: "°", wind_gusts_10m: "m/s" },
+    hourly: {
+      time,
+      temperature_2m: series(14.2),
+      apparent_temperature: series(12.4),
+      relative_humidity_2m: series(81),
+      precipitation: series(0.2),
+      weather_code: series(61),
+      wind_speed_10m: series(5),
+      wind_direction_10m: series(315),
+      wind_gusts_10m: series(9.4),
+    },
+  };
+  return { status: 200, json: async () => body };
+};
+
+async function imported(): Promise<ArchiveImportReport> {
+  const archive = await openGarminArchive(memory(exportBytes()), scratch, quiet);
+  const report = await importArchiveActivities(archive, await analyseArchive(archive, quiet), "ignore", quiet);
+  await archive.close();
+  return report;
+}
+
 beforeEach(() => {
   db()
     .insert(settings)
@@ -132,5 +171,47 @@ describe("Garmin archive import (IO-053, IO-025)", () => {
     await undoArchive(report);
     for (const file of files) expect(readTrackFile(file)).toBeNull();
     expect((await analyseArchive(await openGarminArchive(memory(exportBytes()), scratch, quiet), quiet)).importable).toBe(2);
+  });
+
+  it("undoes the import once its activities were derived and got their weather", async () => {
+    const report = await imported();
+    await new DerivedRebuild({ write }, fail).request();
+    expect(db().select().from(recordingDerivation).all()).toHaveLength(2);
+    await new WeatherQueue({ writer: { write }, transport: forecast, online: async () => true, recording: () => false, now: () => (startedAt + 3 * hourMs) as EpochMs, report: fail }).request();
+    expect(db().select({ weather: recording.weather }).from(recording).all().some((row) => row.weather !== null)).toBe(true);
+
+    await undoArchive(report);
+    expect(db().select().from(recording).all()).toEqual([]);
+    expect(db().select().from(session).all()).toEqual([]);
+  });
+
+  it("keeps the last import for the import screen until it is undone (IO-025)", async () => {
+    expect(await lastArchiveImport()).toBeNull();
+    const report = await imported();
+    const saved = await saveLastArchiveImport(report);
+    expect(await lastArchiveImport()).toEqual(saved);
+    expect(saved?.report.batches).toEqual(report.batches);
+
+    await undoArchive(report);
+    expect(await lastArchiveImport()).toBeNull();
+  });
+
+  it("forgets the last import once a batch was undone elsewhere, or when its file is unreadable", async () => {
+    const report = await imported();
+    await saveLastArchiveImport(report);
+    const batch = report.batches[0]?.changesetId as Id;
+    revert(db(), environment, { actor: { author: "user", connectionId: null }, changesetId: batch, summary: "Annulation", restoredVersionSummary: (number) => `v${number}` });
+    expect(await lastArchiveImport()).toBeNull();
+
+    await writeLocalState("last-archive-import.json", "{ not json");
+    expect(await lastArchiveImport()).toBeNull();
+    expect(await readLocalState("last-archive-import.json")).toBeNull();
+  });
+
+  it("saves nothing for an import that wrote nothing", async () => {
+    await imported();
+    const again = await imported();
+    expect(again.batches).toEqual([]);
+    expect(await saveLastArchiveImport(again)).toBeNull();
   });
 });

@@ -1,11 +1,35 @@
-import { archiveImportSummary, archiveSliceMs, importArchive, previewArchive, slicedPace, undoArchiveImport } from "@obnixe/core";
+import { z, ZodError } from "zod";
+import { archiveImportApplied, archiveImportSummary, archiveSliceMs, importArchive, previewArchive, slicedPace, undoArchiveImport } from "@obnixe/core";
 import type { Actor, ArchiveControl, ArchiveDuplicatePolicy, ArchiveErrorReason, ArchiveImportReport, ArchivePreview, ArchiveProgress, ArchiveRefusalReason, OpenedArchive } from "@obnixe/core";
+import type { EpochMs, Id } from "@obnixe/schema";
 import { db, environment } from "@/data/database";
+import { deleteLocalState, readLocalState, writeLocalState } from "@/features/data/localState";
 import { importErrorMessage } from "@/features/activityFiles/importActivity";
 import { deleteTrack, writeTrack } from "@/features/tracking/trackStore";
 import { deviceTimeZone } from "@/format/dates";
 
 const userActor: Actor = { author: "user", connectionId: null };
+const lastImportFile = "last-archive-import.json";
+
+/** The last archive import of this device, so that the import screen still offers to undo it after its report (`IO-025`). */
+export interface LastArchiveImport {
+  readonly importedAt: EpochMs;
+  readonly report: ArchiveImportReport;
+}
+
+const idSchema = z.custom<Id>((value) => typeof value === "string");
+const lastImportSchema = z.object({
+  importedAt: z.custom<EpochMs>((value) => typeof value === "number"),
+  report: z.object({
+    format: z.enum(["garmin_archive"]),
+    imported: z.number(),
+    replaced: z.number(),
+    skipped: z.number(),
+    refused: z.tuple([]),
+    batches: z.array(z.object({ changesetId: idSchema, sessionIds: z.array(idSchema), trackFiles: z.array(z.string()) })),
+    stopped: z.boolean(),
+  }),
+});
 
 /** `IO-013` for an archive refused as a whole. */
 export function archiveErrorMessage(reason: ArchiveErrorReason): string {
@@ -85,6 +109,31 @@ export function importArchiveActivities(archive: OpenedArchive, preview: Archive
   );
 }
 
+/** Kept without its refused files, which the undo does not need; `null` when the import wrote nothing. */
+export async function saveLastArchiveImport(report: ArchiveImportReport): Promise<LastArchiveImport | null> {
+  if (report.batches.length === 0) return null;
+  const last: LastArchiveImport = { importedAt: environment.now(), report: { ...report, refused: [] } };
+  await writeLocalState(lastImportFile, JSON.stringify(last));
+  return last;
+}
+
+/** `null` once nothing is left to undo: no import yet, or one undone or reverted since. */
+export async function lastArchiveImport(): Promise<LastArchiveImport | null> {
+  const text = await readLocalState(lastImportFile);
+  if (text === null) return null;
+  let last: LastArchiveImport;
+  try {
+    last = lastImportSchema.parse(JSON.parse(text));
+  } catch (error) {
+    if (!(error instanceof SyntaxError || error instanceof ZodError)) throw error;
+    deleteLocalState(lastImportFile);
+    return null;
+  }
+  if (archiveImportApplied(db(), last.report)) return last;
+  deleteLocalState(lastImportFile);
+  return null;
+}
+
 /** *Annuler l'import* (`IO-025`): every batch reverted at once, then the tracks the import wrote deleted. */
 export async function undoArchive(report: ArchiveImportReport): Promise<void> {
   const summary = archiveImportSummary(report.format);
@@ -93,5 +142,6 @@ export async function undoArchive(report: ArchiveImportReport): Promise<void> {
     summary: `Annulation : ${summary}`,
     restoredVersionSummary: (restoredNumber) => `Retour à la v${restoredNumber}`,
   });
+  deleteLocalState(lastImportFile);
   for (const file of files) await deleteTrack(file);
 }

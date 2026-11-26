@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { addDatabaseChangeListener } from "expo-sqlite";
 import { write } from "@/data/write";
 import { reconcileRecordingFiles } from "@/features/tracking/launchReconciliation";
-import { derivedRebuild, recorder, watchBattery, watchWeather, weatherQueue } from "@/features/tracking/recorder";
+import { recorder, refreshDerivedAndWeather, watchBattery, watchWeather } from "@/features/tracking/recorder";
 
 /** Tables whose changes can make records, segment efforts or masked previews stale. */
 const derivedSources: ReadonlySet<string> = new Set(["session", "recording", "lap", "privacy_zone", "settings", "segment"]);
@@ -11,12 +11,6 @@ const rebuildDelayMs = 500;
 
 function report(error: unknown): void {
   ErrorUtils.getGlobalHandler()(error, false);
-}
-
-/** Weather waits for the derivation, which knows where a saved or imported activity starts. */
-async function refreshDerivedAndWeather(): Promise<void> {
-  await derivedRebuild.request();
-  await weatherQueue.request();
 }
 
 async function launchRecording(): Promise<void> {

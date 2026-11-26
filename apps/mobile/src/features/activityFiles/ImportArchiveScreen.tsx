@@ -4,11 +4,13 @@ import { CodedError } from "expo";
 import { ArchiveError, ArchiveStoppedError, DependentRowsError, openGarminArchive, RevertConflictError } from "@obnixe/core";
 import type { ArchiveDuplicatePolicy, ArchiveImportReport, ArchivePreview, ArchiveProgress, ArchiveRefusal, OpenedArchive } from "@obnixe/core";
 import { sports } from "@obnixe/schema";
-import { analyseArchive, archiveControl, archiveErrorMessage, archiveRefusalMessage, importArchiveActivities, undoArchive } from "@/features/activityFiles/importArchive";
+import { analyseArchive, archiveControl, archiveErrorMessage, archiveRefusalMessage, importArchiveActivities, lastArchiveImport, saveLastArchiveImport, undoArchive } from "@/features/activityFiles/importArchive";
+import type { LastArchiveImport } from "@/features/activityFiles/importArchive";
 import { archiveScratch, pickArchiveFile } from "@/features/data/files";
 import type { PickedArchive } from "@/features/data/files";
-import { dayMonth, fileSize } from "@/features/data/format";
+import { dayMonth, fileSize, longDateTime } from "@/features/data/format";
 import { BackButton, BottomPanel, NoticeMark } from "@/features/data/parts";
+import { holdDerivedRefresh } from "@/features/tracking/recorder";
 import { TrackWriteError } from "@/features/tracking/trackStore";
 import { plural } from "@/format/labels";
 import { LinkButton, PrimaryButton } from "@/ui/Button";
@@ -32,7 +34,7 @@ type Stage =
   | { readonly kind: "ready"; readonly chosen: ChosenArchive; readonly archive: OpenedArchive; readonly preview: ArchivePreview; readonly error: string | null }
   | { readonly kind: "importing"; readonly chosen: ChosenArchive; readonly preview: ArchivePreview; readonly progress: ArchiveProgress | null }
   | { readonly kind: "done"; readonly chosen: ChosenArchive; readonly report: ArchiveImportReport; readonly error: string | null }
-  | { readonly kind: "undoing"; readonly chosen: ChosenArchive; readonly report: ArchiveImportReport };
+  | { readonly kind: "undoing"; readonly chosen: ChosenArchive | null; readonly report: ArchiveImportReport };
 
 const policyOptions: readonly { readonly value: ArchiveDuplicatePolicy; readonly label: string }[] = [
   { value: "ignore", label: "Ignorer" },
@@ -87,6 +89,7 @@ export function ImportArchiveScreen() {
   const notify = useSnackbar();
   const [stage, setStage] = useState<Stage>({ kind: "empty", error: null });
   const [policy, setPolicy] = useState<ArchiveDuplicatePolicy>("ignore");
+  const [last, setLast] = useState<LastArchiveImport | null>(null);
   const picked = useRef<PickedArchive | null>(null);
   const opened = useRef<OpenedArchive | null>(null);
   const stopRequested = useRef(false);
@@ -103,6 +106,16 @@ export function ImportArchiveScreen() {
     if (archive !== null) await archive.close();
     file?.release();
   };
+
+  useEffect(() => {
+    let active = true;
+    void lastArchiveImport().then((found) => {
+      if (active) setLast(found);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   /** Leaving the screen stops the task, which releases the archive once it returns. */
   useEffect(() => {
@@ -182,6 +195,7 @@ export function ImportArchiveScreen() {
 
   const importAll = async (chosen: ChosenArchive, archive: OpenedArchive, preview: ArchivePreview): Promise<void> => {
     let report: ArchiveImportReport;
+    const releaseRefresh = holdDerivedRefresh();
     try {
       report = await importArchiveActivities(
         archive,
@@ -196,26 +210,34 @@ export function ImportArchiveScreen() {
       setStage({ kind: "ready", chosen, archive, preview, error: failed });
       if (!(error instanceof TrackWriteError || error instanceof CodedError)) throw error;
       return;
+    } finally {
+      releaseRefresh();
     }
     await release();
+    const saved = await saveLastArchiveImport(report);
+    if (saved !== null) setLast(saved);
     setStage({ kind: "done", chosen, report, error: null });
   };
 
-  const cancelImport = async (chosen: ChosenArchive, report: ArchiveImportReport): Promise<void> => {
+  /** From the report, or from the empty screen for the last import of this device (`chosen` is then `null`). */
+  const cancelImport = async (chosen: ChosenArchive | null, report: ArchiveImportReport): Promise<void> => {
     setStage({ kind: "undoing", chosen, report });
     try {
       await undoArchive(report);
     } catch (error) {
       const conflict = error instanceof RevertConflictError || error instanceof DependentRowsError;
-      setStage({ kind: "done", chosen, report, error: conflict ? undoConflict : undoFailed });
+      const message = conflict ? undoConflict : undoFailed;
+      setStage(chosen === null ? { kind: "empty", error: message } : { kind: "done", chosen, report, error: message });
       if (!conflict) throw error;
       return;
     }
+    setLast(null);
     notify({ text: "Import annulé" });
     goBack("/");
   };
 
   const chosen = stage.kind === "empty" ? null : stage.chosen;
+  const undoable = stage.kind === "empty" || (stage.kind === "undoing" && stage.chosen === null) ? last : null;
 
   return (
     <View style={styles.root}>
@@ -242,6 +264,17 @@ export function ImportArchiveScreen() {
             </Text>
             <Text style={styles.file}>{fileSize(chosen.size)}</Text>
           </View>
+        )}
+
+        {undoable === null ? null : (
+          <Section title="Dernier import">
+            <Row
+              title={plural(undoable.report.imported, "activité importée", "activités importées")}
+              detail={`le ${longDateTime(undoable.importedAt)}`}
+              trailing={<LinkButton label="Annuler l'import" disabled={stage.kind === "undoing"} onPress={() => void cancelImport(null, undoable.report)} style={styles.rowLink} />}
+              last
+            />
+          </Section>
         )}
 
         {stage.kind === "empty" ? (
@@ -284,7 +317,7 @@ export function ImportArchiveScreen() {
           </Section>
         ) : null}
 
-        {stage.kind === "done" || stage.kind === "undoing" ? <ReportSections report={stage.report} /> : null}
+        {stage.kind === "done" || (stage.kind === "undoing" && stage.chosen !== null) ? <ReportSections report={stage.report} /> : null}
 
         {stage.kind === "ready" && stage.error !== null ? <Problem message={stage.error} /> : null}
         {stage.kind === "done" && stage.error !== null ? <Problem message={stage.error} /> : null}
@@ -458,6 +491,7 @@ const styles = StyleSheet.create({
   choice: { marginTop: 10 },
   choiceDetail: { marginTop: 10, minHeight: 44, lineHeight: 23 },
   actions: { gap: 4, alignItems: "stretch" },
+  rowLink: { marginVertical: -12, marginRight: -10 },
   problem: { marginTop: 12, flexDirection: "row", alignItems: "center", gap: 10 },
   problemText: { flex: 1 },
 });
