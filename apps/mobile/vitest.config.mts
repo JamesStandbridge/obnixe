@@ -9,11 +9,11 @@ export default defineConfig({
   resolve: {
     alias: [
       { find: /^@\/data\/database$/, replacement: local("./test/mocks/database.ts") },
-      { find: /^@\/features\/agent\/trackFiles$/, replacement: local("./src/features/agent/trackFiles.web.ts") },
       { find: /^@\//, replacement: `${local("./src")}/` },
       { find: /^react-native$/, replacement: local("./test/mocks/reactNative.ts") },
       { find: /^expo-crypto$/, replacement: local("./test/mocks/expoCrypto.ts") },
       { find: /^expo-secure-store$/, replacement: local("./test/mocks/expoSecureStore.ts") },
+      { find: /^expo-file-system$/, replacement: local("./test/mocks/expoFileSystem.ts") },
     ],
   },
   test: {

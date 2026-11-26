@@ -74,9 +74,14 @@ export async function writeTrack(recordingId: Id, bytes: Uint8Array): Promise<St
   return { file, sha256, bytes: bytes.length };
 }
 
-export async function readTrack(file: string): Promise<Uint8Array | null> {
+/** Synchronous read for the agent tools, which answer within one call (`readTrack` of the agent environment). */
+export function readTrackFile(file: string): Uint8Array | null {
   const target = new File(Paths.document, file);
-  return target.exists ? target.bytes() : null;
+  return target.exists ? target.bytesSync() : null;
+}
+
+export async function readTrack(file: string): Promise<Uint8Array | null> {
+  return readTrackFile(file);
 }
 
 export async function deleteTrack(file: string): Promise<void> {
