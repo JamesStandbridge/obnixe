@@ -10,3 +10,4 @@ export * from "./revert.ts";
 export * from "./schema.ts";
 export * from "./tables/index.ts";
 export * from "./validation.ts";
+export * from "./workout.ts";

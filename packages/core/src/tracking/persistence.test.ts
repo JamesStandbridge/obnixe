@@ -3,8 +3,8 @@ import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { bestEffort, lap, painReport, recording, recordingDerivation, session, settings, zoneTracking } from "@obnixe/schema";
 import type { EpochMs, Id } from "@obnixe/schema";
 import { OpenSessionExistsError } from "../activity/climb.ts";
-import { packSnapshot, unpackSnapshot } from "../data/backup/container.ts";
-import { buildSnapshot, restorableTracks } from "../data/backup/snapshot.ts";
+import { packSnapshot, parsePackedSnapshot, unpackSnapshot } from "../data/backup/container.ts";
+import { backupSchemaVersion, buildSnapshot, restorableTracks } from "../data/backup/snapshot.ts";
 import { fixtures } from "../data/testFixtures.ts";
 import type { Fixtures } from "../data/testFixtures.ts";
 import { planTrashPurge, trashMutation } from "../data/trash.ts";
@@ -68,7 +68,7 @@ beforeEach(() => {
 });
 
 function start(): RecordingStartPlan {
-  const plan = planRecordingStart(context.db, context.env, { sport: "run", values: {}, gearId: null, slot: null, timeZone: "Europe/Paris", routeId: null });
+  const plan = planRecordingStart(context.db, context.env, { sport: "run", values: {}, gearId: null, slot: null, timeZone: "Europe/Paris", routeId: null, workout: null });
   make.write(recordingStartMutations(plan, { startedAt, device: "Pixel 9 Pro" }));
   return plan;
 }
@@ -87,11 +87,11 @@ describe("recording start", () => {
     expect(sessionOf(plan.sessionId)).toMatchObject({ sport: "run", status: "in_progress", startedAt, endedAt: null, review: "pending" });
     expect(recordingOf(plan.sessionId)).toMatchObject({ source: "live", device: "Pixel 9 Pro", autoPause: true, trackFile: null, elapsedMs: 0 });
     expect(openLiveRecording(context.db)?.session.id).toBe(plan.sessionId);
-    expect(() => planRecordingStart(context.db, context.env, { sport: "run", values: {}, gearId: null, slot: null, timeZone: "Europe/Paris", routeId: null })).toThrow(OpenSessionExistsError);
+    expect(() => planRecordingStart(context.db, context.env, { sport: "run", values: {}, gearId: null, slot: null, timeZone: "Europe/Paris", routeId: null, workout: null })).toThrow(OpenSessionExistsError);
   });
 
   it("refuses a sport without a recording profile", () => {
-    expect(() => planRecordingStart(context.db, context.env, { sport: "strength", values: {}, gearId: null, slot: null, timeZone: "Europe/Paris", routeId: null })).toThrow(NotRecordableError);
+    expect(() => planRecordingStart(context.db, context.env, { sport: "strength", values: {}, gearId: null, slot: null, timeZone: "Europe/Paris", routeId: null, workout: null })).toThrow(NotRecordableError);
   });
 });
 
@@ -222,12 +222,12 @@ describe("open session changes", () => {
 describe("retouches", () => {
   it("rebases the stored laps on a new trim, covering the whole activity", () => {
     const laps = [
-      { trigger: "manual" as const, startOffsetMs: 0, endOffsetMs: 600_000 },
-      { trigger: "manual" as const, startOffsetMs: 600_000, endOffsetMs: 1_200_000 },
+      { trigger: "manual" as const, startOffsetMs: 0, endOffsetMs: 600_000, workoutStep: null },
+      { trigger: "manual" as const, startOffsetMs: 600_000, endOffsetMs: 1_200_000, workoutStep: null },
     ];
     expect(retrimmedLaps(laps, { startMs: 0, endMs: null }, { startMs: 100_000, endMs: 900_000 })).toEqual([
-      { trigger: "manual", startOffsetMs: 0, endOffsetMs: 500_000 },
-      { trigger: "manual", startOffsetMs: 500_000, endOffsetMs: Number.MAX_SAFE_INTEGER },
+      { trigger: "manual", startOffsetMs: 0, endOffsetMs: 500_000, workoutStep: null },
+      { trigger: "manual", startOffsetMs: 500_000, endOffsetMs: Number.MAX_SAFE_INTEGER, workoutStep: null },
     ]);
   });
 
@@ -333,6 +333,25 @@ describe("track files in backups and trash", () => {
     expect(restorableTracks({ ...unpacked, tracks: [{ kind: "recording", rowId: plan.recordingId as Id, bytes: bytes.slice(1) }] }, null)).toEqual([]);
     expect(restorableTracks({ ...unpacked, tracks: [{ kind: "route", rowId: plan.recordingId as Id, bytes }] }, null)).toEqual([]);
     expect(restorableTracks(unpacked, new Set())).toEqual([]);
+  });
+
+  it("upgrades a version 4 backup, its laps without a workout step", () => {
+    const plan = start();
+    save(plan);
+    const current = buildSnapshot(context.db, context.env.now());
+    const tables = {
+      ...current.tables,
+      lap: current.tables.lap.map(({ workoutStep: _workoutStep, ...row }) => row),
+      recording: current.tables.recording.map(({ workout: _workout, ...row }) => row),
+      program_variant: current.tables.program_variant.map(({ workout: _workout, ...row }) => row),
+    };
+    const opened = parsePackedSnapshot({ ...current, schemaVersion: 4, tables }, testUpgrader);
+    expect(opened.schemaVersion).toBe(backupSchemaVersion);
+    expect(opened.tables.lap.map((row) => ({ trigger: row.trigger, workoutStep: row.workoutStep }))).toEqual([
+      { trigger: "manual", workoutStep: null },
+      { trigger: "manual", workoutStep: null },
+    ]);
+    expect(opened.tables.recording.map((row) => row.workout)).toEqual([null]);
   });
 
   it("purges the track file of an expired session (INT-031)", () => {

@@ -112,7 +112,7 @@ export type CadenceSource = (typeof cadenceSources)[number];
 export const sensorSources = ["sensor", "file", "none"] as const;
 export type SensorSource = (typeof sensorSources)[number];
 
-export const lapTriggers = ["manual", "distance", "duration", "import"] as const;
+export const lapTriggers = ["manual", "distance", "duration", "workout", "import"] as const;
 export type LapTrigger = (typeof lapTriggers)[number];
 
 export const energyMethods = ["heart_rate", "mechanical", "met"] as const;

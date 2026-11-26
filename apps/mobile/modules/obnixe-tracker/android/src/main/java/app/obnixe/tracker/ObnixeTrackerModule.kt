@@ -165,6 +165,7 @@ class StartRequestRecord : Record {
   @Field val power: TrackerPower = TrackerPower.NORMAL
   @Field val sensors: SensorsRecord = SensorsRecord()
   @Field val batchIntervalMs: Double = 5_000.0
+  @Field val backgroundBatchIntervalMs: Double = 5_000.0
   @Field val notification: NotificationRecord = NotificationRecord()
   @Field val replay: ReplayRecord? = null
 
@@ -175,6 +176,7 @@ class StartRequestRecord : Record {
     val valid = JournalHeader.isSessionId(sessionId) &&
       journalPath.isNotEmpty() &&
       (batchIntervalMs == 1_000.0 || batchIntervalMs == 5_000.0) &&
+      (backgroundBatchIntervalMs == 1_000.0 || backgroundBatchIntervalMs == 5_000.0) &&
       (heartRateDevice == null || BluetoothAdapter.checkBluetoothAddress(heartRateDevice)) &&
       (replay == null || replay.speed in 1.0..50.0)
     if (!valid) return null
@@ -186,6 +188,7 @@ class StartRequestRecord : Record {
       pedometer = sensors.pedometer,
       heartRateDevice = heartRateDevice,
       batchIntervalMs = batchIntervalMs.toLong(),
+      backgroundBatchIntervalMs = backgroundBatchIntervalMs.toLong(),
       notification = notification.toContent(),
       replay = replay?.let { ReplaySource(filePath(it.gpxPath), it.speed) },
     )

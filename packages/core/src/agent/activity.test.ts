@@ -140,7 +140,7 @@ interface HistoryRecording {
   readonly heartRateAvg: number | null;
   readonly energyKcal: number | null;
   readonly hasTrack: boolean;
-  readonly laps: readonly { readonly trigger: string; readonly startOffsetSeconds: number; readonly endOffsetSeconds: number }[];
+  readonly laps: readonly { readonly trigger: string; readonly workoutStep: number | null; readonly startOffsetSeconds: number; readonly endOffsetSeconds: number }[];
   readonly bestEfforts: readonly { readonly effort: string; readonly elapsedSeconds: number; readonly ascentMeters: number | null; readonly record: string | null }[];
 }
 
@@ -157,7 +157,7 @@ describe("get_history", () => {
     const history = ok<History>("get_history", { from: "2026-05-01", to: "2026-05-31" });
     const summary = history.sessions.find((row) => row.id === run.id)?.recording;
     expect(summary).toMatchObject({ source: "live", distanceMeters: 9408, movingSeconds: 3600, paceSecondsPerKm: 383, averageSpeedKmh: 9.4, heartRateAvg: 146, energyKcal: 812, hasTrack: true });
-    expect(summary?.laps).toEqual([{ trigger: "manual", startOffsetSeconds: 0, endOffsetSeconds: 1200 }]);
+    expect(summary?.laps).toEqual([{ trigger: "manual", workoutStep: null, startOffsetSeconds: 0, endOffsetSeconds: 1200 }]);
     expect(history.sessions.find((row) => row.id === strength.id)?.recording).toBeNull();
     const text = call("get_history", { from: "2026-05-01", to: "2026-05-31" }).text;
     expect(text).not.toMatch(/latitude|longitude|polyline|bbox/i);

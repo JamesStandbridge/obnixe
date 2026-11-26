@@ -29,7 +29,7 @@ import type { SettingsValues } from "../../settings.ts";
 import { columnsOf } from "../foreignKeys.ts";
 import { trackDigest } from "../../tracking/codec/track.ts";
 
-export const backupSchemaVersion = 4;
+export const backupSchemaVersion = 5;
 
 export type TableRow<T extends JournaledTable> = InferSelectModel<(typeof journaled)[T]>;
 

@@ -4,6 +4,7 @@ import type { AnySQLiteColumn } from "drizzle-orm/sqlite-core";
 import { id, localDate, ref, sport, timestamp, tracked } from "../columns.ts";
 import { efforts, programStatuses } from "../enums.ts";
 import type { FieldValues } from "../fields.ts";
+import type { WorkoutPlan } from "../workout.ts";
 import { exercise } from "./exercises.ts";
 import { changeset } from "./journal.ts";
 
@@ -62,6 +63,7 @@ export const programVariant = sqliteTable(
     lineageId: ref("lineage_id").notNull(),
     position: integer("position").notNull(),
     name: text("name").notNull(),
+    workout: text("workout", { mode: "json" }).$type<WorkoutPlan>(),
   },
   (t) => [uniqueIndex("program_variant_position").on(t.slotId, t.position), uniqueIndex("program_variant_lineage").on(t.slotId, t.lineageId)],
 );

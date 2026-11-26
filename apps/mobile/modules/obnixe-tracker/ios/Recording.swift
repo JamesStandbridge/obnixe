@@ -43,7 +43,7 @@ protocol RecordingListener: AnyObject {
 
 /**
  One recording: its sources, its journal and its pause state. Samples reach the journal before JavaScript sees them
- (`REC-080`); batches close every `batchIntervalMs` while the app is in the foreground and every 5 s otherwise
+ (`REC-080`); batches close every `batchIntervalMs` while the app is in the foreground and every `backgroundBatchIntervalMs` otherwise
  (`PRF-003`, `PRF-051`), and immediately on a mark. Confined to `queue`.
  */
 final class Recording: HeartRateLinkListener {
@@ -259,7 +259,7 @@ final class Recording: HeartRateLinkListener {
       self?.scheduleTick()
     }
     self.tick = tick
-    let intervalMs = foreground ? config.batchIntervalMs : RecordingConfig.backgroundBatchIntervalMs
+    let intervalMs = foreground ? config.batchIntervalMs : config.backgroundBatchIntervalMs
     queue.asyncAfter(deadline: .now() + .milliseconds(Int(intervalMs)), execute: tick)
   }
 

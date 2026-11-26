@@ -213,6 +213,16 @@ describe("recording alerts", () => {
     expect(alertLabel("segment", run).title).toBe("Segments");
   });
 
+  it("says the next step of a guided workout and its target (WKT-006)", () => {
+    const work = { index: 3, intent: "work", duration: { kind: "distance", mm: 400_000 }, target: { kind: "pace", fastestSecondsPerKm: 200, slowestSecondsPerKm: 215 }, label: null, repetition: { number: 2, count: 8 } } as const;
+    expect(alertNotice({ kind: "workout_step", step: work }, run)).toEqual({ title: "Travail", detail: "Répétition 2/8 · 400 m · 3:20 – 3:35 /km", tone: "mark" });
+    expect(alertNotice({ kind: "workout_step", step: { ...work, intent: "recovery", duration: { kind: "time", ms: 90_000 }, target: { kind: "none" }, label: "Trot" } }, run)).toEqual({ title: "Trot", detail: "Répétition 2/8 · 1:30", tone: "mark" });
+    expect(alertNotice({ kind: "workout_step", step: null }, run).title).toBe("Séance terminée");
+    expect(alertNotice({ kind: "workout_target", step: work, status: "above", repeat: 0 }, run)).toEqual({ title: "Allure trop rapide", detail: "Cible 3:20 – 3:35 /km", tone: "warn" });
+    expect(alertNotice({ kind: "workout_target", step: { ...work, target: { kind: "heart_rate_zone", zone: 4 } }, status: "back" }, run)).toEqual({ title: "Cardio dans la cible", detail: "Cible Z4", tone: "mark" });
+    expect(alertPulses({ kind: "workout_step", step: null })).toEqual([200, 150, 200]);
+  });
+
   it("tells alerts apart by their vibration, on both systems (REC-075)", () => {
     expect(alertPulses({ kind: "split", index: 1, meters: 1000, movingMs: 300_000 })).toEqual([200]);
     expect(alertPulses({ kind: "goal", goal: { kind: "duration", seconds: 1800 } })).toEqual([200, 150, 200]);

@@ -29,15 +29,13 @@ data class RecordingConfig(
   val pedometer: Boolean,
   /** Bluetooth address of the heart rate source. */
   val heartRateDevice: String?,
-  /** Batch interval while the screen is on; batches are [screenOffBatchIntervalMs] apart while it is off. */
+  /** Batch interval while the screen is on. */
   val batchIntervalMs: Long,
+  /** Batch interval while the screen is off; location updates are batched by the provider up to it. */
+  val backgroundBatchIntervalMs: Long,
   val notification: TrackerNotificationContent,
   val replay: ReplaySource?,
-) {
-  companion object {
-    const val screenOffBatchIntervalMs = 5_000L
-  }
-}
+)
 
 data class StoredRecording(val config: RecordingConfig, val stepBaseline: Long?)
 
@@ -60,6 +58,7 @@ object RecordingStore {
       .put("pedometer", config.pedometer)
       .put("heartRateDevice", config.heartRateDevice ?: JSONObject.NULL)
       .put("batchIntervalMs", config.batchIntervalMs)
+      .put("backgroundBatchIntervalMs", config.backgroundBatchIntervalMs)
       .put("title", config.notification.title)
       .put("text", config.notification.text)
       .put("timerBaseAt", config.notification.timerBaseAt ?: JSONObject.NULL)
@@ -79,6 +78,7 @@ object RecordingStore {
         pedometer = json.getBoolean("pedometer"),
         heartRateDevice = json.optNullableString("heartRateDevice"),
         batchIntervalMs = json.getLong("batchIntervalMs"),
+        backgroundBatchIntervalMs = json.getLong("backgroundBatchIntervalMs"),
         notification = TrackerNotificationContent(json.getString("title"), json.getString("text"), json.optNullableLong("timerBaseAt")),
         replay = null,
       )

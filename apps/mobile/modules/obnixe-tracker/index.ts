@@ -42,8 +42,10 @@ export interface TrackerStartRequest {
   readonly journal: "create" | "continue";
   readonly power: TrackerPower;
   readonly sensors: TrackerSensors;
-  /** Journal batch and `onSamples` interval while the screen is on (iOS: the app in the foreground); 5 s otherwise (PRF-003, PRF-051). */
+  /** Journal batch and `onSamples` interval while the screen is on (iOS: the app in the foreground) (PRF-003). */
   readonly batchIntervalMs: 1000 | 5000;
+  /** The same interval while the screen is off (iOS: the app in the background): 5 s (PRF-051), 1 s during a guided workout (WKT-006). */
+  readonly backgroundBatchIntervalMs: 1000 | 5000;
   readonly notification: TrackerNotification;
   readonly replay: TrackerReplay | null;
 }

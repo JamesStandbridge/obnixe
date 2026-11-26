@@ -11,20 +11,20 @@ export const readoutSchema = z
   .strictObject({ main: metricKey, secondary: z.array(metricKey).min(3).max(5) })
   .refine((readout) => new Set([readout.main, ...readout.secondary]).size === readout.secondary.length + 1, { path: ["secondary"], message: "Metrics must be distinct" });
 
-const secondsPerKm = z.int().min(120).max(1800);
-const speedMmS = z.int().min(500).max(30_000);
-const heartRateZone = z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5)]);
+export const secondsPerKmSchema = z.int().min(120).max(1800);
+export const speedMmSSchema = z.int().min(500).max(30_000);
+export const heartRateZoneSchema = z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5)]);
 
 /** Pace sports watch a pace span, speed sports a speed span (the profile's `primary`). */
 export const paceRangeSchema = z.discriminatedUnion("kind", [
   z
-    .strictObject({ kind: z.literal("pace"), fastestSecondsPerKm: secondsPerKm, slowestSecondsPerKm: secondsPerKm })
+    .strictObject({ kind: z.literal("pace"), fastestSecondsPerKm: secondsPerKmSchema, slowestSecondsPerKm: secondsPerKmSchema })
     .refine((range) => range.fastestSecondsPerKm < range.slowestSecondsPerKm, { path: ["slowestSecondsPerKm"] }),
-  z.strictObject({ kind: z.literal("speed"), minMmS: speedMmS, maxMmS: speedMmS }).refine((range) => range.minMmS < range.maxMmS, { path: ["maxMmS"] }),
+  z.strictObject({ kind: z.literal("speed"), minMmS: speedMmSSchema, maxMmS: speedMmSSchema }).refine((range) => range.minMmS < range.maxMmS, { path: ["maxMmS"] }),
 ]);
 export type PaceRange = z.infer<typeof paceRangeSchema>;
 
-export const heartRateRangeSchema = z.strictObject({ lowest: heartRateZone, highest: heartRateZone }).refine((range) => range.lowest <= range.highest, { path: ["highest"] });
+export const heartRateRangeSchema = z.strictObject({ lowest: heartRateZoneSchema, highest: heartRateZoneSchema }).refine((range) => range.lowest <= range.highest, { path: ["highest"] });
 export type HeartRateRange = z.infer<typeof heartRateRangeSchema>;
 
 export const recordingSettingsSchema = z.strictObject({

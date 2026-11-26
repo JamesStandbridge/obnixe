@@ -8,6 +8,7 @@ import m0005 from './0005_mask_in_app.sql';
 import m0006 from './0006_weather_fetch.sql';
 import m0007 from './0007_segments.sql';
 import m0008 from './0008_routes.sql';
+import m0009 from './0009_guided_workouts.sql';
 
   export default {
     journal,
@@ -20,7 +21,8 @@ m0004,
 m0005,
 m0006,
 m0007,
-m0008
+m0008,
+m0009
     }
   }
   

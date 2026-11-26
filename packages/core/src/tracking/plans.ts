@@ -1,6 +1,6 @@
 import { asc, eq } from "drizzle-orm";
-import { gear, lap, programSlot, recording, route, session, sportPreference } from "@obnixe/schema";
-import type { EpochMs, FieldValues, Id, Lap, PainLevel, Recording, RecordingSettings, Session, SportKey, ZoneKey } from "@obnixe/schema";
+import { gear, lap, programSlot, programVariant, recording, route, session, sportPreference, workoutPlanSchemaFor } from "@obnixe/schema";
+import type { EpochMs, FieldValues, Id, Lap, PainLevel, Recording, RecordingSettings, Session, SportKey, WorkoutPlan, ZoneKey } from "@obnixe/schema";
 import { sportOf } from "../activity/catalog.ts";
 import { OpenSessionExistsError } from "../activity/climb.ts";
 import type { SlotLink } from "../activity/freeSession.ts";
@@ -64,6 +64,8 @@ export interface RecordingStartRequest {
   readonly timeZone: string;
   /** The route followed (`RTE-003`), of the same sport. */
   readonly routeId: Id | null;
+  /** `WKT-009`: the guided workout followed, copied into `recording.workout`. */
+  readonly workout: WorkoutPlan | null;
 }
 
 export interface RecordingStartPlan {
@@ -86,7 +88,10 @@ export class RouteUnavailableError extends Error {
   }
 }
 
-/** Checks `REC-003` (one open session at a time), the profile and the route before the tracker starts, and picks the ids. */
+/**
+ * Checks `REC-003` (one open session at a time), the profile, the route and the workout against the profile
+ * (`WKT-002`, a `ZodError` otherwise) before the tracker starts, and picks the ids.
+ */
 export function planRecordingStart(db: ObnixeDatabase, env: Environment, request: RecordingStartRequest): RecordingStartPlan {
   const open = openSessionRow(db);
   if (open !== null) throw new OpenSessionExistsError(open.id);
@@ -96,6 +101,7 @@ export function planRecordingStart(db: ObnixeDatabase, env: Environment, request
     const followed = db.select({ sport: route.sport, deletedAt: route.deletedAt }).from(route).where(eq(route.id, request.routeId)).get();
     if (followed === undefined || followed.deletedAt !== null || followed.sport !== request.sport) throw new RouteUnavailableError(request.routeId, request.sport);
   }
+  if (request.workout !== null) workoutPlanSchemaFor(profile.primary).parse(request.workout);
   return { sessionId: env.newId(), recordingId: env.newId(), request, profile, settings: recordingSettingsOf(db, profile) };
 }
 
@@ -166,6 +172,7 @@ export function recordingStartMutations(plan: RecordingStartPlan, started: Start
         importedEnergyKcal: null,
         weather: null,
         routeId: request.routeId,
+        workout: request.workout,
         goodFixPermille: 0,
         bbox: null,
         previewPolyline: null,
@@ -180,6 +187,11 @@ export function recordingStartMutations(plan: RecordingStartPlan, started: Start
 }
 
 /** A `.otrk` file written and verified before the commit that references it (`DAT-020`). */
+/** The workout of a program variant, to start its slot as a guided recording (`WKT-009`). */
+export function variantWorkoutOf(db: ObnixeDatabase, variantId: Id): WorkoutPlan | null {
+  return db.select({ workout: programVariant.workout }).from(programVariant).where(eq(programVariant.id, variantId)).get()?.workout ?? null;
+}
+
 export interface StoredTrack {
   readonly file: string;
   readonly sha256: string;
@@ -263,7 +275,15 @@ function lapInserts(env: Environment, sessionId: Id, processed: ProcessedTrack):
     (summary, position): Mutation => ({
       kind: "insert",
       table: "lap",
-      row: { id: env.newId(), sessionId, position, trigger: summary.bounds.trigger, startOffsetMs: summary.bounds.startOffsetMs, endOffsetMs: summary.bounds.endOffsetMs },
+      row: {
+        id: env.newId(),
+        sessionId,
+        position,
+        trigger: summary.bounds.trigger,
+        startOffsetMs: summary.bounds.startOffsetMs,
+        endOffsetMs: summary.bounds.endOffsetMs,
+        workoutStep: summary.bounds.workoutStep,
+      },
     }),
   );
 }
@@ -388,12 +408,13 @@ export function planRecordingResume(db: ObnixeDatabase, sessionId: Id, now: Epoc
 }
 
 /** The stored laps on the time base of the samples, as offsets from `trim.startMs`; they always cover the whole activity. */
-export function retrimmedLaps(laps: readonly Pick<Lap, "trigger" | "startOffsetMs" | "endOffsetMs">[], from: TrackTrim, to: TrackTrim): readonly LapBounds[] {
+export function retrimmedLaps(laps: readonly Pick<Lap, "trigger" | "startOffsetMs" | "endOffsetMs" | "workoutStep">[], from: TrackTrim, to: TrackTrim): readonly LapBounds[] {
   const shift = from.startMs - to.startMs;
   return laps.map((row, index): LapBounds => ({
     trigger: row.trigger,
     startOffsetMs: index === 0 ? 0 : row.startOffsetMs + shift,
     endOffsetMs: index === laps.length - 1 ? Number.MAX_SAFE_INTEGER : row.endOffsetMs + shift,
+    workoutStep: row.workoutStep,
   }));
 }
 

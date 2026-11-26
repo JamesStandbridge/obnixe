@@ -7,6 +7,7 @@ import { exerciseNameKey } from "./names.ts";
 import { boundingBoxE7Schema, recordingSettingsSchema, recordingWeatherSchema } from "./recording.ts";
 import type { RecordingSettings } from "./recording.ts";
 import * as tables from "./tables/index.ts";
+import { workoutPlanSchema } from "./workout.ts";
 
 const localDate = z.iso.date();
 const timeZone = z.string().regex(/^(UTC|[A-Z][A-Za-z_]+(\/[A-Za-z0-9_+-]+){1,2})$/);
@@ -39,7 +40,7 @@ export const rowSchemas = {
   program: createInsertSchema(tables.program),
   program_version: createInsertSchema(tables.programVersion).extend({ summary: optionalText, reason: optionalText }),
   program_slot: createInsertSchema(tables.programSlot).extend({ targetValues: fieldValues }),
-  program_variant: createInsertSchema(tables.programVariant),
+  program_variant: createInsertSchema(tables.programVariant).extend({ workout: workoutPlanSchema.nullable().optional() }),
   program_item: createInsertSchema(tables.programItem),
   rotation_skip: createInsertSchema(tables.rotationSkip).extend({ localDate }),
   session: createInsertSchema(tables.session).extend({ values: fieldValues, localDate, timeZone, title: optionalText, note: optionalText }),
@@ -58,6 +59,7 @@ export const rowSchemas = {
     externalId: label.nullable().optional(),
     heartRateDevice: label.nullable().optional(),
     weather: recordingWeatherSchema.nullable().optional(),
+    workout: workoutPlanSchema.nullable().optional(),
     bbox: boundingBoxE7Schema.nullable().optional(),
     trackSha256: sha256.nullable().optional(),
   }),

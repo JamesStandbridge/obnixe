@@ -106,6 +106,7 @@ export function getActivity(db: ObnixeDatabase, env: AgentEnvironment, input: To
       splits: processed.splits.map((split) => ({ index: split.index, ...stretchJson(split, profile) })),
       laps: processed.laps.map((item) => ({
         trigger: item.bounds.trigger,
+        workoutStep: item.bounds.workoutStep,
         startOffsetSeconds: seconds(item.bounds.startOffsetMs),
         endOffsetSeconds: seconds(item.bounds.endOffsetMs),
         ...stretchJson(item, profile),

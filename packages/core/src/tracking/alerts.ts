@@ -2,6 +2,7 @@ import type { HeartRateRange, PaceRange, RecordingAlert, RecordingAlertSettings 
 import type { LiveLap, LiveSnapshot } from "./live.ts";
 import type { LiveSegmentEvent } from "./liveSegments.ts";
 import type { RecorderAlert, RecorderPhase } from "./recorder.ts";
+import type { WorkoutStepRun } from "./workout.ts";
 import type { HeartRateZoneBounds } from "./zones.ts";
 
 /** `REC-075`, `WKT-005`: out of a span after 8 s beyond its tolerance, back after 4 s inside it, repeated every 15 s at most 4 times. */
@@ -32,7 +33,11 @@ export type RecordingAlertEvent =
   | LiveSegmentEvent
   | { readonly kind: "gps"; readonly change: SignalChange }
   | { readonly kind: "sensor"; readonly change: SignalChange }
-  | { readonly kind: "battery"; readonly level: BatteryAlertLevel };
+  | { readonly kind: "battery"; readonly level: BatteryAlertLevel }
+  /** `WKT-006`: the step that just started, null once the last one is done. */
+  | { readonly kind: "workout_step"; readonly step: WorkoutStepRun | null }
+  /** `WKT-005`: the current step's target left or found again. */
+  | ({ readonly kind: "workout_target"; readonly step: WorkoutStepRun } & RangeStatus);
 
 export type RecordingAlertKind = RecordingAlertEvent["kind"];
 
@@ -62,6 +67,8 @@ export function alertSettingOf(kind: RecordingAlertKind): RecordingAlert | null 
       return "segment";
     case "pace_range":
     case "heart_rate_range":
+    case "workout_step":
+    case "workout_target":
       return null;
     default: {
       const unreachable: never = kind;
@@ -70,21 +77,21 @@ export function alertSettingOf(kind: RecordingAlertKind): RecordingAlert | null 
   }
 }
 
-type RangePosition = RangeDeparture | "inside" | "margin";
+export type RangePosition = RangeDeparture | "inside" | "margin";
 
 export interface SpanBounds {
   readonly low: number;
   readonly high: number;
 }
 
-function positionIn(value: number, bounds: SpanBounds, tolerance: SpanBounds): RangePosition {
+export function positionIn(value: number, bounds: SpanBounds, tolerance: SpanBounds): RangePosition {
   if (value < bounds.low - tolerance.low) return "below";
   if (value > bounds.high + tolerance.high) return "above";
   return value >= bounds.low && value <= bounds.high ? "inside" : "margin";
 }
 
 /** Hysteresis of one watched span: the margin between the span and its tolerance neither leaves nor comes back. */
-class RangeWatch {
+export class RangeWatch {
   private candidate: { readonly departure: RangeDeparture; readonly since: number } | null = null;
   private alerted: { readonly departure: RangeDeparture; firedAt: number; count: number } | null = null;
   private insideSince: number | null = null;

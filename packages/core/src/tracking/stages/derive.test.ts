@@ -255,14 +255,14 @@ describe("splits and laps (GPS-060, GPS-061, REC-042)", () => {
     expect(bounds.map((lap) => lap.endOffsetMs)).toEqual([100_000, 433_333, 766_667, 1_050_000]);
     const laps = summarizeLaps(steady, null, true, bounds, window);
     [300_000, 1_000_000, 1_000_000, 850_000].forEach((distanceMm, index) => expect(Math.abs((laps[index]?.distanceMm ?? 0) - distanceMm)).toBeLessThanOrEqual(3));
-    expect(recordedLapBounds(steady, [], null, window)).toEqual([{ trigger: "manual", startOffsetMs: 0, endOffsetMs: 1_050_000 }]);
+    expect(recordedLapBounds(steady, [], null, window)).toEqual([{ trigger: "manual", startOffsetMs: 0, endOffsetMs: 1_050_000, workoutStep: null }]);
   });
 
   it("clip given laps to the activity and drop the empty ones", () => {
     const laps = summarizeLaps(steady, null, false, [
-      { trigger: "import", startOffsetMs: 0, endOffsetMs: 600_000 },
-      { trigger: "import", startOffsetMs: 600_000, endOffsetMs: 2_000_000 },
-      { trigger: "import", startOffsetMs: 2_000_000, endOffsetMs: 3_000_000 },
+      { trigger: "import", startOffsetMs: 0, endOffsetMs: 600_000, workoutStep: null },
+      { trigger: "import", startOffsetMs: 600_000, endOffsetMs: 2_000_000, workoutStep: null },
+      { trigger: "import", startOffsetMs: 2_000_000, endOffsetMs: 3_000_000, workoutStep: null },
     ], window);
     expect(laps.map((lap) => lap.bounds.endOffsetMs)).toEqual([600_000, 1_050_000]);
     expect(laps[0]?.ascentMm).toBeNull();

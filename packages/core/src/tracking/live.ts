@@ -86,6 +86,9 @@ export interface LiveSnapshot {
   readonly route: RouteProgress | null;
 }
 
+/** What the guided workout follows of the tracker (`WKT-003`): a subset of the snapshot. */
+export type TrackerProgress = Pick<LiveSnapshot, "t" | "distanceMm" | "heartRate">;
+
 /** A point of the live elevation profile (`UX-002`), in meters along the counted distance. */
 export interface ElevationPoint {
   readonly distance: number;
@@ -335,6 +338,11 @@ export class LiveTracker {
       heartRate: this.heldReading(now),
       route: this.route?.state ?? null,
     };
+  }
+
+  /** The counted distance and the held heart rate at `now`, without computing the metrics of `snapshot`. */
+  progress(now: number): TrackerProgress {
+    return { t: now, distanceMm: Math.round(this.totals().distance * 1000), heartRate: this.heldReading(now) };
   }
 
   private heldReading(now: number): number | null {

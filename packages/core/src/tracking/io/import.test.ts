@@ -57,8 +57,8 @@ describe("computeImport (IO-011, IO-050)", () => {
     expect(summary.cadenceAvg).toBeGreaterThan(160);
     expect(summary.cadenceAvg).toBeLessThan(180);
     expect(computation.laps).toEqual([
-      { trigger: "import", startOffsetMs: 0, endOffsetMs: 451_000 },
-      { trigger: "import", startOffsetMs: 451_000, endOffsetMs: 618_000 },
+      { trigger: "import", startOffsetMs: 0, endOffsetMs: 451_000, workoutStep: null },
+      { trigger: "import", startOffsetMs: 451_000, endOffsetMs: 618_000, workoutStep: null },
     ]);
     expect(computation.pausedSeconds).toBe(Math.round((summary.elapsedMs - summary.movingMs) / 1000));
     expect(computation.values).toEqual({ distance: Math.round(summary.distanceMm / 1000), elevation_gain: Math.round((summary.ascentMm ?? 0) / 1000), heart_rate_avg: summary.heartRateAvg });
@@ -83,7 +83,7 @@ describe("computeImport (IO-011, IO-050)", () => {
     expect(walk.summary.movingMs).toBeLessThanOrEqual(234_000);
     expect(walk.pausedSeconds).toBeGreaterThanOrEqual(600);
     expect(walk.summary.elevationSource).toBe("none");
-    expect(walk.laps).toEqual([{ trigger: "import", startOffsetMs: 0, endOffsetMs: 834_000 }]);
+    expect(walk.laps).toEqual([{ trigger: "import", startOffsetMs: 0, endOffsetMs: 834_000, workoutStep: null }]);
   });
 
   it("measures the sport the user picks instead of the detected one", () => {

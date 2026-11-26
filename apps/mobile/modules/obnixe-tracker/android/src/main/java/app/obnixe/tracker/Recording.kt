@@ -46,7 +46,7 @@ data class StoppedRecording(val sessionId: String, val endedAt: Long, val lastSe
 
 /**
  * One recording: its sources, its journal and its pause state. Samples reach the journal before JavaScript sees them
- * (`REC-080`); batches close every `batchIntervalMs` while the screen is on and every 5 s while it is off
+ * (`REC-080`); batches close every `batchIntervalMs` while the screen is on and every `backgroundBatchIntervalMs` while it is off
  * (`PRF-003`, `PRF-051`), and immediately on a mark. Confined to [handler]'s thread.
  */
 class Recording private constructor(
@@ -242,9 +242,9 @@ class Recording private constructor(
       TrackerPower.SAVER -> saverIntervalMs
       TrackerPower.CRITICAL -> criticalIntervalMs
     }
-    val batched = !screenInteractive && intervalMs < RecordingConfig.screenOffBatchIntervalMs
+    val batched = !screenInteractive && intervalMs < config.backgroundBatchIntervalMs
     try {
-      location.start(LocationMode(intervalMs, config.power == TrackerPower.NORMAL, if (batched) RecordingConfig.screenOffBatchIntervalMs else 0))
+      location.start(LocationMode(intervalMs, config.power == TrackerPower.NORMAL, if (batched) config.backgroundBatchIntervalMs else 0))
     } catch (error: SecurityException) {
       listener.onIssue(this, TrackerIssue.PERMISSION_LOST)
     }
@@ -270,7 +270,7 @@ class Recording private constructor(
 
   private fun scheduleTick() {
     handler.removeCallbacks(flushTick)
-    if (!stopped) handler.postDelayed(flushTick, if (screenInteractive) config.batchIntervalMs else RecordingConfig.screenOffBatchIntervalMs)
+    if (!stopped) handler.postDelayed(flushTick, if (screenInteractive) config.batchIntervalMs else config.backgroundBatchIntervalMs)
   }
 
   private fun flush(mark: Mark? = null) {

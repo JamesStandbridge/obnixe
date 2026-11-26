@@ -136,6 +136,7 @@ struct StartRequestRecord: Record {
   @Field var power: TrackerPower = .normal
   @Field var sensors: SensorsRecord = SensorsRecord()
   @Field var batchIntervalMs: Double = 5_000
+  @Field var backgroundBatchIntervalMs: Double = 5_000
   @Field var notification: NotificationRecord = NotificationRecord()
   @Field var replay: ReplayRecord?
 
@@ -145,6 +146,7 @@ struct StartRequestRecord: Record {
     let valid = JournalHeader.isSessionId(sessionId)
       && !journalPath.isEmpty
       && (batchIntervalMs == 1_000 || batchIntervalMs == 5_000)
+      && (backgroundBatchIntervalMs == 1_000 || backgroundBatchIntervalMs == 5_000)
       && (sensors.heartRateDevice == nil || heartRateDevice != nil)
       && (replay.map { (1...50).contains($0.speed) } ?? true)
     guard valid else { return nil }
@@ -156,6 +158,7 @@ struct StartRequestRecord: Record {
       pedometer: sensors.pedometer,
       heartRateDevice: heartRateDevice,
       batchIntervalMs: Int64(batchIntervalMs),
+      backgroundBatchIntervalMs: Int64(backgroundBatchIntervalMs),
       notification: notification.content,
       replay: replay.map { ReplaySource(gpxURL: Self.fileURL($0.gpxPath), speed: $0.speed) }
     )
