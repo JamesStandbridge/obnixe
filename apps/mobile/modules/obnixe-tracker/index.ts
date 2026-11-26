@@ -41,6 +41,8 @@ export interface BluetoothSensor {
 }
 
 export interface TrackerSensors {
+  /** `REC-060`: false records without location, for a stopwatch recording with a heart rate source; no replay then. */
+  readonly location: boolean;
   readonly barometer: boolean;
   readonly pedometer: boolean;
   /** At most one per measured role; one device may appear under several services. */
@@ -78,7 +80,8 @@ export interface TrackerStartRequest {
 export type TrackerLocationSource = "fused" | "gps" | "core_location" | "replay";
 
 export interface TrackerSources {
-  readonly location: TrackerLocationSource;
+  /** Null without location (`REC-060`). */
+  readonly location: TrackerLocationSource | null;
   readonly barometer: boolean;
   readonly pedometer: boolean;
   readonly heartRate: boolean;

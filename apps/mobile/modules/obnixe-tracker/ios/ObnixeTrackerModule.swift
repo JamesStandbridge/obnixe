@@ -131,6 +131,7 @@ struct BluetoothSensorRecord: Record {
 }
 
 struct SensorsRecord: Record {
+  @Field var location: Bool = true
   @Field var barometer: Bool = false
   @Field var pedometer: Bool = false
   @Field var bluetooth: [BluetoothSensorRecord] = []
@@ -161,12 +162,14 @@ struct StartRequestRecord: Record {
       && (backgroundDeliveryIntervalMs == 1_000 || backgroundDeliveryIntervalMs == 5_000)
       && bluetooth.count == sensors.bluetooth.count
       && Set(bluetooth.map(\.service.role)).count == bluetooth.count
+      && (sensors.location || (!bluetooth.isEmpty && replay == nil))
       && (replay.map { (1...50).contains($0.speed) } ?? true)
     guard valid else { return nil }
     return RecordingConfig(
       sessionId: sessionId.lowercased(),
       journalURL: Self.fileURL(journalPath),
       power: power,
+      location: sensors.location,
       barometer: sensors.barometer,
       pedometer: sensors.pedometer,
       bluetooth: bluetooth,

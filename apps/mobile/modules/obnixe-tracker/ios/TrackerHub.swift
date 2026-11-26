@@ -97,7 +97,8 @@ final class TrackerHub: RecordingListener {
     confined {
       guard self.recording == nil else { return promise.reject(TrackerException.alreadyRecording()) }
       guard self.foreground else { return promise.reject(TrackerException.foregroundStart()) }
-      guard TrackerPermissions.isGranted(.location) else { return promise.reject(TrackerException.locationPermission()) }
+      guard !config.location || TrackerPermissions.isGranted(.location) else { return promise.reject(TrackerException.locationPermission()) }
+      guard config.location || TrackerPermissions.isGranted(.bluetooth) else { return promise.reject(TrackerException.bluetoothPermission()) }
       let replay: ReplayTrack?
       do {
         replay = try config.replay.map { source in ReplayTrack(points: try GpxReader.read(Data(contentsOf: source.gpxURL)), speed: source.speed) }

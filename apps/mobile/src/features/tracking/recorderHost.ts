@@ -18,12 +18,13 @@ import {
   planRecordingResume,
   planRecordingSave,
   planRecordingStart,
+  processStopwatch,
   processTrack,
-  profileOfSession,
   readJournal,
   readSettings,
   recorderClock,
   recordingLapSource,
+  recordingProfileOf,
   recordingSettingsOf,
   recordingStartMutations,
   signalLevelOf,
@@ -77,6 +78,7 @@ import type { FeedItem } from "@/features/tracking/journalFeed";
 import { notificationOf, timerBaseOf } from "@/features/tracking/notification";
 import { bluetoothSensorsOf, sensorLostIssueOf, sensorRoleOfIssue } from "@/features/tracking/sensorDevices";
 import { availableBytes, deleteJournal, journalUri, readJournalFile, writeTrack } from "@/features/tracking/trackStore";
+import { formatTargetDuration } from "@/format/durations";
 import { formatNumber } from "@/format/numbers";
 import type { SamplePart, TrackerIssue, TrackerIssueKind, TrackerMarkEvent, TrackerModule, TrackerPower, TrackerReplay } from "../../../modules/obnixe-tracker";
 
@@ -101,6 +103,8 @@ export interface RecorderFeedback {
 
 export interface RecorderHostOptions {
   readonly tracker: TrackerPort | null;
+  /** `REC-060`: journals a stopwatch recording without a heart-rate source, which the native tracker has nothing to measure for. */
+  readonly stopwatch: TrackerPort;
   readonly writer: RecorderWriter;
   readonly feedback: RecorderFeedback;
 }
@@ -134,6 +138,8 @@ export interface StopSummary {
   readonly endT: number;
   readonly track: Track;
   readonly processed: ProcessedTrack;
+  /** `REC-060`: the distance typed at the stop of a stopwatch recording, 0 without one. */
+  readonly distanceMm: number;
 }
 
 export interface RecordingView {
@@ -200,6 +206,7 @@ interface Active {
   readonly sessionId: Id;
   readonly recordingId: Id;
   readonly profile: ResolvedProfile;
+  readonly tracker: TrackerPort;
   readonly settings: RecordingSettings;
   readonly heartRate: readonly HeartRateZoneBounds[] | null;
   readonly workout: WorkoutPlan | null;
@@ -264,6 +271,11 @@ function autoLapOf(active: Pick<Active, "settings" | "workout">): AutoLap {
   return active.workout === null ? active.settings.autoLap : null;
 }
 
+/** `REC-060`: a stopwatch recording uses the native tracker only for the heart-rate source of a sport that shows it. */
+function usesHeartRateSource(profile: ResolvedProfile, settings: RecordingSettings): boolean {
+  return profile.metrics.includes("heart_rate") && settings.heartRateDevice !== null;
+}
+
 function codeOf(error: unknown): string | null {
   return error instanceof Error && "code" in error && typeof error.code === "string" ? error.code : null;
 }
@@ -309,16 +321,13 @@ export class RecorderHost {
   private readonly subscriptions: readonly { readonly remove: () => void }[];
 
   constructor(private readonly options: RecorderHostOptions) {
+    const journaled = (tracker: TrackerPort) => [
+      tracker.addListener("onSamples", (part) => this.receive({ kind: "samples", part })),
+      tracker.addListener("onMark", (mark) => this.receive({ kind: "mark", mark })),
+      tracker.addListener("onIssue", (issue) => this.receive({ kind: "issue", issue })),
+    ];
     const tracker = options.tracker;
-    this.subscriptions =
-      tracker === null
-        ? []
-        : [
-            tracker.addListener("onSamples", (part) => this.receive({ kind: "samples", part })),
-            tracker.addListener("onMark", (mark) => this.receive({ kind: "mark", mark })),
-            tracker.addListener("onIssue", (issue) => this.receive({ kind: "issue", issue })),
-            tracker.addListener("onWarmupFix", (fix) => this.warmup(fix)),
-          ];
+    this.subscriptions = [...journaled(options.stopwatch), ...(tracker === null ? [] : [...journaled(tracker), tracker.addListener("onWarmupFix", (fix) => this.warmup(fix))])];
   }
 
   readonly subscribe = (listener: () => void): (() => void) => {
@@ -371,8 +380,7 @@ export class RecorderHost {
 
   /** `REC-003`, `INT-002`: opens the session once the tracker runs, from the instant its journal starts. */
   async start(start: RecordingStart): Promise<RecorderOutcome<Id>> {
-    const tracker = this.options.tracker;
-    if (tracker === null) return failed({ kind: "unsupported" });
+    if (this.options.tracker === null && !start.request.stopwatch) return failed({ kind: "unsupported" });
     if (this.busy || this.active !== null) return failed({ kind: "busy" });
     this.busy = true;
     try {
@@ -387,10 +395,12 @@ export class RecorderHost {
       }
       const route = start.request.routeId === null ? null : await followedRoute(start.request.routeId);
       if (start.request.routeId !== null && route === null) return failed({ kind: "route_unavailable" });
-      const settings: RecordingSettings = { ...plan.settings, autoPause: start.autoPause };
+      const settings: RecordingSettings = { ...plan.settings, autoPause: plan.profile.stopwatch ? false : start.autoPause };
+      const tracker = this.trackerFor(plan.profile, settings);
+      if (tracker === null) return failed({ kind: "unsupported" });
       this.preparing = null;
       const active = this.activate(
-        { sessionId: plan.sessionId, recordingId: plan.recordingId, profile: plan.profile, settings, workout: start.request.workout, route, replay: start.replay, power: start.power, startedAt: environment.now() },
+        { sessionId: plan.sessionId, recordingId: plan.recordingId, profile: plan.profile, tracker, settings, workout: start.request.workout, route, replay: plan.profile.stopwatch ? null : start.replay, power: start.power, startedAt: environment.now() },
         goalOf(start.request.slot?.slotId ?? null),
       );
       active.plan = { ...plan, settings };
@@ -453,6 +463,17 @@ export class RecorderHost {
     return saved === null ? failed({ kind: "no_recording" }) : succeeded(saved);
   }
 
+  /** `REC-060`: the distance typed on the stop summary of a stopwatch recording, 0 for none; saved with it. */
+  setStopwatchDistance(distanceMm: number): RecorderOutcome<void> {
+    const active = this.active;
+    const summary = active?.summary ?? null;
+    if (active === null || summary === null || !active.profile.stopwatch) return failed({ kind: "no_recording" });
+    const rounded = Math.max(0, Math.round(distanceMm));
+    active.summary = { ...summary, processed: processStopwatch(summary.track, active.profile, rounded), distanceMm: rounded };
+    this.publish(true);
+    return succeeded(undefined);
+  }
+
   /** Deletes the open session; `undoDiscard` restores it for 10 s, then the journal is deleted. */
   async discard(): Promise<RecorderOutcome<DiscardedRecording>> {
     const active = this.active;
@@ -486,7 +507,7 @@ export class RecorderHost {
     if (active === null || active.power === power) return;
     active.power = power;
     if (active.saverOffer === "offered") active.saverOffer = "answered";
-    if (active.started && isActivePhase(active.state)) this.options.tracker?.setPower(power);
+    if (active.started && isActivePhase(active.state)) active.tracker.setPower(power);
     this.publish(true);
   }
 
@@ -530,10 +551,13 @@ export class RecorderHost {
     if (this.active !== null) return;
     const open = openLiveRecording(db());
     if (open === null) return;
-    const profile = profileOfSession(open.session);
-    const settings: RecordingSettings = { ...recordingSettingsOf(db(), profile), autoPause: open.recording.autoPause };
+    const profile = recordingProfileOf(open);
+    const stored = recordingSettingsOf(db(), profile);
+    const settings: RecordingSettings = profile.stopwatch ? { ...stored, autoPause: false, autoLap: null, readout: null } : { ...stored, autoPause: open.recording.autoPause };
+    const tracker = this.trackerFor(profile, settings);
+    if (tracker === null) return;
     const active = this.activate(
-      { sessionId: open.session.id, recordingId: open.recording.id, profile, settings, workout: open.recording.workout, route: null, replay: null, power: "normal", startedAt: open.session.startedAt },
+      { sessionId: open.session.id, recordingId: open.recording.id, profile, tracker, settings, workout: open.recording.workout, route: null, replay: null, power: "normal", startedAt: open.session.startedAt },
       goalOf(open.session.slotId),
     );
     active.started = true;
@@ -549,7 +573,7 @@ export class RecorderHost {
       this.apply(active, feedOf(contents?.samples ?? [], contents?.marks ?? []), "replay");
       if (active.state.phase === "preparing") await this.dispatch({ type: "start" }, "replay");
       this.sealAt(active, contents?.lastSequence ?? -1);
-      const status = this.options.tracker?.status() ?? null;
+      const status = active.tracker.status();
       const recording = status !== null && status.state === "recording" && status.sessionId === active.sessionId;
       if (!recording && (isActivePhase(active.state) || active.state.phase === "finishing")) await this.dispatch({ type: "interrupt", lastSampleT: active.lastT }, "live");
       else this.observe(active);
@@ -564,11 +588,10 @@ export class RecorderHost {
 
   private requestMark(kind: "pause" | "resume" | "lap"): RecorderOutcome<void> {
     const active = this.active;
-    const tracker = this.options.tracker;
-    if (active === null || tracker === null) return failed({ kind: "no_recording" });
+    if (active === null) return failed({ kind: "no_recording" });
     const result = transition(active.state, { type: kind, t: this.trackTime(active) });
     if (!result.ok) return failed({ kind: "refused", refusal: result.refusal });
-    tracker.mark(kind);
+    active.tracker.mark(kind);
     return succeeded(undefined);
   }
 
@@ -593,7 +616,7 @@ export class RecorderHost {
   }
 
   /** A guided workout replaces the automatic laps and the pace and heart-rate spans with its steps and their targets. */
-  private activate(fields: Pick<Active, "sessionId" | "recordingId" | "profile" | "settings" | "workout" | "route" | "replay" | "power" | "startedAt">, goal: AlertGoal | null): Active {
+  private activate(fields: Pick<Active, "sessionId" | "recordingId" | "profile" | "tracker" | "settings" | "workout" | "route" | "replay" | "power" | "startedAt">, goal: AlertGoal | null): Active {
     const physiology = readSettings(db());
     const maximum = maxHeartRateOf(physiology, fields.startedAt);
     const heartRate = maximum === null ? null : heartRateZones(maximum);
@@ -663,7 +686,7 @@ export class RecorderHost {
       case "start_tracker":
         return this.startTracker(active);
       case "stop_tracker":
-        return this.stopTracker();
+        return this.stopTracker(active);
       case "commit":
         return this.commit(active, effect.commit);
       case "summarize":
@@ -692,15 +715,16 @@ export class RecorderHost {
   }
 
   private async startTracker(active: Active): Promise<void> {
-    const tracker = this.options.tracker;
-    if (tracker === null) throw new Error("No tracker");
     const create = !active.started;
-    const started = await tracker.start({
+    const { profile } = active;
+    const started = await active.tracker.start({
       sessionId: active.sessionId,
       journalPath: journalUri(active.sessionId),
       journal: create ? "create" : "continue",
       power: active.power,
-      sensors: { barometer: true, pedometer: active.profile.cadence === "steps", bluetooth: bluetoothSensorsOf(active.profile, active.settings) },
+      sensors: profile.stopwatch
+        ? { location: false, barometer: false, pedometer: false, bluetooth: bluetoothSensorsOf(profile, active.settings).filter((sensor) => sensor.service === "heart_rate") }
+        : { location: true, barometer: true, pedometer: profile.cadence === "steps", bluetooth: bluetoothSensorsOf(profile, active.settings) },
       deliveryIntervalMs: 1000,
       backgroundDeliveryIntervalMs: active.workout === null ? 5000 : 1000,
       notification: notificationOf(active.profile, active.state, active.live.snapshot(active.lastT), active.startedAt, null, active.runner?.view(active.lastT) ?? null),
@@ -710,12 +734,16 @@ export class RecorderHost {
     active.startedAt = started.startedAt;
   }
 
-  private async stopTracker(): Promise<void> {
+  private async stopTracker(active: Active): Promise<void> {
     try {
-      await this.options.tracker?.stop();
+      await active.tracker.stop();
     } catch (error) {
       if (codeOf(error) !== "ERR_TRACKER_NOT_RECORDING") throw error;
     }
+  }
+
+  private trackerFor(profile: ResolvedProfile, settings: RecordingSettings): TrackerPort | null {
+    return profile.stopwatch && !(usesHeartRateSource(profile, settings) && this.options.tracker !== null) ? this.options.stopwatch : this.options.tracker;
   }
 
   private async commit(active: Active, kind: RecorderCommit): Promise<void> {
@@ -762,9 +790,9 @@ export class RecorderHost {
     const summary = active.summary;
     if (summary === null) throw new Error("Save before the summary");
     const stored = await writeTrack(active.recordingId, encodeTrack(summary.track));
-    const kilometers = summary.processed.summary.distanceMm / 1_000_000;
+    const { distanceMm, movingMs } = summary.processed.summary;
     const changesetId = this.options.writer.write(
-      `Sortie de ${formatNumber(kilometers)} km`,
+      active.profile.stopwatch && distanceMm === 0 ? `Sortie de ${formatTargetDuration(movingMs / 1000)}` : `Sortie de ${formatNumber(distanceMm / 1_000_000)} km`,
       planRecordingSave(db(), environment, { sessionId: active.sessionId, track: summary.track, processed: summary.processed, stored, pains: active.pains }),
     );
     storeDerivation(db(), active.sessionId, summary.track, summary.processed, activePrivacyMask(db()));
@@ -773,10 +801,13 @@ export class RecorderHost {
 
   private async summarize(active: Active, endT: number): Promise<void> {
     const { track } = journalTrackOf(await readJournalFile(active.sessionId), active.startedAt);
-    const processed = processTrack(track, active.profile, { laps: recordingLapSource(track, active.profile, autoLapOf(active), active.workout), trim: { startMs: 0, endMs: null } });
-    active.summary = { endT, track, processed };
+    const distanceMm = active.summary?.distanceMm ?? 0;
+    const processed = active.profile.stopwatch
+      ? processStopwatch(track, active.profile, distanceMm)
+      : processTrack(track, active.profile, { laps: recordingLapSource(track, active.profile, autoLapOf(active), active.workout), trim: { startMs: 0, endMs: null } });
+    active.summary = { endT, track, processed, distanceMm };
     this.publish(true);
-    await this.dispatch({ type: "summarized", endT, brief: { movingMs: processed.summary.movingMs, distanceMm: processed.summary.distanceMm } }, "live", true);
+    await this.dispatch({ type: "summarized", endT, brief: { movingMs: processed.summary.movingMs, distanceMm: active.profile.stopwatch ? null : processed.summary.distanceMm } }, "live", true);
   }
 
   private scheduleJournalDeletion(active: Active, delayMs: number): void {
@@ -807,7 +838,7 @@ export class RecorderHost {
 
   private async abandonStart(active: Active): Promise<void> {
     if (active.started) {
-      await this.stopTracker().catch(this.options.feedback.report);
+      await this.stopTracker(active).catch(this.options.feedback.report);
       await deleteJournal(active.sessionId).catch(this.options.feedback.report);
     }
     if (this.active === active) this.active = null;
@@ -1025,7 +1056,7 @@ export class RecorderHost {
     if (!active.started || !isActivePhase(active.state)) return;
     const alert = active.alert !== null && environment.now() - active.alert.at < alertNotificationMs ? active.alert.notice : null;
     const t = this.trackTime(active);
-    this.options.tracker?.setNotification(notificationOf(active.profile, active.state, active.live.snapshot(t), active.startedAt, alert, active.runner?.view(t) ?? null));
+    active.tracker.setNotification(notificationOf(active.profile, active.state, active.live.snapshot(t), active.startedAt, alert, active.runner?.view(t) ?? null));
   }
 
   private syncTicker(): void {

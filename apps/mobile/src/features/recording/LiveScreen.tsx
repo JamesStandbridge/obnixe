@@ -82,7 +82,7 @@ export function LiveScreen({ recording }: LiveScreenProps) {
   const route = recording.route;
   const routeProfile = route === null || route.profile.length < 2 ? null : route.profile;
   const pages = useMemo(
-    (): readonly PageTab[] => [metricsTab, ...(guided ? [stepsTab] : []), lapsTab, ...(profile.metrics.includes("ascent") || routeProfile !== null ? [profileTab] : []), mapTab],
+    (): readonly PageTab[] => [metricsTab, ...(guided ? [stepsTab] : []), lapsTab, ...(profile.metrics.includes("ascent") || routeProfile !== null ? [profileTab] : []), ...(profile.stopwatch ? [] : [mapTab])],
     [profile, routeProfile, guided],
   );
   const target = useMemo(() => sessionTargetOf(sessionId), [sessionId]);
@@ -137,7 +137,7 @@ export function LiveScreen({ recording }: LiveScreenProps) {
           <View style={styles.timer} accessible accessibilityLabel={`Chronomètre ${formatLongClock((clock?.timerMs ?? 0) / 1000)}`}>
             <Chronometer baseAt={recording.timerBaseAt} frozenMs={recording.timerBaseAt === null ? (clock?.timerMs ?? 0) : 0} style={styles.chronometer} />
           </View>
-          <SignalBars level={live.signal.level} />
+          {profile.stopwatch ? null : <SignalBars level={live.signal.level} />}
           <IconButton icon="sun" label="Mode plein soleil" pressed={palette === "sunlight"} onPress={() => updateSettings({ theme: palette === "sunlight" ? "dark" : "sunlight" })} />
           <IconButton icon="lock" label="Verrouiller l'écran" onPress={() => setLocked(true)} />
           <IconButton icon="more" label="Options de la sortie" edge="end" onPress={() => setMenu("options")} />
@@ -253,21 +253,23 @@ export function LiveScreen({ recording }: LiveScreenProps) {
           </View>
         ) : null}
 
-        <View style={[styles.page, styles.mapPage, { width }]}>
-          {feed === null ? null : <LiveMap feed={feed} sport={profile.sport} route={route?.path ?? null} rejoin={live.route?.rejoin ?? null} visible={page === "map"} />}
-          <View style={styles.mapCards} pointerEvents="none">
-            <View style={[styles.mapCard, { backgroundColor: colors.bg, borderColor: colors.line }]}>
-              {[readout.main, ...readout.secondary.slice(0, 2)].map((key) => (
-                <MetricTile key={key} caption={metricCaptions[key]} text={text(key)} scale="compact" style={styles.mapTile} />
-              ))}
-            </View>
-            {live.route?.offRoute === true ? (
-              <View style={[styles.rejoinCard, { backgroundColor: colors.bg, borderColor: colors.warn }]}>
-                <Text variant="small">{live.route.rejoin === null ? "Hors itinéraire : reviens sur le tracé" : `Itinéraire ${rejoinText(live.route.rejoin)}`}</Text>
+        {pages.includes(mapTab) ? (
+          <View style={[styles.page, styles.mapPage, { width }]}>
+            {feed === null ? null : <LiveMap feed={feed} sport={profile.sport} route={route?.path ?? null} rejoin={live.route?.rejoin ?? null} visible={page === "map"} />}
+            <View style={styles.mapCards} pointerEvents="none">
+              <View style={[styles.mapCard, { backgroundColor: colors.bg, borderColor: colors.line }]}>
+                {[readout.main, ...readout.secondary.slice(0, 2)].map((key) => (
+                  <MetricTile key={key} caption={metricCaptions[key]} text={text(key)} scale="compact" style={styles.mapTile} />
+                ))}
               </View>
-            ) : null}
+              {live.route?.offRoute === true ? (
+                <View style={[styles.rejoinCard, { backgroundColor: colors.bg, borderColor: colors.warn }]}>
+                  <Text variant="small">{live.route.rejoin === null ? "Hors itinéraire : reviens sur le tracé" : `Itinéraire ${rejoinText(live.route.rejoin)}`}</Text>
+                </View>
+              ) : null}
+            </View>
           </View>
-        </View>
+        ) : null}
       </ScrollView>
 
       <View
@@ -295,14 +297,18 @@ export function LiveScreen({ recording }: LiveScreenProps) {
       <Sheet open={menu === "options"} title="Options de la sortie" onClose={() => setMenu("closed")}>
         <View>
           <MenuItem label="Signaler une douleur" detail={recording.pains.length === 0 ? "Enregistrée avec la sortie" : `${recording.pains.length} signalée${recording.pains.length > 1 ? "s" : ""}`} onPress={() => setMenu("pain")} />
-          <SwitchRow title="Pause automatique" detail="Quand tu t'arrêtes" value={"autoPause" in state && state.autoPause} onChange={(value) => failed(recorder.setAutoPause(value))} />
+          {profile.stopwatch ? null : (
+            <SwitchRow title="Pause automatique" detail="Quand tu t'arrêtes" value={"autoPause" in state && state.autoPause} onChange={(value) => failed(recorder.setAutoPause(value))} />
+          )}
           <SwitchRow title="Garder l'écran allumé" detail="Pour toutes les sorties" value={display.keepScreenOn} onChange={(value) => updateSettings({ keepScreenOn: value })} />
-          <SwitchRow
-            title="Mode économie d'énergie"
-            detail={recording.power === "critical" ? "Batterie critique : points GPS espacés" : "Points GPS plus espacés"}
-            value={recording.power !== "normal"}
-            onChange={(value) => recorder.setPower(value ? "saver" : "normal")}
-          />
+          {profile.stopwatch ? null : (
+            <SwitchRow
+              title="Mode économie d'énergie"
+              detail={recording.power === "critical" ? "Batterie critique : points GPS espacés" : "Points GPS plus espacés"}
+              value={recording.power !== "normal"}
+              onChange={(value) => recorder.setPower(value ? "saver" : "normal")}
+            />
+          )}
           <MenuItem
             label="Revenir à l'accueil"
             detail="L'enregistrement continue"
@@ -479,6 +485,7 @@ interface LapsPageProps {
 function LapsPage({ current, laps, profile }: LapsPageProps) {
   const { colors } = useTheme();
   const live = lapFigures(current, profile);
+  const active = (lap: LiveLap): string => formatLongClock(lap.movingMs / 1000);
   return (
     <ScrollView contentContainerStyle={styles.laps}>
       <View style={[styles.currentLap, { backgroundColor: colors.surface, borderLeftColor: colors.sport[profile.sport] }]}>
@@ -487,8 +494,14 @@ function LapsPage({ current, laps, profile }: LapsPageProps) {
         </Text>
         <View style={styles.currentFigures}>
           <MetricTile caption="Durée" text={{ value: live.duration, unit: "" }} scale="compact" style={styles.lapTile} />
-          <MetricTile caption="Distance" text={live.distance} scale="compact" style={styles.lapTile} />
-          <MetricTile caption={profile.primary === "pace" ? "Allure" : "Vitesse"} text={live.rate} scale="compact" style={styles.lapTile} />
+          {profile.stopwatch ? (
+            <MetricTile caption="Temps actif" text={{ value: active(current), unit: "" }} scale="compact" style={styles.lapTile} />
+          ) : (
+            <>
+              <MetricTile caption="Distance" text={live.distance} scale="compact" style={styles.lapTile} />
+              <MetricTile caption={profile.primary === "pace" ? "Allure" : "Vitesse"} text={live.rate} scale="compact" style={styles.lapTile} />
+            </>
+          )}
         </View>
       </View>
       {laps.length === 0 ? (
@@ -498,6 +511,18 @@ function LapsPage({ current, laps, profile }: LapsPageProps) {
       ) : (
         [...laps].reverse().map((lap) => {
           const figures = lapFigures(lap, profile);
+          if (profile.stopwatch) {
+            return (
+              <View key={lap.index} style={[styles.lapRow, { borderBottomColor: colors.line }]} accessible accessibilityLabel={`${figures.title}, ${figures.duration}, actif ${active(lap)}`}>
+                <Text style={[styles.lapIndex, { color: colors.text2 }]}>{lap.index + 1}</Text>
+                <Text style={[styles.lapValue, { color: colors.text }]}>{figures.duration}</Text>
+                <Text style={[styles.lapValue, styles.lapRate, { color: colors.text }]}>
+                  {active(lap)}
+                  <Text style={[styles.lapUnit, { color: colors.text2 }]}> actif</Text>
+                </Text>
+              </View>
+            );
+          }
           return (
             <View key={lap.index} style={[styles.lapRow, { borderBottomColor: colors.line }]} accessible accessibilityLabel={`${figures.title}, ${figures.duration}, ${figures.distance.value} ${figures.distance.unit}, ${figures.rate.value} ${figures.rate.unit}`}>
               <Text style={[styles.lapIndex, { color: colors.text2 }]}>{lap.index + 1}</Text>

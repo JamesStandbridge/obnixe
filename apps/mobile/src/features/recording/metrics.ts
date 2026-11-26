@@ -196,15 +196,17 @@ export function lapFigures(lap: LiveLap, profile: Pick<ResolvedProfile, "primary
 }
 
 export interface SummaryFigures {
-  readonly distance: MetricText;
+  /** Null for a stopwatch recording without a typed distance (`REC-060`), which then has no pace or speed either. */
+  readonly distance: MetricText | null;
   readonly moving: string;
   /** Elapsed time, average pace or speed, then the sport's other values that were measured. */
   readonly stats: readonly StatValue[];
 }
 
 /** `REC-050`: the figures of the stop summary. */
-export function summaryFigures(summary: Pick<RecordingSummary, "elapsedMs" | "movingMs" | "distanceMm" | "ascentMm" | "heartRateAvg" | "cadenceAvg">, profile: Pick<ResolvedProfile, "primary" | "pacePerMeters" | "cadence">): SummaryFigures {
+export function summaryFigures(summary: Pick<RecordingSummary, "elapsedMs" | "movingMs" | "distanceMm" | "ascentMm" | "heartRateAvg" | "cadenceAvg">, profile: Pick<ResolvedProfile, "primary" | "pacePerMeters" | "cadence" | "stopwatch">): SummaryFigures {
   const meters = summary.distanceMm / 1000;
+  const distanced = !profile.stopwatch || summary.distanceMm > 0;
   const pace = paceOf(summary.movingMs, meters, profile.pacePerMeters);
   const rate: StatValue =
     profile.primary === "pace"
@@ -216,8 +218,8 @@ export function summaryFigures(summary: Pick<RecordingSummary, "elapsedMs" | "mo
     ...(summary.cadenceAvg === null ? [] : [{ label: "Cadence", value: formatInteger(summary.cadenceAvg), unit: cadenceUnit(profile) }]),
   ];
   return {
-    distance: formatDistance(meters),
+    distance: distanced ? formatDistance(meters) : null,
     moving: formatLongClock(summary.movingMs / 1000),
-    stats: [{ label: "Temps total", value: formatLongClock(summary.elapsedMs / 1000), unit: "" }, rate, ...measured],
+    stats: [{ label: "Temps total", value: formatLongClock(summary.elapsedMs / 1000), unit: "" }, ...(distanced ? [rate] : []), ...measured],
   };
 }

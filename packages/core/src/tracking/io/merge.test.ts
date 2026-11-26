@@ -41,7 +41,7 @@ beforeEach(() => {
 });
 
 function recordPhone(track: Track = phoneTrack): Id {
-  const plan = planRecordingStart(context.db, context.env, { sport: "run", values: {}, gearId: null, slot: null, timeZone: "Europe/Paris", routeId: null, workout: null });
+  const plan = planRecordingStart(context.db, context.env, { sport: "run", values: {}, gearId: null, slot: null, timeZone: "Europe/Paris", routeId: null, workout: null, stopwatch: false });
   commit(context.db, context.env, { actor: { author: "user", connectionId: null }, summary: "Sortie démarrée", revertsId: null, mutations: recordingStartMutations(plan, { startedAt, device: "Pixel 9 Pro" }) });
   const processed = processTrack(track, profileOf({ sport: "run" }), { laps: recordedLaps, trim: untrimmed });
   const bytes = encodeTrack(track);

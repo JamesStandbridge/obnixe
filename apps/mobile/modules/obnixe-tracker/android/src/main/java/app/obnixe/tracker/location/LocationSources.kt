@@ -6,7 +6,6 @@ import android.location.Location
 import android.location.LocationManager
 import android.os.Handler
 import android.os.Looper
-import android.os.SystemClock
 import androidx.core.location.LocationListenerCompat
 import androidx.core.location.LocationManagerCompat
 import androidx.core.location.LocationRequestCompat
@@ -100,30 +99,30 @@ private class PlatformLocationSource(context: Context, private val looper: Loope
   }
 }
 
-/** A GPX track and the speed factor (1 to 50) at which it is replayed. */
-data class ReplayTrack(val points: List<GpxPoint>, val speed: Double)
+/** A GPX track and the speed factor (1 to 50) at which it is replayed; points before [fromT] are skipped. */
+data class ReplayTrack(val points: List<GpxPoint>, val speed: Double, val fromT: Long = 0L)
 
 /**
  * Replays a GPX track as simulated fixes (`DEC-08`). The recording's clock runs `speed` times faster, so each fix keeps
- * the GPX time offset as its `t` and the replayed track keeps its real paces. GPX has no accuracy, Doppler speed nor
- * bearing: accuracy is reported as 5 m and the other fields as absent.
+ * the GPX time offset as its `t` and the replayed track keeps its real paces. A recording resumed after a restart of the
+ * process (`TST-030`) picks the track up where its clock stands. GPX has no accuracy, Doppler speed nor bearing:
+ * accuracy is reported as 5 m and the other fields as absent.
  */
 private class ReplayLocationSource(private val track: ReplayTrack, private val handler: Handler, private val clock: TrackerClock, private val sink: FixSink) :
   LocationSource {
   override val kind = LocationSourceKind.REPLAY
   private val offsets = replayOffsets(track.points)
   private var next = 0
-  private var startT = 0L
-  private var startUptime = 0L
+  private var resumeAt = track.fromT
   private var running = false
   private val emit = object : Runnable {
     override fun run() {
-      val elapsed = ((SystemClock.uptimeMillis() - startUptime) * track.speed).toLong()
-      while (next < offsets.size && offsets[next] <= elapsed) {
+      val now = clock.now()
+      while (next < offsets.size && offsets[next] <= now) {
         val point = track.points[next]
         sink.onFix(
           Fix(
-            t = startT + offsets[next],
+            t = offsets[next],
             fixAgeMs = 0,
             latitudeE7 = point.latitudeE7,
             longitudeE7 = point.longitudeE7,
@@ -140,21 +139,21 @@ private class ReplayLocationSource(private val track: ReplayTrack, private val h
         )
         next += 1
       }
-      if (next < offsets.size) handler.postAtTime(this, startUptime + (offsets[next] / track.speed).toLong())
+      if (running && next < offsets.size) handler.postDelayed(this, maxOf(1L, ((offsets[next] - now) / track.speed).toLong()))
     }
   }
 
   override fun start(mode: LocationMode) {
     if (running) return
     running = true
-    startT = clock.now()
-    startUptime = SystemClock.uptimeMillis()
+    while (next < offsets.size && offsets[next] < resumeAt) next += 1
     handler.post(emit)
   }
 
   override fun stop() {
     running = false
     handler.removeCallbacks(emit)
+    resumeAt = clock.now()
   }
 
   private companion object {

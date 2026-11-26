@@ -94,7 +94,7 @@ export function workoutProgress(workout: WorkoutView): TrackerNotificationProgre
   return { segments, value };
 }
 
-/** `REC-071`, `REC-072`, `REC-075`: "Course · 5,24 km", then a recent alert, the pause, the guided step or the main metric. */
+/** `REC-071`, `REC-072`, `REC-075`: "Course · 5,24 km" ("Course · chronomètre" without location, `REC-060`), then a recent alert, the pause, the guided step or the main metric. */
 export function notificationOf(
   profile: ResolvedProfile,
   state: RecorderState,
@@ -103,7 +103,7 @@ export function notificationOf(
   alert: AlertNotice | null,
   workout: WorkoutView | null,
 ): TrackerNotification {
-  const title = `${sports[profile.sport].label} · ${formatNumber(live.distanceMm / 1_000_000, 2, 2)} km`;
+  const title = `${sports[profile.sport].label} · ${profile.stopwatch ? "chronomètre" : `${formatNumber(live.distanceMm / 1_000_000, 2, 2)} km`}`;
   const text =
     alert !== null
       ? `${alert.title} · ${alert.detail}`

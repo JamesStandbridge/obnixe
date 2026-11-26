@@ -177,6 +177,7 @@ class BluetoothSensorRecord : Record {
 }
 
 class SensorsRecord : Record {
+  @Field val location: Boolean = true
   @Field val barometer: Boolean = false
   @Field val pedometer: Boolean = false
   @Field val bluetooth: List<BluetoothSensorRecord> = emptyList()
@@ -207,12 +208,14 @@ class StartRequestRecord : Record {
       (deliveryIntervalMs == 1_000.0 || deliveryIntervalMs == 5_000.0) &&
       (backgroundDeliveryIntervalMs == 1_000.0 || backgroundDeliveryIntervalMs == 5_000.0) &&
       BluetoothSensor.isValidSelection(bluetooth) &&
+      (sensors.location || (bluetooth.isNotEmpty() && replay == null)) &&
       (replay == null || replay.speed in 1.0..50.0)
     if (!valid) return null
     return RecordingConfig(
       sessionId = sessionId.lowercase(),
       journalPath = filePath(journalPath),
       power = power,
+      location = sensors.location,
       barometer = sensors.barometer,
       pedometer = sensors.pedometer,
       bluetooth = bluetooth,

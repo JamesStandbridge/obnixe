@@ -43,9 +43,9 @@ enum class TrackerIssue(val wire: String) {
   POWER_LOST("power_lost"),
 }
 
-data class TrackerSources(val location: LocationSourceKind, val barometer: Boolean, val pedometer: Boolean, val bluetooth: Set<SensorRole>) {
-  fun toBridge(): Map<String, Any> = mapOf(
-    "location" to location.wire,
+data class TrackerSources(val location: LocationSourceKind?, val barometer: Boolean, val pedometer: Boolean, val bluetooth: Set<SensorRole>) {
+  fun toBridge(): Map<String, Any?> = mapOf(
+    "location" to location?.wire,
     "barometer" to barometer,
     "pedometer" to pedometer,
     "heartRate" to (SensorRole.HEART_RATE in bluetooth),
@@ -129,11 +129,13 @@ class Recording private constructor(
   /** Starts every available source the configuration asks for and reports which ones run. */
   fun startSources(screenInteractive: Boolean): TrackerSources {
     this.screenInteractive = screenInteractive
-    val location = LocationSource.create(context, handler, clock, ::onSample, replay)
+    val location = if (config.location) LocationSource.create(context, handler, clock, ::onSample, replay) else null
     this.location = location
-    startLocation()
-    ContextCompat.registerReceiver(context, providerReceiver, IntentFilter(LocationManager.PROVIDERS_CHANGED_ACTION), null, handler, ContextCompat.RECEIVER_NOT_EXPORTED)
-    receiverRegistered = true
+    if (location != null) {
+      startLocation()
+      ContextCompat.registerReceiver(context, providerReceiver, IntentFilter(LocationManager.PROVIDERS_CHANGED_ACTION), null, handler, ContextCompat.RECEIVER_NOT_EXPORTED)
+      receiverRegistered = true
+    }
     val sensors = context.getSystemService(SensorManager::class.java)
     val live = replay == null
     if (live && config.barometer) {
@@ -152,7 +154,7 @@ class Recording private constructor(
       }
     }
     scheduleTick()
-    return TrackerSources(location.kind, barometer != null, steps != null, links.flatMap { link -> link.services.map { it.role } }.toSet())
+    return TrackerSources(location?.kind, barometer != null, steps != null, links.flatMap { link -> link.services.map { it.role } }.toSet())
   }
 
   /** Writes a pause, resume or lap mark; false when the pause state makes it meaningless (lap or pause while paused). */
@@ -368,7 +370,7 @@ class Recording private constructor(
      * last record (unless the journal already ends with one) and a start mark now turn the gap into a pause (`REC-081`).
      * [stepBaseline] is the step counter reading at the start of this boot, if known.
      */
-    fun open(context: Context, config: RecordingConfig, stepBaseline: Long?, reopen: Boolean, handler: Handler, listener: Listener): Recording {
+    fun open(context: Context, config: RecordingConfig, replay: ReplayTrack?, stepBaseline: Long?, reopen: Boolean, handler: Handler, listener: Listener): Recording {
       val resumed = JournalWriter.resume(File(config.journalPath), afterStop = reopen)
       val header = resumed.writer.header
       if (header.sessionId != config.sessionId) {
@@ -390,7 +392,7 @@ class Recording private constructor(
       } else {
         emptyList()
       }
-      val recording = Recording(context, config, resumed.writer, clock, null, handler, listener, resumed.paused && !reopen, baseline, resumed.lastStepCount)
+      val recording = Recording(context, config, resumed.writer, clock, replay?.copy(fromT = clock.now()), handler, listener, resumed.paused && !reopen, baseline, resumed.lastStepCount)
       batches.forEach { listener.onBatch(recording, it) }
       recording.persist()
       return recording

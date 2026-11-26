@@ -75,9 +75,10 @@ internal object TrackerHub : Recording.Listener {
 
   fun start(config: RecordingConfig, mode: JournalMode, promise: Promise) = confined {
     if (recording != null || restoringSessionId != null) return@confined promise.reject(TrackerException.alreadyRecording())
-    if (!TrackerPermissions.isGranted(context, TrackerPermission.LOCATION)) return@confined promise.reject(TrackerException.locationPermission())
+    if (config.location && !TrackerPermissions.isGranted(context, TrackerPermission.LOCATION)) return@confined promise.reject(TrackerException.locationPermission())
+    if (!config.location && !TrackerPermissions.isGranted(context, TrackerPermission.BLUETOOTH)) return@confined promise.reject(TrackerException.bluetoothPermission())
     val replay = try {
-      config.replay?.let { replay -> File(replay.gpxPath).inputStream().use { ReplayTrack(GpxReader.read(it), replay.speed) } }
+      replayTrackOf(config.replay)
     } catch (error: IOException) {
       return@confined promise.reject(TrackerException.invalidRequest("Replay file unreadable: ${error.message}"))
     } catch (error: XmlPullParserException) {
@@ -91,7 +92,7 @@ internal object TrackerHub : Recording.Listener {
         JournalMode.CREATE -> Recording.create(context, config, replay, handler, this)
         JournalMode.CONTINUE -> {
           val kept = RecordingStore.load(context)?.takeIf { it.config.sessionId == config.sessionId }
-          Recording.open(context, config, kept?.stepBaseline, reopen = true, handler, this)
+          Recording.open(context, config, replay, kept?.stepBaseline, reopen = true, handler, this)
         }
       }
     } catch (error: IOException) {
@@ -151,6 +152,8 @@ internal object TrackerHub : Recording.Listener {
 
   fun usesBluetooth(context: Context): Boolean = (recording?.config ?: RecordingStore.load(context)?.config)?.bluetooth?.isNotEmpty() == true
 
+  fun usesLocation(context: Context): Boolean = (recording?.config ?: RecordingStore.load(context)?.config)?.location ?: true
+
   /** The service runs in the foreground: resumes the kept recording if the system restarted the process. */
   fun attach(context: Context, screenInteractive: Boolean) = confined {
     bind(context)
@@ -166,17 +169,28 @@ internal object TrackerHub : Recording.Listener {
       return@confined
     }
     try {
-      val restored = Recording.open(context, kept.config, kept.stepBaseline, reopen = false, handler, this)
+      val restored = Recording.open(context, kept.config, replayTrackOf(kept.config.replay), kept.stepBaseline, reopen = false, handler, this)
       recording = restored
       restored.startSources(screenInteractive)
       refreshNotification(restored)
     } catch (error: IOException) {
-      RecordingStore.clear(context)
-      TrackerService.stop(context)
+      abandonKept(context)
+    } catch (error: XmlPullParserException) {
+      abandonKept(context)
+    } catch (error: GpxFormatException) {
+      abandonKept(context)
     } finally {
       restoringSessionId = null
     }
   }
+
+  private fun abandonKept(context: Context) {
+    RecordingStore.clear(context)
+    TrackerService.stop(context)
+  }
+
+  private fun replayTrackOf(source: ReplaySource?): ReplayTrack? =
+    source?.let { replay -> File(replay.gpxPath).inputStream().use { ReplayTrack(GpxReader.read(it), replay.speed) } }
 
   /** The service could not run in the foreground: the journal stays for the launch reconciliation (`REC-081`). */
   fun abandon(context: Context) = confined {

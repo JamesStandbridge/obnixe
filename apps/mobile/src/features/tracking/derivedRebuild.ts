@@ -6,7 +6,7 @@ import {
   derivationBatchSize,
   markSegmentsSwept,
   previewMutationOf,
-  profileOfSession,
+  recordingProfileOf,
   reprocessRecording,
   segmentShape,
   segmentSweepCandidates,
@@ -167,7 +167,7 @@ export class DerivedRebuild {
       if (error instanceof TrackDecodeError) return null;
       throw error;
     }
-    const processed = reprocessRecording(db(), stale, track, { startMs: stale.recording.trimStartMs, endMs: stale.recording.trimEndMs }, profileOfSession(stale.session));
+    const processed = reprocessRecording(db(), stale, track, { startMs: stale.recording.trimStartMs, endMs: stale.recording.trimEndMs }, recordingProfileOf(stale));
     return { stale, track, processed };
   }
 

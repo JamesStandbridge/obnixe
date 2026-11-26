@@ -16,18 +16,18 @@ export type JournalDisposition =
 
 export function journalDisposition(db: ObnixeDatabase, sessionId: Id): JournalDisposition {
   const found = db.select({ session, recording }).from(session).innerJoin(recording, eq(recording.sessionId, session.id)).where(eq(session.id, sessionId)).get();
-  if (found === undefined || found.recording.source !== "live") return { kind: "orphan" };
+  if (found === undefined || found.recording.source === "import") return { kind: "orphan" };
   return found.session.status === "completed" ? { kind: "saved", recording: found.recording } : { kind: "open", live: found };
 }
 
-/** The open session that carries a live recording, if any; trashed sessions never are. */
+/** The open session that carries a phone recording, with or without location, if any; trashed sessions never are. */
 export function openLiveRecording(db: ObnixeDatabase): SessionRecording | null {
   return (
     db
       .select({ session, recording })
       .from(session)
       .innerJoin(recording, eq(recording.sessionId, session.id))
-      .where(and(ne(session.status, "completed"), isNull(session.deletedAt), eq(recording.source, "live")))
+      .where(and(ne(session.status, "completed"), isNull(session.deletedAt), ne(recording.source, "import")))
       .get() ?? null
   );
 }

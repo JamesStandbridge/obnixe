@@ -41,6 +41,7 @@ export * from "./records.ts";
 export * from "./recorder.ts";
 export * from "./segmentBoards.ts";
 export * from "./segmentRows.ts";
+export * from "./stopwatch.ts";
 export * from "./segments.ts";
 export * from "./shareImage.ts";
 export * from "./sensors.ts";

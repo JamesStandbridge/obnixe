@@ -26,4 +26,8 @@ describe("live metric sizes (UX-001)", () => {
     }
     expect(source("LiveParts.tsx")).toMatch(/minimumFontScale=\{minimumFontScale\}\s+\{\.\.\.\{ minimumFontSize \}\}/);
   });
+
+  it("puts a unit that does not fit, as the swim pace's « /100 m », under its value instead of shrinking the value", () => {
+    expect(source("LiveParts.tsx")).toMatch(/valueRow: \{ flexDirection: "row", flexWrap: "wrap"/);
+  });
 });

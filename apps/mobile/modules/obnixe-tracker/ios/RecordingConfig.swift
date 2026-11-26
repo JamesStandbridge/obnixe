@@ -30,6 +30,8 @@ struct RecordingConfig {
   let sessionId: String
   let journalURL: URL
   var power: TrackerPower
+  /// False for a stopwatch recording (`REC-060`): no location source, no location permission needed.
+  let location: Bool
   let barometer: Bool
   let pedometer: Bool
   /// At most one per role; one source may appear under several services.

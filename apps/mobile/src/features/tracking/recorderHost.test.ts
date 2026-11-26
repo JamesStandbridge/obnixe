@@ -5,6 +5,7 @@ import type { Fix, JournalRecord, Mutation, RoutePoint, Sample, TrackerMarkKind 
 import { bestEffort, lap, painReport, recording, route, session, settings } from "@obnixe/schema";
 import type { EpochMs, Id, RecordingSettings, WorkoutPlan, WorkoutStep } from "@obnixe/schema";
 import { RecorderHost } from "@/features/tracking/recorderHost";
+import { StopwatchTracker } from "@/features/tracking/stopwatchTracker";
 import type { RecorderFeedback, RecorderView, RecordingStart, RecordingView, TrackerPort } from "@/features/tracking/recorderHost";
 import { journalUri, readTrackFile, writeRouteTrack } from "@/features/tracking/trackStore";
 import { db, environment } from "../../../test/mocks/database.ts";
@@ -169,14 +170,14 @@ const writer = {
   },
 };
 
-const start: RecordingStart = { request: { sport: "run", values: {}, gearId: null, slot: null, timeZone: "Europe/Paris", routeId: null, workout: null }, autoPause: false, power: "normal", replay: null };
+const start: RecordingStart = { request: { sport: "run", values: {}, gearId: null, slot: null, timeZone: "Europe/Paris", routeId: null, workout: null, stopwatch: false }, autoPause: false, power: "normal", replay: null };
 
 let tracker: FakeTracker;
 let feedback: RecorderFeedback & { readonly calls: string[] };
 let hosts: RecorderHost[];
 
 function newHost(): RecorderHost {
-  const host = new RecorderHost({ tracker, writer, feedback });
+  const host = new RecorderHost({ stopwatch: new StopwatchTracker(), tracker, writer, feedback });
   hosts.push(host);
   return host;
 }
@@ -281,7 +282,7 @@ describe("recording", () => {
   });
 
   it("PLT-020 records nothing without the native tracker, as on the web", async () => {
-    const host = new RecorderHost({ tracker: null, writer, feedback });
+    const host = new RecorderHost({ stopwatch: new StopwatchTracker(), tracker: null, writer, feedback });
     hosts.push(host);
     expect(await host.prepare()).toEqual({ ok: false, failure: { kind: "unsupported" } });
     expect(await host.start(start)).toEqual({ ok: false, failure: { kind: "unsupported" } });
@@ -325,12 +326,12 @@ describe("recording", () => {
     const host = newHost();
     const sessionId = await started(host);
     expect(await host.start(start)).toEqual({ ok: false, failure: { kind: "busy" } });
-    const outsider = new RecorderHost({ tracker: new FakeTracker(), writer, feedback });
+    const outsider = new RecorderHost({ stopwatch: new StopwatchTracker(), tracker: new FakeTracker(), writer, feedback });
     hosts.push(outsider);
     expect(await outsider.start(start)).toEqual({ ok: false, failure: { kind: "open_session", sessionId } });
     Paths.availableDiskSpace = 1024;
     try {
-      const blocked = new RecorderHost({ tracker: new FakeTracker(), writer, feedback });
+      const blocked = new RecorderHost({ stopwatch: new StopwatchTracker(), tracker: new FakeTracker(), writer, feedback });
       hosts.push(blocked);
       expect(await blocked.start(start)).toEqual({ ok: false, failure: { kind: "storage_full" } });
     } finally {
@@ -340,6 +341,7 @@ describe("recording", () => {
 
   it("stops the tracker and deletes the journal when the start commit fails", async () => {
     const failing = new RecorderHost({
+      stopwatch: new StopwatchTracker(),
       tracker,
       writer: {
         ...writer,
@@ -765,5 +767,85 @@ describe("followed route", () => {
     expect(recordingOf(host).route?.routeId).toBe(routeId);
     await run(20, meters);
     expect(recordingOf(host).live.route?.progress).toBeGreaterThan(150);
+  });
+});
+
+describe("stopwatch", () => {
+  const pool: RecordingStart = { request: { ...start.request, sport: "swim", values: { water: "pool", pool_length: 25 }, stopwatch: true }, autoPause: false, power: "normal", replay: null };
+
+  function stopwatchHost(native: TrackerPort | null = null): RecorderHost {
+    const host = new RecorderHost({ stopwatch: new StopwatchTracker(), tracker: native, writer, feedback });
+    hosts.push(host);
+    return host;
+  }
+
+  async function startedStopwatch(host: RecorderHost, request: RecordingStart = pool): Promise<Id> {
+    const outcome = await host.start(request);
+    if (!outcome.ok) throw new Error(`Start failed: ${outcome.failure.kind}`);
+    await settle();
+    return outcome.value;
+  }
+
+  it("REC-060 times a pool swim without location nor native tracker, then saves the distance typed at the stop", async () => {
+    const host = stopwatchHost();
+    const sessionId = await startedStopwatch(host);
+    expect(recordingRow(sessionId)).toMatchObject({ source: "stopwatch", autoPause: false });
+    expect(recordingOf(host).profile).toMatchObject({ stopwatch: true, pacePerMeters: 100, cadence: "none" });
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(recordingOf(host).live.movingMs).toBe(60_000);
+    expect(host.lap().ok).toBe(true);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(host.pause().ok).toBe(true);
+    await settle();
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect((await host.resume()).ok).toBe(true);
+    await settle();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(recordingOf(host).live.movingMs).toBe(180_000);
+    expect((await host.stop()).ok).toBe(true);
+    await settle();
+    expect(recordingOf(host).summary?.processed.summary).toMatchObject({ elapsedMs: 210_000, movingMs: 180_000, distanceMm: 0 });
+    expect(recordingOf(host).summary?.processed.laps.map((row) => row.movingMs)).toEqual([60_000, 120_000]);
+    expect(host.setStopwatchDistance(400_000).ok).toBe(true);
+    expect(recordingOf(host).summary).toMatchObject({ distanceMm: 400_000, processed: { summary: { distanceMm: 400_000, movingMs: 180_000 } } });
+    const saved = await host.save();
+    expect(saved.ok).toBe(true);
+    expect(sessionRow(sessionId)?.status).toBe("completed");
+    expect(recordingRow(sessionId)).toMatchObject({ source: "stopwatch", distanceMm: 400_000, movingMs: 180_000, pointCount: 0 });
+    expect(db().select().from(lap).where(eq(lap.sessionId, sessionId)).all()).toHaveLength(2);
+    expect(storedFiles.has(journalUri(sessionId))).toBe(false);
+    expect(host.getView()).toEqual({ kind: "idle" });
+  });
+
+  it("REC-060 keeps the stopwatch running while the app is killed, then picks it back up from its journal", async () => {
+    const first = stopwatchHost();
+    const sessionId = await startedStopwatch(first);
+    await vi.advanceTimersByTimeAsync(45_000);
+    first.dispose();
+    await vi.advanceTimersByTimeAsync(15_000);
+    const host = stopwatchHost();
+    await host.recover();
+    expect(recordingOf(host)).toMatchObject({ sessionId, state: { phase: "recording" } });
+    expect(recordingOf(host).live.movingMs).toBe(60_000);
+    expect((await host.stop()).ok).toBe(true);
+    await settle();
+    expect(recordingOf(host).summary?.processed.summary.movingMs).toBe(60_000);
+    expect((await host.save()).ok).toBe(true);
+    expect(recordingRow(sessionId)).toMatchObject({ distanceMm: 0, movingMs: 60_000 });
+  });
+
+  it("REC-060 starts the native tracker without location when a heart-rate source is paired, and leaves the power meter out", async () => {
+    writer.write("Réglages", [
+      recordingSettingsMutation(db(), "bike", {
+        ...defaultRecordingSettings({ autoPauseDefault: true }),
+        heartRateDevice: { id: "C4:7D:2A:10:9E:01", name: "Venu 3S" },
+        powerDevice: { id: "D1:22:33:44:55:66", name: "Assioma" },
+      }),
+    ]);
+    const host = stopwatchHost(tracker);
+    const sessionId = await startedStopwatch(host, { ...pool, request: { ...pool.request, sport: "bike", values: { kind: "indoor" } } });
+    expect(tracker.requests[0]?.sensors).toEqual({ location: false, barometer: false, pedometer: false, bluetooth: [{ service: "heart_rate", id: "C4:7D:2A:10:9E:01" }] });
+    expect(recordingRow(sessionId)).toMatchObject({ source: "stopwatch", heartRateDevice: "Venu 3S" });
+    expect(tracker.requests[0]?.notification.title).toBe("Vélo · chronomètre");
   });
 });

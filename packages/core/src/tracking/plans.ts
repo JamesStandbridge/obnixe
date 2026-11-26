@@ -19,16 +19,23 @@ import { activePrivacyMask } from "./privacyZones.ts";
 import type { PrivacyMask } from "./privacyZones.ts";
 import { estimateEnergy } from "./energy.ts";
 import type { EnergyEstimate } from "./energy.ts";
-import { resolveProfile } from "./profile.ts";
+import { resolveProfile, stopwatchProfile } from "./profile.ts";
 import type { ResolvedProfile } from "./profile.ts";
 import { pairedSensorOf } from "./sensors.ts";
 import { importedSummary, sessionValuesFromRecording } from "./summary.ts";
 import type { LapBounds } from "./stages/derive.ts";
+import { processStopwatch } from "./stopwatch.ts";
 import { trackingAlgorithmVersion } from "./version.ts";
 
 export class NotRecordableError extends Error {
   constructor(readonly sport: SportKey) {
     super(`${sport} records no track with these values`);
+  }
+}
+
+export class StopwatchGuidanceError extends Error {
+  constructor(readonly sport: SportKey) {
+    super(`A stopwatch recording of ${sport} follows no route and no workout`);
   }
 }
 
@@ -67,6 +74,8 @@ export interface RecordingStartRequest {
   readonly routeId: Id | null;
   /** `WKT-009`: the guided workout followed, copied into `recording.workout`. */
   readonly workout: WorkoutPlan | null;
+  /** `REC-060`: time and heart rate only, without location; neither a route nor a workout. */
+  readonly stopwatch: boolean;
 }
 
 export interface RecordingStartPlan {
@@ -96,14 +105,16 @@ export class RouteUnavailableError extends Error {
 export function planRecordingStart(db: ObnixeDatabase, env: Environment, request: RecordingStartRequest): RecordingStartPlan {
   const open = openSessionRow(db);
   if (open !== null) throw new OpenSessionExistsError(open.id);
-  const profile = resolveProfile(request.sport, request.values);
+  const profile = request.stopwatch ? stopwatchProfile(request.sport, request.values) : resolveProfile(request.sport, request.values);
   if (profile === null) throw new NotRecordableError(request.sport);
+  if (request.stopwatch && (request.routeId !== null || request.workout !== null)) throw new StopwatchGuidanceError(request.sport);
   if (request.routeId !== null) {
     const followed = db.select({ sport: route.sport, deletedAt: route.deletedAt }).from(route).where(eq(route.id, request.routeId)).get();
     if (followed === undefined || followed.deletedAt !== null || followed.sport !== request.sport) throw new RouteUnavailableError(request.routeId, request.sport);
   }
   if (request.workout !== null) workoutPlanSchemaFor(profile.primary).parse(request.workout);
-  return { sessionId: env.newId(), recordingId: env.newId(), request, profile, settings: recordingSettingsOf(db, profile) };
+  const settings = recordingSettingsOf(db, profile);
+  return { sessionId: env.newId(), recordingId: env.newId(), request, profile, settings: profile.stopwatch ? { ...settings, autoPause: false, autoLap: null, readout: null } : settings };
 }
 
 /** The « Sortie démarrée » changeset (`INT-030`): the open session and its recording, summarized at the stop; the route followed is marked used (`RTE-002`). */
@@ -143,7 +154,7 @@ export function recordingStartMutations(plan: RecordingStartPlan, started: Start
       row: {
         id: plan.recordingId,
         sessionId: plan.sessionId,
-        source: "live",
+        source: plan.profile.stopwatch ? "stopwatch" : "live",
         importFormat: null,
         externalId: null,
         device: started.device,
@@ -217,9 +228,10 @@ function sessionRecordingOf(db: ObnixeDatabase, sessionId: Id): SessionRecording
   return db.select({ session, recording }).from(session).innerJoin(recording, eq(recording.sessionId, session.id)).where(eq(session.id, sessionId)).get();
 }
 
+/** A recording made on the phone, with or without location (`REC-060`). */
 export function liveRecordingOf(db: ObnixeDatabase, sessionId: Id): SessionRecording {
   const found = sessionRecordingOf(db, sessionId);
-  if (found === undefined || found.recording.source !== "live") throw new NotRecordingError(sessionId);
+  if (found === undefined || found.recording.source === "import") throw new NotRecordingError(sessionId);
   return found;
 }
 
@@ -235,6 +247,14 @@ export function measuredRecordingOf(db: ObnixeDatabase, sessionId: Id): SessionR
 export function profileOfSession(current: Pick<Session, "id" | "sport" | "values">): ResolvedProfile {
   const profile = resolveProfile(current.sport, current.values);
   if (profile === null) throw new NotRecordableError(current.sport);
+  return profile;
+}
+
+/** The profile a phone recording was made with: the stopwatch one for a recording without location (`REC-060`). */
+export function recordingProfileOf(live: SessionRecording): ResolvedProfile {
+  if (live.recording.source !== "stopwatch") return profileOfSession(live.session);
+  const profile = stopwatchProfile(live.session.sport, live.session.values);
+  if (profile === null) throw new NotRecordableError(live.session.sport);
   return profile;
 }
 
@@ -335,7 +355,7 @@ function endOf(live: SessionRecording, track: Track, processed: ProcessedTrack):
 export interface RecordingSaveInput {
   readonly sessionId: Id;
   readonly track: Track;
-  /** `processTrack` of `track` with the recorded laps and no trim, as shown by the stop summary. */
+  /** `processTrack` of `track` with the recorded laps and no trim, as shown by the stop summary; `processStopwatch` without location. */
   readonly processed: ProcessedTrack;
   readonly stored: StoredTrack;
   /** `INT-020`: pains signalled from the live screen, oldest first. */
@@ -364,7 +384,7 @@ export function planRecordingSave(db: ObnixeDatabase, env: Environment, input: R
       live,
       input.track,
       input.processed,
-      profileOfSession(live.session),
+      recordingProfileOf(live),
       { trimStartMs: 0, trimEndMs: null, trackFile: input.stored.file, trackSha256: input.stored.sha256, trackBytes: input.stored.bytes },
       { status: "completed", endedAt: endOf(live, input.track, input.processed) },
     ),
@@ -428,8 +448,9 @@ function storedTrim(row: Pick<Recording, "trimStartMs" | "trimEndMs">): TrackTri
   return { startMs: row.trimStartMs, endMs: row.trimEndMs };
 }
 
-/** Processing of a saved recording with its stored laps and the given trim and profile (`SUM-004`, `SUM-005`). */
+/** Processing of a saved recording with its stored laps and the given trim and profile (`SUM-004`, `SUM-005`); a stopwatch one keeps its typed distance (`REC-060`). */
 export function reprocessRecording(db: ObnixeDatabase, live: SessionRecording, track: Track, trim: TrackTrim, profile: ResolvedProfile): ProcessedTrack {
+  if (live.recording.source === "stopwatch") return processStopwatch(track, profile, live.recording.distanceMm);
   const laps = retrimmedLaps(lapsOf(db, live.session.id), storedTrim(live.recording), trim);
   return processTrack(track, profile, { laps: { kind: "given", laps }, trim });
 }

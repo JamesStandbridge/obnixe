@@ -97,7 +97,7 @@ export type Theme = (typeof themes)[number];
 export const massUnits = ["kg", "lb"] as const;
 export type MassUnit = (typeof massUnits)[number];
 
-export const recordingSources = ["live", "import"] as const;
+export const recordingSources = ["live", "import", "stopwatch"] as const;
 export type RecordingSource = (typeof recordingSources)[number];
 
 export const importFormats = ["gpx", "tcx", "fit", "garmin_archive"] as const;

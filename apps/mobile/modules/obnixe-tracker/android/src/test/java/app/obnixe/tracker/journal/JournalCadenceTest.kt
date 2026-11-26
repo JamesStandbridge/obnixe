@@ -1,10 +1,12 @@
 package app.obnixe.tracker.journal
 
+import app.obnixe.tracker.CadenceSample
 import app.obnixe.tracker.Fix
 import app.obnixe.tracker.HeartRateContact
 import app.obnixe.tracker.HeartRateSample
 import app.obnixe.tracker.Mark
 import app.obnixe.tracker.MarkKind
+import app.obnixe.tracker.PowerSample
 import app.obnixe.tracker.PressureSample
 import app.obnixe.tracker.Sample
 import java.io.File
@@ -128,5 +130,21 @@ class JournalCadenceTest {
       writer.append(fix(4_000))
       assertEquals(SamplePart(1, 0, listOf(fix(4_000)), end = false), writer.takePart())
     }
+  }
+
+  @Test
+  fun `power and cadence records go out in parts and reach storage with the next batch (PRF-051)`() {
+    val file = File(directory, "session.ojr")
+    JournalWriter.create(file, header).use { writer ->
+      writer.append(PowerSample(1_000, 240, 88))
+      writer.append(CadenceSample(1_050, 90))
+      assertEquals(SamplePart(0, 0, listOf(PowerSample(1_000, 240, 88), CadenceSample(1_050, 90)), end = false), writer.takePart())
+      val written = file.length()
+      writer.append(PowerSample(1_250, 251, null))
+      assertEquals(written, file.length())
+      val batch = checkNotNull(writer.flush())
+      assertEquals(SamplePart(0, 2, listOf(PowerSample(1_250, 251, null)), end = true), batch.lastPart())
+    }
+    assertEquals(1L, JournalScanner.scan(file.readBytes()).nextSequence)
   }
 }

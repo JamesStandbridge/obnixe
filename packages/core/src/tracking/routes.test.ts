@@ -90,7 +90,7 @@ function routeRow(id: Id): Route {
 }
 
 function startRequest(fields: Partial<RecordingStartRequest>): RecordingStartRequest {
-  return { sport: "run", values: {}, gearId: null, slot: null, timeZone: "Europe/Paris", routeId: null, workout: null, ...fields };
+  return { sport: "run", values: {}, gearId: null, slot: null, timeZone: "Europe/Paris", routeId: null, workout: null, stopwatch: false, ...fields };
 }
 
 describe("route creation (RTE-001)", () => {

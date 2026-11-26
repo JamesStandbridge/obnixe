@@ -11,14 +11,14 @@ enum TrackerIssue: String {
 }
 
 struct TrackerSources {
-  let location: LocationSourceKind
+  let location: LocationSourceKind?
   let barometer: Bool
   let pedometer: Bool
   let bluetooth: Set<SensorRole>
 
   var bridge: [String: Any] {
     [
-      "location": location.rawValue,
+      "location": location?.rawValue as Any,
       "barometer": barometer,
       "pedometer": pedometer,
       "heartRate": bluetooth.contains(.heartRate),
@@ -120,16 +120,17 @@ final class Recording: SensorLinkListener {
   /// Starts every available source the configuration asks for and reports which ones run.
   func startSources(foreground: Bool) -> TrackerSources {
     self.foreground = foreground
-    let location = LocationSources.create(
-      queue: queue,
-      clock: clock,
-      background: true,
-      replay: replay,
-      onFix: { [weak self] fix in self?.onSample(.fix(fix)) },
-      onIssue: { [weak self] issue in self?.report(issue) }
-    )
-    self.location = location
-    startLocation()
+    if config.location {
+      location = LocationSources.create(
+        queue: queue,
+        clock: clock,
+        background: true,
+        replay: replay,
+        onFix: { [weak self] fix in self?.onSample(.fix(fix)) },
+        onIssue: { [weak self] issue in self?.report(issue) }
+      )
+      startLocation()
+    }
     let live = replay == nil
     let motion = TrackerPermissions.isGranted(.activity)
     if live, motion, config.barometer, let pressure = PressureStream(queue: queue) {
@@ -148,7 +149,7 @@ final class Recording: SensorLinkListener {
       }
     }
     scheduleTick()
-    return TrackerSources(location: location.kind, barometer: pressure != nil, pedometer: steps != nil, bluetooth: Set(links.flatMap { $0.services.map(\.role) }))
+    return TrackerSources(location: location?.kind, barometer: pressure != nil, pedometer: steps != nil, bluetooth: Set(links.flatMap { $0.services.map(\.role) }))
   }
 
   /// Writes a pause, resume or lap mark at `t` (now by default); false when the pause state makes it meaningless (lap or pause while paused).

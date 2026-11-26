@@ -46,6 +46,8 @@ data class RecordingConfig(
   val sessionId: String,
   val journalPath: String,
   val power: TrackerPower,
+  /** False for a stopwatch recording (`REC-060`): no location source, no location permission needed. */
+  val location: Boolean,
   val barometer: Boolean,
   val pedometer: Boolean,
   /** At most one source per role; a device serving two roles appears once per service. */
@@ -62,19 +64,20 @@ data class StoredRecording(val config: RecordingConfig, val stepBaseline: Long?)
 
 /**
  * The live recording's configuration, kept in shared preferences so that a service restarted by the system
- * (`START_STICKY`) resumes the same journal. Replays are not kept: they are development runs.
+ * (`START_STICKY`) resumes the same journal. Only real-time replays are kept, for the durability runs of `TST-030`.
  */
 object RecordingStore {
   private const val preferences = "obnixe-tracker"
   private const val key = "recording"
 
   fun save(context: Context, recording: StoredRecording) {
-    if (recording.config.replay != null) return
     val config = recording.config
+    if (config.replay != null && config.replay.speed != 1.0) return
     val json = JSONObject()
       .put("sessionId", config.sessionId)
       .put("journalPath", config.journalPath)
       .put("power", config.power.value)
+      .put("location", config.location)
       .put("barometer", config.barometer)
       .put("pedometer", config.pedometer)
       .put("bluetooth", JSONArray(config.bluetooth.map { JSONObject().put("service", it.service.value).put("address", it.address) }))
@@ -84,6 +87,7 @@ object RecordingStore {
       .put("text", config.notification.text)
       .put("timerBaseAt", config.notification.timerBaseAt ?: JSONObject.NULL)
       .put("progress", config.notification.progress?.let(::progressJson) ?: JSONObject.NULL)
+      .put("replayPath", config.replay?.gpxPath ?: JSONObject.NULL)
       .put("stepBaseline", recording.stepBaseline ?: JSONObject.NULL)
     store(context).edit().putString(key, json.toString()).commit()
   }
@@ -96,6 +100,7 @@ object RecordingStore {
         sessionId = json.getString("sessionId"),
         journalPath = json.getString("journalPath"),
         power = TrackerPower.entries.firstOrNull { it.value == json.getString("power") } ?: TrackerPower.NORMAL,
+        location = json.getBoolean("location"),
         barometer = json.getBoolean("barometer"),
         pedometer = json.getBoolean("pedometer"),
         bluetooth = json.getJSONArray("bluetooth").let { sensors ->
@@ -112,7 +117,7 @@ object RecordingStore {
           json.optNullableLong("timerBaseAt"),
           if (json.isNull("progress")) null else progressOf(json.getJSONObject("progress")),
         ),
-        replay = null,
+        replay = if (json.isNull("replayPath")) null else ReplaySource(json.getString("replayPath"), 1.0),
       )
       StoredRecording(config, json.optNullableLong("stepBaseline"))
     } catch (error: JSONException) {

@@ -225,7 +225,7 @@ const styles = StyleSheet.create({
   tileHead: { flexDirection: "row", alignItems: "center", gap: 6 },
   tileAccent: { width: 4, height: 12, borderRadius: 2 },
   caption: { fontFamily: fonts.text700, fontSize: 13, lineHeight: 16, letterSpacing: 0.9, textTransform: "uppercase" },
-  valueRow: { flexDirection: "row", alignItems: "baseline", gap: 5 },
+  valueRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "baseline", columnGap: 5 },
   value: { flexShrink: 1, fontFamily: fonts.figure800 },
   unit: { fontFamily: fonts.figure700 },
   hold: { height: 64, borderRadius: radii.panel, borderWidth: 2, overflow: "hidden", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingHorizontal: 10 },
