@@ -57,7 +57,7 @@ object TrackerNotifications {
   /** `REC-074`: the steps of a guided workout as `ProgressStyle` segments, the work steps in the accent color. */
   private fun progressStyle(progress: TrackerNotificationProgress): NotificationCompat.ProgressStyle =
     NotificationCompat.ProgressStyle()
-      .setProgressSegments(progress.segments.map { NotificationCompat.ProgressStyle.Segment(it.length).setColor(if (it.highlighted) workColor else restColor) })
+      .setProgressSegments(fitProgressSegments(progress.segments).map { NotificationCompat.ProgressStyle.Segment(it.length).setColor(if (it.highlighted) workColor else restColor) })
       .setProgress(progress.value)
 
   private fun action(context: Context, action: String, icon: Int, title: String): NotificationCompat.Action {
