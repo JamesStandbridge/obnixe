@@ -1,13 +1,13 @@
-import { useEffect, useRef } from "react";
-import { Animated, Pressable, StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import type { ViewStyle } from "react-native";
+import Animated, { interpolateColor, useAnimatedStyle } from "react-native-reanimated";
 import type { PainLevel } from "@obnixe/schema";
 import { Icon } from "@/ui/icons/Icon";
 import type { IconName } from "@/ui/icons/Icon";
-import { easeOut, usePressScale } from "@/ui/motion";
+import { usePressScale, useSpringTo } from "@/ui/motion";
 import { Text } from "@/ui/Text";
 import { useTheme } from "@/ui/theme";
-import { durations, fonts, layout, radii } from "@/ui/tokens";
+import { fonts, layout, radii } from "@/ui/tokens";
 
 export interface SegmentOption<T extends string> {
   readonly value: T;
@@ -34,16 +34,14 @@ export function Segmented<T extends string>({ options, value, onChange }: Segmen
             onPress={() => onChange(option.value)}
             style={({ pressed }) => [
               styles.segment,
-              {
-                borderColor: selected ? colors.text : colors.controlBorder,
-                borderWidth: selected ? 2 : layout.borderControl,
-                backgroundColor: selected || pressed ? colors.surface : "transparent",
-              },
+              selected
+                ? { backgroundColor: colors.text }
+                : { borderColor: colors.controlBorder, borderWidth: layout.borderControl, backgroundColor: pressed ? colors.surface : "transparent" },
             ]}
           >
             <Text
               variant="label"
-              tone={selected ? "primary" : "secondary"}
+              tone={selected ? "inverse" : "secondary"}
               style={selected ? styles.segmentSelected : undefined}
             >
               {option.label}
@@ -62,17 +60,18 @@ interface SwitchProps {
 }
 
 export function Switch({ value, onChange, label }: SwitchProps) {
-  const { colors, reduceMotion } = useTheme();
-  const progress = useRef(new Animated.Value(value ? 1 : 0)).current;
-
-  useEffect(() => {
-    Animated.timing(progress, {
-      toValue: value ? 1 : 0,
-      duration: reduceMotion ? 0 : durations.state,
-      easing: easeOut,
-      useNativeDriver: false,
-    }).start();
-  }, [value, reduceMotion, progress]);
+  const { colors } = useTheme();
+  const progress = useSpringTo(value ? 1 : 0, value ? 1 : 0);
+  const off = { track: "transparent", border: colors.controlBorder, thumb: colors.text2 };
+  const on = { track: colors.brand, border: colors.brand, thumb: colors.brandInk };
+  const trackStyle = useAnimatedStyle(() => ({
+    backgroundColor: interpolateColor(progress.value, [0, 1], [off.track, on.track]),
+    borderColor: interpolateColor(progress.value, [0, 1], [off.border, on.border]),
+  }));
+  const thumbStyle = useAnimatedStyle(() => ({
+    backgroundColor: interpolateColor(progress.value, [0, 1], [off.thumb, on.thumb]),
+    transform: [{ translateX: progress.value * 20 }],
+  }));
 
   return (
     <Pressable
@@ -82,24 +81,8 @@ export function Switch({ value, onChange, label }: SwitchProps) {
       hitSlop={6}
       onPress={() => onChange(!value)}
     >
-      <Animated.View
-        style={[
-          styles.track,
-          {
-            backgroundColor: progress.interpolate({ inputRange: [0, 1], outputRange: ["transparent", colors.text] }),
-            borderColor: progress.interpolate({ inputRange: [0, 1], outputRange: [colors.controlBorder, colors.text] }),
-          },
-        ]}
-      >
-        <Animated.View
-          style={[
-            styles.thumb,
-            {
-              backgroundColor: progress.interpolate({ inputRange: [0, 1], outputRange: [colors.text2, colors.bg] }),
-              transform: [{ translateX: progress.interpolate({ inputRange: [0, 1], outputRange: [0, 20] }) }],
-            },
-          ]}
-        />
+      <Animated.View style={[styles.track, trackStyle]}>
+        <Animated.View style={[styles.thumb, thumbStyle]} />
       </Animated.View>
     </Pressable>
   );
@@ -126,7 +109,7 @@ export function StepButton({ accessibilityLabel, disabled = false, size = "regul
   const { colors } = useTheme();
   const press = usePressScale(0.96);
   return (
-    <Animated.View style={[{ transform: [{ scale: press.scale }] }, disabled && styles.disabled]}>
+    <Animated.View style={[press.style, disabled && styles.disabled]}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={accessibilityLabel}

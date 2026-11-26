@@ -1,7 +1,10 @@
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import type { ReactNode } from "react";
 import type { StyleProp, ViewStyle } from "react-native";
+import Animated from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { reveal } from "@/ui/motion";
+import { Slash } from "@/ui/Shapes";
 import { Text } from "@/ui/Text";
 import { useTheme } from "@/ui/theme";
 import { layout } from "@/ui/tokens";
@@ -62,15 +65,18 @@ interface SectionProps {
 export function Section({ title, action, children, style }: SectionProps) {
   const { colors } = useTheme();
   return (
-    <View style={[styles.section, style]}>
-      <View style={[styles.sectionHead, { borderBottomColor: colors.line }]}>
-        <Text variant="sectionTitle" tone="secondary" accessibilityRole="header">
-          {title}
-        </Text>
+    <Animated.View entering={reveal(1)} style={[styles.section, style]}>
+      <View style={styles.sectionHead}>
+        <View style={styles.sectionTitle}>
+          <Slash color={colors.mark} width={10} height={14} />
+          <Text variant="heading" accessibilityRole="header" style={styles.sectionTitleText}>
+            {title}
+          </Text>
+        </View>
         {action}
       </View>
       {children}
-    </View>
+    </Animated.View>
   );
 }
 
@@ -131,15 +137,17 @@ export function Row({ title, detail, leading, value, valueDetail, trailing, onPr
 const styles = StyleSheet.create({
   appbar: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 44 },
   appbarTitle: { flex: 1 },
-  section: { marginTop: 28 },
+  section: { marginTop: 32 },
   sectionHead: {
     flexDirection: "row",
-    alignItems: "baseline",
+    alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
-    paddingBottom: 6,
-    borderBottomWidth: 1,
+    minHeight: 32,
+    paddingBottom: 4,
   },
+  sectionTitle: { flexDirection: "row", alignItems: "center", gap: 8, flexShrink: 1 },
+  sectionTitleText: { flexShrink: 1 },
   row: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 56, paddingVertical: 10 },
   rowMain: { flex: 1, minWidth: 0, gap: 3 },
   rowValue: { alignItems: "flex-end", gap: 4 },

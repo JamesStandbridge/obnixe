@@ -1,6 +1,8 @@
-import { useState } from "react";
-import { Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { useEffect, useState } from "react";
+import { Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from "react-native";
+import Animated from "react-native-reanimated";
 import { router } from "expo-router";
+import { notificationAsync, NotificationFeedbackType } from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { daysBetween, latestPainByZone, loadSessionReport, localDateOf, nextSlot, openSlotsOfSport, reviewMutations, rotationChoice, trackedZones, worstLevel } from "@obnixe/core";
 import type { PainAnchor, RotationChoice, SessionReport } from "@obnixe/core";
@@ -21,13 +23,19 @@ import { useMassUnit } from "@/data/settings";
 import { LinkButton, PrimaryButton } from "@/ui/Button";
 import { PainMark, Switch } from "@/ui/Controls";
 import { Icon } from "@/ui/icons/Icon";
+import { Confetti } from "@/ui/illustrations/Confetti";
+import { CheerScene } from "@/ui/illustrations/scenes";
 import { Choices, MenuItem, Question, Scale, TextField, ZoneRow } from "@/ui/Inputs";
 import type { ScaleOption } from "@/ui/Inputs";
 import { Row, Section } from "@/ui/Layout";
+import { reveal } from "@/ui/motion";
 import { Sheet } from "@/ui/Overlays";
+import { BevelView } from "@/ui/Shapes";
 import { Text } from "@/ui/Text";
 import { useTheme } from "@/ui/theme";
-import { fonts, layout } from "@/ui/tokens";
+import { bevels, fonts, layout } from "@/ui/tokens";
+
+const freshWindowMs = 15 * 60 * 1000;
 
 interface AttachOffer {
   readonly programName: string;
@@ -195,6 +203,7 @@ interface ReviewFormProps {
 function ReviewForm({ data, offerAttach }: ReviewFormProps) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
   const unit = useMassUnit();
   const undoableWrite = useUndoableWrite();
   const { report, choice } = data;
@@ -223,6 +232,11 @@ function ReviewForm({ data, offerAttach }: ReviewFormProps) {
   const ended = session.endedAt ?? session.startedAt;
   const offer = data.offer;
   const proposed = offer?.slots[0] ?? null;
+  const [fresh] = useState(() => now - ended < freshWindowMs);
+
+  useEffect(() => {
+    if (fresh) void notificationAsync(NotificationFeedbackType.Success);
+  }, [fresh]);
 
   const attachTo = (slot: ProgramSlot): void => {
     setPrompt("closed");
@@ -280,15 +294,22 @@ function ReviewForm({ data, offerAttach }: ReviewFormProps) {
           <LinkButton label="Plus tard" onPress={() => router.dismissTo("/")} style={styles.later} />
         </View>
 
-        <View style={styles.head}>
-          <Text variant="eyebrow" tone="secondary">
-            Bilan
-          </Text>
-          <Text style={styles.title} accessibilityRole="header">
-            {title}
-          </Text>
-          <Text style={styles.facts}>{factsFor(report, now)}</Text>
-        </View>
+        <Animated.View entering={reveal(0)}>
+          <BevelView fill={colors.sport[session.sport]} cut={bevels.card} style={styles.head}>
+            <View style={styles.headText}>
+              <Text variant="eyebrow" style={{ color: colors.sportInk }}>
+                {fresh ? "Séance terminée" : "Bilan"}
+              </Text>
+              <Text style={[styles.title, { color: colors.sportInk }]} accessibilityRole="header">
+                {title}
+              </Text>
+              <Text style={[styles.facts, { color: colors.sportInk }]}>{factsFor(report, now)}</Text>
+            </View>
+            <View style={styles.headArt}>
+              <CheerScene sport={session.sport} size={124} />
+            </View>
+          </BevelView>
+        </Animated.View>
 
         <Section
           title="Ressenti"
@@ -419,6 +440,7 @@ function ReviewForm({ data, offerAttach }: ReviewFormProps) {
           />
         )}
       </Sheet>
+      {fresh ? <Confetti width={width} originY={insets.top + 120} /> : null}
     </View>
   );
 }
@@ -428,9 +450,11 @@ const styles = StyleSheet.create({
   appbar: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 44 },
   when: { flex: 1, fontFamily: fonts.text600, fontSize: 15 },
   later: { marginRight: -10 },
-  head: { marginTop: 14, gap: 6 },
-  title: { fontFamily: fonts.text700, fontSize: 30, lineHeight: 32, letterSpacing: -0.6 },
-  facts: { marginTop: 4, fontFamily: fonts.figure700, fontSize: 19, lineHeight: 25 },
+  head: { marginTop: 14, flexDirection: "row", alignItems: "center", minHeight: 148, paddingLeft: 16, paddingVertical: 12 },
+  headText: { flex: 1, minWidth: 0, gap: 6 },
+  headArt: { marginRight: 4 },
+  title: { fontFamily: fonts.brand800, fontSize: 28, lineHeight: 31, letterSpacing: -0.6 },
+  facts: { marginTop: 2, fontFamily: fonts.figure700, fontSize: 17, lineHeight: 22 },
   firstZone: { marginTop: -1 },
   other: { minHeight: 48, borderTopWidth: 1, alignItems: "center", justifyContent: "center" },
   otherLabel: { fontFamily: fonts.text600, fontSize: 16 },

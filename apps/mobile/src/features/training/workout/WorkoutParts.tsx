@@ -259,8 +259,8 @@ export function UpNext({ exercises, fromIndex, latestPains, onBringForward }: Up
 const styles = StyleSheet.create({
   progress: { marginTop: 14, flexDirection: "row", alignItems: "center", gap: 10 },
   steps: { flex: 1, flexDirection: "row", alignItems: "center", gap: 3 },
-  step: { flex: 1, height: 4, borderRadius: 2 },
-  stepNow: { height: 6, borderRadius: 3 },
+  step: { flex: 1, height: 5, borderRadius: 1, transform: [{ skewX: "-24deg" }] },
+  stepNow: { height: 8, borderRadius: 1.5 },
   stepsLabel: { fontFamily: fonts.figure700, fontSize: 15, lineHeight: 17 },
   nav: { marginTop: 6, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   navButton: { minHeight: 44, paddingHorizontal: 8, flexDirection: "row", alignItems: "center", gap: 2, borderRadius: radii.control },

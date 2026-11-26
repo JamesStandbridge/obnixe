@@ -24,61 +24,76 @@ export interface Palette {
   readonly snackbarBg: string;
   readonly snackbarInk: string;
   readonly sheetBg: string;
+  readonly brand: string;
+  readonly brandDeep: string;
+  readonly brandInk: string;
   readonly sport: Readonly<Record<SportKey, string>>;
+  readonly sportDeep: Readonly<Record<SportKey, string>>;
+  readonly sportInk: string;
 }
 
 export type PaletteName = "dark" | "sunlight";
 
 export const palettes: Readonly<Record<PaletteName, Palette>> = {
   dark: {
-    bg: "#0c1013",
-    surface: "#161a1e",
-    surface2: "#202529",
-    surfacePress: "#2c3136",
-    controlBorder: "#65696f",
-    text: "#ebeff2",
-    text2: "#b3b8be",
-    text3: "#888d92",
+    bg: "#0b0e11",
+    surface: "#151a1f",
+    surface2: "#1f252c",
+    surfacePress: "#2a3139",
+    controlBorder: "#56606b",
+    text: "#f2f5f7",
+    text2: "#b0b8c0",
+    text3: "#828b94",
     line: "#ffffff14",
     mark: "#e5ed32",
-    stepDone: "#888d92",
+    stepDone: "#828b94",
     actBg: "#e5ed32",
-    actPress: "#ced51f",
-    actInk: "#161707",
-    warn: "#f5ae39",
+    actPress: "#cfd71d",
+    actInk: "#12140a",
+    warn: "#ffb23e",
     warnInk: "#1e1406",
-    stop: "#d02c2a",
+    stop: "#e5392f",
     stopInk: "#fff6f5",
-    scrim: "#0000008c",
-    snackbarBg: "#ebeff2",
-    snackbarInk: "#0c1013",
-    sheetBg: "#161a1e",
-    sport: { strength: "#8fb3ff", run: "#ff7a45", hike: "#d2ad6b", swim: "#3fd0e0", bike: "#ff6f9c", climb: "#5ad991", yoga: "#c8a4ff" },
+    scrim: "#000000a6",
+    snackbarBg: "#f2f5f7",
+    snackbarInk: "#0b0e11",
+    sheetBg: "#151a1f",
+    brand: "#e5ed32",
+    brandDeep: "#8c9312",
+    brandInk: "#12140a",
+    sport: { strength: "#5b86ff", run: "#ff6a2b", hike: "#e8a84c", swim: "#22cbe3", bike: "#ff4f8b", climb: "#34d67f", yoga: "#a173ff" },
+    sportDeep: { strength: "#2a4fd6", run: "#c8430f", hike: "#a8701f", swim: "#0d8ea3", bike: "#c22760", climb: "#14954f", yoga: "#6a3fd0" },
+    sportInk: "#0b0e11",
   },
   sunlight: {
-    bg: "#f5f7f9",
-    surface: "#d5dade",
-    surface2: "#c6cbd1",
-    surfacePress: "#b5bbc2",
-    controlBorder: "#7c8186",
-    text: "#0c1014",
-    text2: "#34383d",
-    text3: "#4e5358",
-    line: "#0000001f",
-    mark: "#476706",
-    stepDone: "#7c8186",
-    actBg: "#161707",
-    actPress: "#292a19",
-    actInk: "#e3e41b",
-    warn: "#915200",
+    bg: "#eceee7",
+    surface: "#ffffff",
+    surface2: "#dfe2da",
+    surfacePress: "#cfd3c9",
+    controlBorder: "#6f757b",
+    text: "#0b0e11",
+    text2: "#33383e",
+    text3: "#545a60",
+    line: "#0000001c",
+    mark: "#4f6b00",
+    stepDone: "#6f757b",
+    actBg: "#12140a",
+    actPress: "#2a2d1c",
+    actInk: "#e5ed32",
+    warn: "#9a5800",
     warnInk: "#fdf7f2",
-    stop: "#c2181d",
+    stop: "#c8191e",
     stopInk: "#fff6f5",
     scrim: "#13161a59",
-    snackbarBg: "#13161a",
-    snackbarInk: "#eff2f5",
-    sheetBg: "#f5f7f9",
-    sport: { strength: "#2c56c9", run: "#c4420c", hike: "#8a5f18", swim: "#00788a", bike: "#bd1f5c", climb: "#11804a", yoga: "#7440c0" },
+    snackbarBg: "#12140a",
+    snackbarInk: "#f2f5f7",
+    sheetBg: "#ffffff",
+    brand: "#e5ed32",
+    brandDeep: "#8c9312",
+    brandInk: "#12140a",
+    sport: { strength: "#2350d8", run: "#d2470c", hike: "#94600f", swim: "#007f93", bike: "#c41d5b", climb: "#0f8447", yoga: "#6c3cc9" },
+    sportDeep: { strength: "#173a9e", run: "#9a3207", hike: "#6b4409", swim: "#005766", bike: "#8d1240", climb: "#095e32", yoga: "#4c2694" },
+    sportInk: "#ffffff",
   },
 };
 
@@ -87,13 +102,19 @@ export function wash(color: string, alpha = 0.16): string {
   return `${color}${Math.round(alpha * 255).toString(16).padStart(2, "0")}`;
 }
 
-export const radii = { control: 8, panel: 12, sheet: 20, tag: 4 } as const;
+export const radii = { control: 10, panel: 16, sheet: 26, tag: 6 } as const;
 
-export const durations = { press: 90, state: 180, sheet: 280 } as const;
+/** Size of the slanted corner cut taken from the logo's 45 degree angles. */
+export const bevels = { button: 14, card: 22, tile: 16 } as const;
 
-export const layout = { gutter: 16, tabbarHeight: 64, hitSlop: 44, borderControl: 1.5 } as const;
+export const durations = { press: 90, state: 180, sheet: 280, reveal: 420 } as const;
+
+export const layout = { gutter: 16, tabbarHeight: 68, hitSlop: 44, borderControl: 1.5 } as const;
 
 export const fonts = {
+  brand600: "Outfit_600SemiBold",
+  brand700: "Outfit_700Bold",
+  brand800: "Outfit_800ExtraBold",
   text400: "SofiaSans_400Regular",
   text500: "SofiaSans_500Medium",
   text600: "SofiaSans_600SemiBold",
@@ -114,20 +135,22 @@ export type TypeVariant =
   | "caption"
   | "eyebrow"
   | "sectionTitle"
+  | "heading"
   | "value"
   | "figure"
   | "display";
 
 export const type: Readonly<Record<TypeVariant, TextStyle>> = {
-  title: { fontFamily: fonts.text700, fontSize: 26, lineHeight: 29, letterSpacing: -0.4 },
-  sheetTitle: { fontFamily: fonts.text700, fontSize: 22, lineHeight: 25 },
+  title: { fontFamily: fonts.brand800, fontSize: 28, lineHeight: 32, letterSpacing: -0.6 },
+  sheetTitle: { fontFamily: fonts.brand700, fontSize: 22, lineHeight: 26, letterSpacing: -0.3 },
   body: { fontFamily: fonts.text400, fontSize: 16, lineHeight: 23 },
   bodyStrong: { fontFamily: fonts.text600, fontSize: 16, lineHeight: 21 },
   label: { fontFamily: fonts.text600, fontSize: 15, lineHeight: 18 },
   small: { fontFamily: fonts.text500, fontSize: 14, lineHeight: 18 },
   caption: { fontFamily: fonts.text600, fontSize: 13, lineHeight: 16 },
-  eyebrow: { fontFamily: fonts.text700, fontSize: 12, lineHeight: 12, letterSpacing: 0.96, textTransform: "uppercase" },
+  eyebrow: { fontFamily: fonts.text700, fontSize: 12, lineHeight: 13, letterSpacing: 1.1, textTransform: "uppercase" },
   sectionTitle: { fontFamily: fonts.text600, fontSize: 14, lineHeight: 17 },
+  heading: { fontFamily: fonts.brand700, fontSize: 19, lineHeight: 23, letterSpacing: -0.2 },
   value: { fontFamily: fonts.figure700, fontSize: 18, lineHeight: 20 },
   figure: { fontFamily: fonts.figure800, fontSize: 34, lineHeight: 40, letterSpacing: -0.3 },
   display: { fontFamily: fonts.figure800, fontSize: 72, lineHeight: 74, letterSpacing: -1.4 },

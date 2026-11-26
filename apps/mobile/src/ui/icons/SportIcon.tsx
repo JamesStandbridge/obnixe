@@ -1,11 +1,12 @@
 import { StyleSheet, View } from "react-native";
-import Svg from "react-native-svg";
+import Svg, { Path } from "react-native-svg";
 import { sports } from "@obnixe/schema";
 import type { SportKey } from "@obnixe/schema";
 import { sportGlyphs } from "@/ui/icons/sportGlyphs";
 import type { SportGlyphKey } from "@/ui/icons/sportGlyphs";
+import { bevelPath } from "@/ui/Shapes";
 import { useTheme } from "@/ui/theme";
-import { radii, wash } from "@/ui/tokens";
+import { radii } from "@/ui/tokens";
 
 export type SportIconVariant = "plain" | "accent" | "filled" | "inline" | "badge";
 
@@ -26,26 +27,33 @@ export function SportIcon({ sport, variant = "plain", color, label }: SportIconP
   const { colors } = useTheme();
   const glyph = sportGlyphs[glyphOf(sport)];
   const inline = variant === "inline";
-  const badge = variant === "badge";
-  const tone = sport === "new" ? colors.text2 : colors.sport[sport];
-  const ink = variant === "filled" ? colors.bg : badge ? tone : (color ?? colors.text);
+  const tile = variant === "badge" || variant === "filled";
+  const tone = sport === "new" ? colors.surface2 : colors.sport[sport];
+  const ink = tile ? (sport === "new" ? colors.text : colors.sportInk) : (color ?? colors.text);
   const mark = variant === "accent" ? colors.mark : ink;
-  const box = inline ? 24 : badge ? 40 : 36;
+  const box = inline ? 24 : variant === "badge" ? 40 : 36;
   const side = inline ? 20 : 22;
   return (
     <View
       accessible={label !== undefined}
       accessibilityRole={label === undefined ? undefined : "image"}
       accessibilityLabel={label}
-      style={[styles.box, { width: box, height: box }, variant === "filled" && { backgroundColor: colors.text }, badge && { borderRadius: box / 2, backgroundColor: wash(tone) }]}
+      style={[styles.box, { width: box, height: box }]}
     >
-      <Svg width={side} height={side} viewBox={glyph.viewBox}>
-        {glyph.render(ink, mark)}
-      </Svg>
+      {tile ? (
+        <Svg width={box} height={box} style={StyleSheet.absoluteFill}>
+          <Path d={bevelPath(box, box, box * 0.26, radii.control, "topRight")} fill={tone} />
+        </Svg>
+      ) : null}
+      <View>
+        <Svg width={side} height={side} viewBox={glyph.viewBox}>
+          {glyph.render(ink, mark)}
+        </Svg>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  box: { alignItems: "center", justifyContent: "center", borderRadius: radii.control },
+  box: { alignItems: "center", justifyContent: "center" },
 });

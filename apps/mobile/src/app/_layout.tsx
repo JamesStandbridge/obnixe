@@ -1,4 +1,7 @@
 import { useEffect } from "react";
+import { Outfit_600SemiBold } from "@expo-google-fonts/outfit/600SemiBold";
+import { Outfit_700Bold } from "@expo-google-fonts/outfit/700Bold";
+import { Outfit_800ExtraBold } from "@expo-google-fonts/outfit/800ExtraBold";
 import { SofiaSans_400Regular } from "@expo-google-fonts/sofia-sans/400Regular";
 import { SofiaSans_500Medium } from "@expo-google-fonts/sofia-sans/500Medium";
 import { SofiaSans_600SemiBold } from "@expo-google-fonts/sofia-sans/600SemiBold";
@@ -51,6 +54,9 @@ function Navigator() {
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
+    Outfit_600SemiBold,
+    Outfit_700Bold,
+    Outfit_800ExtraBold,
     SofiaSans_400Regular,
     SofiaSans_500Medium,
     SofiaSans_600SemiBold,

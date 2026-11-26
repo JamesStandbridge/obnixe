@@ -1,5 +1,6 @@
 import { StyleSheet, View } from "react-native";
 import { LinkButton, PrimaryButton } from "@/ui/Button";
+import { EmptyScene } from "@/ui/illustrations/scenes";
 import { IconButton } from "@/ui/Inputs";
 import { AppBar, Screen } from "@/ui/Layout";
 import { Text } from "@/ui/Text";
@@ -20,6 +21,9 @@ export function Message({ title, detail, action }: MessageProps) {
   return (
     <Screen>
       <AppBar title="" leading={<IconButton icon="back" label="Retour" edge="start" onPress={() => goBack("/")} />} />
+      <View style={styles.art}>
+        <EmptyScene kind="journal" size={176} />
+      </View>
       <View style={styles.message}>
         <Text variant="title" accessibilityRole="header">
           {title}
@@ -32,7 +36,8 @@ export function Message({ title, detail, action }: MessageProps) {
 }
 
 const styles = StyleSheet.create({
-  message: { marginTop: 24, gap: 10 },
+  art: { marginTop: 24, alignItems: "center" },
+  message: { marginTop: 16, gap: 10 },
   action: { marginTop: 16 },
   back: { alignSelf: "flex-start", marginLeft: -10, marginTop: 8 },
 });

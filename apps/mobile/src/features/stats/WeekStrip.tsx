@@ -1,8 +1,10 @@
 import { StyleSheet, View } from "react-native";
+import Animated from "react-native-reanimated";
 import { dateParts, weekdayIndex } from "@obnixe/core";
 import type { WeekDay, WeekSummary } from "@obnixe/core";
 import type { SportKey } from "@obnixe/schema";
 import { LinkButton } from "@/ui/Button";
+import { reveal } from "@/ui/motion";
 import { StatRow } from "@/ui/Stats";
 import type { StatValue } from "@/ui/Stats";
 import { Text } from "@/ui/Text";
@@ -66,7 +68,7 @@ export function WeekHero({ week, onJournal }: WeekHeroProps) {
     <View style={styles.hero}>
       <View style={styles.head}>
         <View style={styles.headText}>
-          <Text variant="eyebrow" accessibilityRole="header">
+          <Text variant="heading" accessibilityRole="header">
             Cette semaine
           </Text>
           <Text variant="caption" tone="tertiary" style={styles.range}>
@@ -102,18 +104,21 @@ function WeekStrip({ days }: WeekStripProps) {
   const { colors } = useTheme();
   return (
     <View style={styles.week}>
-      {days.map((day) => (
+      {days.map((day, index) => (
         <View
           key={day.date}
           accessible
           accessibilityLabel={`${longDate(day.date)}, ${stateWords(day)}${day.isToday ? ", aujourd'hui" : ""}`}
           style={[styles.day, day.isToday && { backgroundColor: colors.surface }]}
         >
+          {day.isToday ? <View style={[styles.today, { backgroundColor: colors.brand }]} /> : null}
           <Text tone={day.isToday ? "primary" : "tertiary"} style={styles.letter}>
             {weekdayLetters[weekdayIndex(day.date)]}
           </Text>
           <Text style={[styles.date, day.isToday && { color: colors.mark }]}>{dateParts(day.date).day}</Text>
-          <DayMark day={day} />
+          <Animated.View entering={reveal(index + 1)}>
+            <DayMark day={day} />
+          </Animated.View>
         </View>
       ))}
     </View>
@@ -154,12 +159,13 @@ const styles = StyleSheet.create({
   link: { marginRight: -10 },
   stats: { marginTop: 4 },
   week: { flexDirection: "row", gap: 4, marginTop: 16 },
-  day: { flex: 1, alignItems: "center", gap: 5, paddingTop: 8, paddingBottom: 8, paddingHorizontal: 4, borderRadius: radii.control },
+  day: { flex: 1, alignItems: "center", gap: 5, paddingTop: 8, paddingBottom: 8, paddingHorizontal: 4, borderRadius: radii.control, overflow: "hidden" },
+  today: { position: "absolute", top: 0, left: 0, right: 0, height: 3 },
   letter: { fontFamily: fonts.text700, fontSize: 11, lineHeight: 12, letterSpacing: 0.6 },
   date: { fontFamily: fonts.figure700, fontSize: 18, lineHeight: 19 },
   mark: { width: 14, height: markHeight, marginTop: 2, gap: 2, justifyContent: "flex-end" },
-  segment: { flex: 1, borderRadius: 4 },
-  planned: { borderWidth: layout.borderControl, borderRadius: 4 },
+  segment: { flex: 1, borderRadius: 3, transform: [{ skewX: "-12deg" }] },
+  planned: { borderWidth: layout.borderControl, borderRadius: 3, transform: [{ skewX: "-12deg" }] },
   rest: { height: 4, borderRadius: 2 },
   legend: { flexDirection: "row", flexWrap: "wrap", columnGap: 16, rowGap: 6, marginTop: 12 },
   legendItem: { flexDirection: "row", alignItems: "center", gap: 6 },

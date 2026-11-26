@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
-import { Animated, Pressable, StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
+import Animated from "react-native-reanimated";
 import { impactAsync, ImpactFeedbackStyle } from "expo-haptics";
 import { durationStepSeconds, gramsToMass } from "@obnixe/core";
 import type { WorkoutExercise } from "@obnixe/core";
@@ -210,7 +211,7 @@ function AdjustButton({ label, accessibilityLabel, disabled, onStep }: AdjustBut
   };
 
   return (
-    <Animated.View style={[styles.adjustCell, { transform: [{ scale: press.scale }] }, disabled && styles.disabled]}>
+    <Animated.View style={[styles.adjustCell, press.style, disabled && styles.disabled]}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={accessibilityLabel}

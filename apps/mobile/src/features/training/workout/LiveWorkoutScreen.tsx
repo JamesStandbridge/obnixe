@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Animated, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, View } from "react-native";
+import Animated from "react-native-reanimated";
 import type { ScrollViewInstance } from "react-native";
 import { notificationAsync, NotificationFeedbackType, impactAsync, ImpactFeedbackStyle } from "expo-haptics";
 import { router, useNavigation } from "expo-router";
@@ -73,13 +74,15 @@ import { ExerciseNav, Steps, Track, UpNext } from "@/features/training/workout/W
 import { ControlButton, LinkButton, PrimaryButton } from "@/ui/Button";
 import { PainMark } from "@/ui/Controls";
 import { Icon } from "@/ui/icons/Icon";
+import { CheerScene } from "@/ui/illustrations/scenes";
 import { Choices, IconButton } from "@/ui/Inputs";
-import { usePressScale } from "@/ui/motion";
+import { reveal, usePressScale } from "@/ui/motion";
 import { Sheet } from "@/ui/Overlays";
+import { BevelView } from "@/ui/Shapes";
 import { useSnackbar } from "@/ui/SnackbarHost";
 import { Text } from "@/ui/Text";
 import { useTheme } from "@/ui/theme";
-import { fonts, layout, radii } from "@/ui/tokens";
+import { bevels, fonts, layout, radii } from "@/ui/tokens";
 import { useKeepAwakeWhile } from "@/ui/useKeepAwakeWhile";
 
 interface Editing {
@@ -656,10 +659,15 @@ export function LiveWorkoutScreen({ live }: LiveWorkoutScreenProps) {
             <LinkButton label="Autres actions" onPress={() => setSheet({ open: true, mode: "menu" })} style={styles.emptyMore} />
           </View>
         ) : finished ? (
-          <View style={[styles.finished, { backgroundColor: colors.surface }]}>
-            <Text style={styles.finishedTitle}>Séance terminée</Text>
-            <Text tone="secondary">Séries enregistrées.</Text>
-          </View>
+          <Animated.View entering={reveal(0)}>
+            <BevelView fill={colors.brand} cut={bevels.card} style={styles.finished}>
+              <View style={styles.finishedText}>
+                <Text style={[styles.finishedTitle, { color: colors.brandInk }]}>Séance terminée</Text>
+                <Text style={{ color: colors.brandInk }}>Séries enregistrées. Reste le bilan.</Text>
+              </View>
+              <CheerScene sport={data.session.sport} size={96} />
+            </BevelView>
+          </Animated.View>
         ) : (
           <UpNext exercises={data.exercises} fromIndex={displayIndex} latestPains={live.latestPains} onBringForward={bringForward} />
         )}
@@ -796,7 +804,7 @@ function ActionButton({ mode, label, disabled, onPress }: ActionButtonProps) {
   const press = usePressScale(0.98);
   const editMode = mode === "edit";
   return (
-    <Animated.View style={[styles.actionCell, { transform: [{ scale: press.scale }] }, disabled && styles.disabled]}>
+    <Animated.View style={[styles.actionCell, press.style, disabled && styles.disabled]}>
       <Pressable
         accessibilityRole="button"
         accessibilityState={{ disabled }}
@@ -804,17 +812,21 @@ function ActionButton({ mode, label, disabled, onPress }: ActionButtonProps) {
         onPress={onPress}
         onPressIn={press.onPressIn}
         onPressOut={press.onPressOut}
-        style={({ pressed }) => [
-          styles.action,
-          editMode
-            ? { backgroundColor: pressed ? colors.surfacePress : colors.surface2, borderWidth: 2, borderColor: colors.text }
-            : { backgroundColor: pressed ? colors.actPress : colors.actBg },
-        ]}
       >
-        <Icon name={editMode ? "edit" : "check"} color={editMode ? colors.text : colors.actInk} />
-        <Text style={[styles.actionLabel, { color: editMode ? colors.text : colors.actInk }]} numberOfLines={1}>
-          {label}
-        </Text>
+        {({ pressed }) => (
+          <BevelView
+            fill={editMode ? (pressed ? colors.surfacePress : colors.surface2) : pressed ? colors.actPress : colors.actBg}
+            {...(editMode ? { stroke: colors.text } : {})}
+            cut={bevels.button}
+            corner="bottomRight"
+            style={styles.action}
+          >
+            <Icon name={editMode ? "edit" : "check"} color={editMode ? colors.text : colors.actInk} />
+            <Text style={[styles.actionLabel, { color: editMode ? colors.text : colors.actInk }]} numberOfLines={1}>
+              {label}
+            </Text>
+          </BevelView>
+        )}
       </Pressable>
     </Animated.View>
   );
@@ -830,16 +842,17 @@ const styles = StyleSheet.create({
   editingLeave: { minHeight: 44, marginVertical: -10, marginRight: -10, paddingHorizontal: 10, borderRadius: radii.control, justifyContent: "center" },
   editingLeaveLabel: { fontFamily: fonts.text700, fontSize: 15, textDecorationLine: "underline" },
   titleButton: { marginTop: 10, marginHorizontal: -8, paddingVertical: 8, paddingHorizontal: 8, minHeight: 44, flexDirection: "row", alignItems: "center", gap: 6, borderRadius: radii.control },
-  title: { flexShrink: 1, fontFamily: fonts.text700, fontSize: 26, lineHeight: 29, letterSpacing: -0.4 },
+  title: { flexShrink: 1, fontFamily: fonts.brand800, fontSize: 26, lineHeight: 30, letterSpacing: -0.5 },
   target: { fontFamily: fonts.text400, fontSize: 15, lineHeight: 21 },
   warning: { height: 48, paddingLeft: 12, paddingRight: 2, borderRadius: radii.control, borderWidth: layout.borderControl, flexDirection: "row", alignItems: "center", gap: 8, marginBottom: -4 },
   warningText: { flex: 1, minWidth: 0, fontFamily: fonts.text600, fontSize: 15 },
   warningAction: { height: 44, paddingHorizontal: 12, borderRadius: 6, justifyContent: "center" },
   linkLabel: { fontFamily: fonts.text700, fontSize: 16, textDecorationLine: "underline" },
-  finished: { marginTop: 24, padding: 18, borderRadius: radii.panel, gap: 6 },
-  finishedTitle: { fontFamily: fonts.text700, fontSize: 22, lineHeight: 25 },
+  finished: { marginTop: 24, paddingLeft: 18, paddingVertical: 10, paddingRight: 6, flexDirection: "row", alignItems: "center", gap: 6 },
+  finishedText: { flex: 1, gap: 4 },
+  finishedTitle: { fontFamily: fonts.brand800, fontSize: 24, lineHeight: 27, letterSpacing: -0.4 },
   empty: { marginTop: 32, gap: 8 },
-  emptyTitle: { fontFamily: fonts.text700, fontSize: 26, lineHeight: 29, letterSpacing: -0.4 },
+  emptyTitle: { fontFamily: fonts.brand800, fontSize: 26, lineHeight: 29, letterSpacing: -0.5 },
   emptyAction: { marginTop: 16 },
   emptyMore: { alignSelf: "center", marginTop: 4 },
   addExercise: { marginTop: 24, alignSelf: "flex-start" },
@@ -851,8 +864,8 @@ const styles = StyleSheet.create({
   painLabel: { fontFamily: fonts.text700, fontSize: 14 },
   painIndicator: { position: "absolute", top: 9, right: 9 },
   actionCell: { flex: 1 },
-  action: { height: 64, borderRadius: radii.panel, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, paddingHorizontal: 12 },
-  actionLabel: { fontFamily: fonts.text700, fontSize: 18, flexShrink: 1 },
+  action: { height: 64, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, paddingHorizontal: 12 },
+  actionLabel: { fontFamily: fonts.brand700, fontSize: 18, flexShrink: 1 },
   alertText: { marginTop: 4 },
   disabled: { opacity: 0.4 },
 });

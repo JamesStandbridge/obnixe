@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
+import Animated, { useAnimatedStyle } from "react-native-reanimated";
 import { router } from "expo-router";
 import { asc, eq } from "drizzle-orm";
 import {
@@ -33,14 +34,18 @@ import { PainMark, Segmented } from "@/ui/Controls";
 import { Icon } from "@/ui/icons/Icon";
 import type { IconName } from "@/ui/icons/Icon";
 import { SportIcon } from "@/ui/icons/SportIcon";
+import { EmptyScene } from "@/ui/illustrations/scenes";
+import { SportScene } from "@/ui/illustrations/SportScene";
 import { IconButton, MenuItem } from "@/ui/Inputs";
 import { Screen, Section } from "@/ui/Layout";
+import { reveal, useLoop, usePressScale } from "@/ui/motion";
 import { Sheet } from "@/ui/Overlays";
+import { BevelView } from "@/ui/Shapes";
 import { StatRow } from "@/ui/Stats";
 import type { StatValue } from "@/ui/Stats";
 import { Text } from "@/ui/Text";
 import { useTheme } from "@/ui/theme";
-import { fonts, layout, radii, wash } from "@/ui/tokens";
+import { bevels, fonts, layout, radii, wash } from "@/ui/tokens";
 import { formatAgo } from "@/features/activity/format";
 import { markAgentChangesSeen } from "@/features/agent/queries";
 import { CheckInSection } from "@/features/stats/CheckInSection";
@@ -53,6 +58,7 @@ import { distanceFigure, sportLabel } from "@/features/stats/presentation";
 import { WeekHero } from "@/features/stats/WeekStrip";
 
 const bottomPanelHeight = 84;
+const heroHeight = 148;
 
 interface TodayData {
   readonly open: OpenSession | null;
@@ -246,47 +252,60 @@ function effectiveVariant(next: NextSlot | null, chosen: Id | null): Id | null {
   return next.variants.some((variant) => variant.id === chosen) ? chosen : (next.variants[0]?.id ?? null);
 }
 
-interface CardProps {
-  readonly sport?: SportKey;
-  readonly children: ReactNode;
-}
-
-function Card({ sport, children }: CardProps) {
+function Card({ children }: { readonly children: ReactNode }) {
   const { colors } = useTheme();
   return (
-    <View style={[styles.card, { backgroundColor: colors.surface }]}>
-      {sport === undefined ? null : <View style={[styles.cardAccent, { backgroundColor: colors.sport[sport] }]} />}
-      <View style={styles.cardBody}>{children}</View>
-    </View>
+    <Animated.View entering={reveal(1)} style={styles.card}>
+      <BevelView fill={colors.surface} cut={bevels.card} style={styles.cardBody}>
+        {children}
+      </BevelView>
+    </Animated.View>
   );
 }
 
-interface CardHeadProps {
-  readonly sport: SportKey;
-  readonly eyebrow: string;
-  readonly detail: string | null;
-  readonly live?: boolean;
+function LiveDot({ color }: { readonly color: string }) {
+  const loop = useLoop(1400);
+  const style = useAnimatedStyle(() => ({ opacity: 1 - 0.6 * Math.sin(loop.value * Math.PI) }));
+  return <Animated.View style={[styles.liveDot, { backgroundColor: color }, style]} />;
 }
 
-function CardHead({ sport, eyebrow, detail, live = false }: CardHeadProps) {
+interface HeroCardProps {
+  readonly sport: SportKey;
+  readonly eyebrow: string;
+  readonly title: string;
+  readonly detail: string | null;
+  readonly live?: boolean;
+  readonly children: ReactNode;
+}
+
+function HeroCard({ sport, eyebrow, title, detail, live = false, children }: HeroCardProps) {
   const { colors } = useTheme();
+  const ink = colors.sportInk;
   return (
-    <View style={styles.cardHead}>
-      <SportIcon sport={sport} variant="badge" />
-      <View style={styles.cardHeadText}>
-        <View style={styles.eyebrowRow}>
-          {live ? <View style={[styles.liveDot, { backgroundColor: colors.mark }]} /> : null}
-          <Text variant="eyebrow" style={{ color: colors.sport[sport] }} numberOfLines={1}>
-            {eyebrow}
-          </Text>
+    <Animated.View entering={reveal(1)} style={styles.card}>
+      <BevelView fill={colors.surface} cut={bevels.card} band={{ color: colors.sport[sport], height: heroHeight }}>
+        <View style={styles.hero}>
+          <View style={styles.heroText}>
+            <View style={styles.eyebrowRow}>
+              {live ? <LiveDot color={ink} /> : null}
+              <Text variant="eyebrow" style={{ color: ink }} numberOfLines={1}>
+                {eyebrow}
+              </Text>
+            </View>
+            <Text accessibilityRole="header" style={[styles.heroTitle, { color: ink }]} numberOfLines={3}>
+              {title}
+            </Text>
+            {detail === null ? null : (
+              <Text variant="small" style={[styles.heroDetail, { color: ink }]} numberOfLines={1}>
+                {detail}
+              </Text>
+            )}
+          </View>
+          <SportScene sport={sport} size={heroHeight} onBand />
         </View>
-        {detail === null ? null : (
-          <Text variant="small" tone="secondary" numberOfLines={1}>
-            {detail}
-          </Text>
-        )}
-      </View>
-    </View>
+        <View style={styles.cardBody}>{children}</View>
+      </BevelView>
+    </Animated.View>
   );
 }
 
@@ -304,14 +323,16 @@ function ResumeCard({ open, onFinish }: { readonly open: OpenSession; readonly o
         : null;
   const window: StatValue = { label: deadline === last.date ? "Reprise jusqu'à" : "Reprise jusqu'à demain", value: "6 h", unit: "" };
   return (
-    <Card sport={open.session.sport}>
-      <CardHead sport={open.session.sport} eyebrow={eyebrow} detail={detail} live={!interrupted} />
-      <Text accessibilityRole="header" style={styles.cardTitle}>
-        {sessionTitle({ sport: open.session.sport, title: open.session.title, slotName: open.slotName, variantName: open.variantName, values: open.session.values })}
-      </Text>
-      <StatRow stats={recorded === null ? [window] : [recorded, window]} style={styles.cardStats} />
+    <HeroCard
+      sport={open.session.sport}
+      eyebrow={eyebrow}
+      title={sessionTitle({ sport: open.session.sport, title: open.session.title, slotName: open.slotName, variantName: open.variantName, values: open.session.values })}
+      detail={detail}
+      live={!interrupted}
+    >
+      <StatRow stats={recorded === null ? [window] : [recorded, window]} />
       <ControlButton label="Terminer sans reprendre" onPress={() => onFinish(open)} style={styles.fullControl} />
-    </Card>
+    </HeroCard>
   );
 }
 
@@ -331,9 +352,9 @@ function ActionCard({ icon, title, detail, onPress }: ActionCardProps) {
       onPress={onPress}
       style={({ pressed }) => [styles.action, { backgroundColor: pressed ? colors.surfacePress : colors.surface }]}
     >
-      <View style={[styles.actionIcon, { backgroundColor: wash(colors.mark, 0.14) }]}>
-        <Icon name={icon} color={colors.mark} />
-      </View>
+      <BevelView fill={colors.brand} cut={10} radius={radii.control} style={styles.actionIcon}>
+        <Icon name={icon} color={colors.brandInk} />
+      </BevelView>
       <View style={styles.actionText}>
         <Text variant="bodyStrong">{title}</Text>
         <Text variant="small" tone="secondary">
@@ -347,7 +368,10 @@ function ActionCard({ icon, title, detail, onPress }: ActionCardProps) {
 
 function EmptyCard() {
   return (
-    <View style={styles.empty}>
+    <Animated.View entering={reveal(0)} style={styles.empty}>
+      <View style={styles.emptyArt}>
+        <EmptyScene kind="program" size={168} />
+      </View>
       <Text variant="eyebrow" tone="secondary">
         Aucun programme
       </Text>
@@ -366,7 +390,7 @@ function EmptyCard() {
         />
         <ActionCard icon="agent" title="Connecter un agent" detail="Un assistant lit ton journal et prépare le programme." onPress={() => router.push("/agent")} />
       </View>
-    </View>
+    </Animated.View>
   );
 }
 
@@ -382,50 +406,62 @@ function lastFigure(sport: SportKey, last: SessionSuggestion): string {
   return figure.unit === "" ? figure.value : `${figure.value} ${figure.unit}`;
 }
 
+function QuickTileButton({ tile, today }: { readonly tile: QuickTile; readonly today: LocalDate }) {
+  const { colors } = useTheme();
+  const press = usePressScale(0.95);
+  const tone = colors.sport[tile.sport];
+  return (
+    <Animated.View style={[styles.tileFrame, press.style]}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Noter : ${sportLabel(tile.sport)}${tile.last === null ? "" : `, dernière fois ${formatAgo(tile.last.localDate, today)}, ${lastFigure(tile.sport, tile.last)}`}`}
+        onPress={() => startQuick(tile.sport)}
+        onPressIn={press.onPressIn}
+        onPressOut={press.onPressOut}
+      >
+        {({ pressed }) => (
+          <BevelView fill={wash(tone, pressed ? 0.26 : 0.13)} cut={bevels.tile} style={styles.tile}>
+            <SportIcon sport={tile.sport} variant="badge" />
+            <View style={styles.tileText}>
+              <Text variant="label" numberOfLines={1}>
+                {sportLabel(tile.sport)}
+              </Text>
+              {tile.last === null ? (
+                <>
+                  <Text tone="tertiary" style={styles.tileFigure}>
+                    –
+                  </Text>
+                  <Text variant="caption" tone="tertiary" numberOfLines={1}>
+                    jamais noté
+                  </Text>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.tileFigure} numberOfLines={1}>
+                    {lastFigure(tile.sport, tile.last)}
+                  </Text>
+                  <Text variant="caption" tone="secondary" numberOfLines={1}>
+                    {formatAgo(tile.last.localDate, today)}
+                  </Text>
+                </>
+              )}
+            </View>
+          </BevelView>
+        )}
+      </Pressable>
+    </Animated.View>
+  );
+}
+
 function QuickLog({ sports: quick, today }: { readonly sports: readonly SportKey[]; readonly today: LocalDate }) {
   const { colors } = useTheme();
   const tiles = useLiveValue<QuickTile[]>(() => quick.map((sport) => ({ sport, last: lastSessionSuggestion(db(), sport) })), ["session"], [quick.join(",")]);
   return (
     <View style={styles.quick}>
       <View style={styles.tiles}>
-        {tiles.map((tile) => {
-          const tone = colors.sport[tile.sport];
-          return (
-            <Pressable
-              key={tile.sport}
-              accessibilityRole="button"
-              accessibilityLabel={`Noter : ${sportLabel(tile.sport)}${tile.last === null ? "" : `, dernière fois ${formatAgo(tile.last.localDate, today)}, ${lastFigure(tile.sport, tile.last)}`}`}
-              onPress={() => startQuick(tile.sport)}
-              style={({ pressed }) => [styles.tile, { backgroundColor: wash(tone, pressed ? 0.24 : 0.1) }]}
-            >
-              <SportIcon sport={tile.sport} variant="badge" />
-              <View style={styles.tileText}>
-                <Text variant="label" numberOfLines={1}>
-                  {sportLabel(tile.sport)}
-                </Text>
-                {tile.last === null ? (
-                  <>
-                    <Text tone="tertiary" style={styles.tileFigure}>
-                      –
-                    </Text>
-                    <Text variant="caption" tone="tertiary" numberOfLines={1}>
-                      jamais noté
-                    </Text>
-                  </>
-                ) : (
-                  <>
-                    <Text style={styles.tileFigure} numberOfLines={1}>
-                      {lastFigure(tile.sport, tile.last)}
-                    </Text>
-                    <Text variant="caption" tone="secondary" numberOfLines={1}>
-                      {formatAgo(tile.last.localDate, today)}
-                    </Text>
-                  </>
-                )}
-              </View>
-            </Pressable>
-          );
-        })}
+        {tiles.map((tile) => (
+          <QuickTileButton key={tile.sport} tile={tile} today={today} />
+        ))}
       </View>
       <Pressable
         accessibilityRole="button"
@@ -477,12 +513,8 @@ function NextCard({ next, variantId, onVariant, notices, today, onOpenNotices }:
   const others = otherPoints(notices, today, notices.pains.length > 0);
 
   return (
-    <Card sport={next.slot.sport}>
-      <CardHead sport={next.slot.sport} eyebrow="Prochaine séance" detail={next.current.version.name} />
-      <Text accessibilityRole="header" style={styles.cardTitle}>
-        {variant === null ? next.slot.name : `${next.slot.name} · ${variant.name}`}
-      </Text>
-      {stats.length === 0 ? null : <StatRow stats={stats} style={styles.cardStats} />}
+    <HeroCard sport={next.slot.sport} eyebrow="Prochaine séance" title={variant === null ? next.slot.name : `${next.slot.name} · ${variant.name}`} detail={next.current.version.name}>
+      {stats.length === 0 ? null : <StatRow stats={stats} />}
       {next.variants.length > 1 ? (
         <View style={styles.variants} accessibilityLabel="Variante">
           <Segmented<Id> options={next.variants.map((item) => ({ value: item.id, label: item.name }))} value={variantId} onChange={onVariant} />
@@ -580,7 +612,7 @@ function NextCard({ next, variantId, onVariant, notices, today, onOpenNotices }:
           </Text>
         </View>
       )}
-    </Card>
+    </HeroCard>
   );
 }
 
@@ -725,15 +757,15 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   appbar: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 44 },
   appbarDate: { flex: 1, fontFamily: fonts.text600, fontSize: 15 },
-  card: { marginTop: 24, borderRadius: radii.panel, overflow: "hidden" },
-  cardAccent: { height: 3 },
+  card: { marginTop: 24 },
   cardBody: { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 16, gap: 6 },
-  cardHead: { flexDirection: "row", alignItems: "center", gap: 12 },
-  cardHeadText: { flex: 1, minWidth: 0, gap: 3 },
+  hero: { flexDirection: "row", alignItems: "center", height: heroHeight, paddingLeft: 16 },
+  heroText: { flex: 1, minWidth: 0, gap: 4 },
+  heroTitle: { fontFamily: fonts.brand800, fontSize: 25, lineHeight: 28, letterSpacing: -0.5 },
+  heroDetail: { fontFamily: fonts.text600, opacity: 0.78 },
   eyebrowRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  liveDot: { width: 7, height: 7, borderRadius: 3.5 },
-  cardTitle: { marginTop: 10, fontFamily: fonts.text700, fontSize: 26, lineHeight: 29, letterSpacing: -0.4 },
-  cardStats: { marginTop: 10 },
+  liveDot: { width: 8, height: 8, borderRadius: 4 },
+  cardTitle: { marginTop: 10, fontFamily: fonts.brand800, fontSize: 26, lineHeight: 29, letterSpacing: -0.5 },
   variants: { marginTop: 12 },
   notices: { marginTop: 12, gap: 2, borderRadius: radii.control, overflow: "hidden" },
   notice: { flexDirection: "row", alignItems: "center", gap: 10, minHeight: 52, paddingVertical: 6, paddingLeft: 12, paddingRight: 4 },
@@ -758,17 +790,19 @@ const styles = StyleSheet.create({
   thenText: { flex: 1 },
   fullControl: { marginTop: 14 },
   empty: { marginTop: 18, gap: 6 },
-  emptyTitle: { fontFamily: fonts.text700, fontSize: 30, lineHeight: 32, letterSpacing: -0.6 },
+  emptyArt: { alignItems: "center", marginBottom: 8 },
+  emptyTitle: { fontFamily: fonts.brand800, fontSize: 30, lineHeight: 33, letterSpacing: -0.7 },
   emptyLead: { fontSize: 15, lineHeight: 21 },
   emptyActions: { marginTop: 14, gap: 8 },
   action: { flexDirection: "row", alignItems: "center", gap: 14, minHeight: 76, paddingVertical: 14, paddingLeft: 14, paddingRight: 12, borderRadius: radii.panel },
-  actionIcon: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
+  actionIcon: { width: 42, height: 42, alignItems: "center", justifyContent: "center" },
   actionText: { flex: 1, minWidth: 0, gap: 2 },
   quick: { marginTop: 10, gap: 8 },
   tiles: { flexDirection: "row", gap: 8 },
-  tile: { flex: 1, minWidth: 0, minHeight: 132, padding: 12, borderRadius: radii.panel, justifyContent: "space-between", gap: 12 },
+  tileFrame: { flex: 1, minWidth: 0 },
+  tile: { minHeight: 136, padding: 12, justifyContent: "space-between", gap: 12 },
   tileText: { gap: 1 },
-  tileFigure: { marginTop: 2, fontFamily: fonts.figure700, fontSize: 20, lineHeight: 22 },
+  tileFigure: { marginTop: 2, fontFamily: fonts.figure800, fontSize: 22, lineHeight: 24 },
   other: { flexDirection: "row", alignItems: "center", gap: 10, minHeight: 48, paddingHorizontal: 14, borderRadius: radii.panel, borderWidth: 1 },
   otherLabel: { flex: 1 },
   bottomPanel: { position: "absolute", left: 0, right: 0, bottom: 0, paddingHorizontal: layout.gutter, paddingVertical: 10 },

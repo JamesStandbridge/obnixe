@@ -217,11 +217,12 @@ export function ViewSwitch<T extends string>({ items, value, onChange }: ViewSwi
             accessibilityRole="tab"
             aria-selected={current}
             onPress={() => onChange(item.value)}
-            style={[styles.viewSwitchItem, current && { borderBottomColor: colors.text }]}
+            style={styles.viewSwitchItem}
           >
             <Text tone={current ? "primary" : "secondary"} style={current ? styles.viewSwitchCurrent : styles.viewSwitchLabel}>
               {item.label}
             </Text>
+            {current ? <View style={[styles.viewSwitchMark, { backgroundColor: colors.brand }]} /> : null}
           </Pressable>
         );
       })}
@@ -442,9 +443,10 @@ const styles = StyleSheet.create({
   questionHead: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between", gap: 12 },
   questionHint: { flexShrink: 1, textAlign: "right" },
   viewSwitch: { flexDirection: "row", gap: 22, marginTop: 6, borderBottomWidth: 1 },
-  viewSwitchItem: { minHeight: 44, minWidth: 44, paddingHorizontal: 4, justifyContent: "center", borderBottomWidth: 2, borderBottomColor: "transparent", marginBottom: -1 },
-  viewSwitchLabel: { fontFamily: fonts.text600, fontSize: 16 },
-  viewSwitchCurrent: { fontFamily: fonts.text700, fontSize: 16 },
+  viewSwitchItem: { minHeight: 44, minWidth: 44, paddingHorizontal: 4, justifyContent: "center" },
+  viewSwitchMark: { position: "absolute", left: 2, right: 2, bottom: -2, height: 4, borderRadius: 1, transform: [{ skewX: "-24deg" }] },
+  viewSwitchLabel: { fontFamily: fonts.brand600, fontSize: 16 },
+  viewSwitchCurrent: { fontFamily: fonts.brand700, fontSize: 16 },
   textField: { ...typeScale.body, minHeight: 48, paddingHorizontal: 14, paddingVertical: 12, borderRadius: radii.control, borderWidth: layout.borderControl },
   textArea: { minHeight: 96, textAlignVertical: "top" },
   menuItem: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 60, borderTopWidth: 1 },
