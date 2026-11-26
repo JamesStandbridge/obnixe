@@ -20,6 +20,7 @@ export * from "./privacy.ts";
 export * from "./privacyZones.ts";
 export * from "./profile.ts";
 export * from "./reconcile.ts";
+export * from "./recordAnnouncements.ts";
 export * from "./recorder.ts";
 export * from "./simplify.ts";
 export * from "./stages/altitude.ts";

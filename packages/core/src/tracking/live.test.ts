@@ -36,6 +36,20 @@ describe("LiveTracker", () => {
     expect(live.final.lap.distanceMm).toBeLessThan(1_000_000);
   });
 
+  it("keeps every finished lap, adding up to the totals at the current lap start (REC-040)", () => {
+    const marks: TrackerMark[] = [{ kind: "start", t: 0 }, { kind: "lap", t: 450_000 }];
+    const live = runLive(coreScenarios.steadyRun(2), marks, { trigger: "distance", meters: 1000 });
+    const laps = live.tracker.laps;
+    expect(laps.map((lap) => lap.index)).toEqual(laps.map((_, index) => index));
+    expect(laps.find((lap) => lap.startMs + lap.elapsedMs === 450_000)).toBeDefined();
+    laps.slice(1).forEach((lap, index) => expect(lap.startMs).toBeCloseTo((laps[index]?.startMs ?? 0) + (laps[index]?.elapsedMs ?? 0), 6));
+    const automatic = laps.filter((lap) => lap.startMs + lap.elapsedMs !== 450_000);
+    automatic.forEach((lap) => expect(Math.abs(lap.distanceMm - 1_000_000)).toBeLessThan(2));
+    expect(laps.reduce((total, lap) => total + lap.distanceMm, 0)).toBeCloseTo(live.final.distanceMm - live.final.lap.distanceMm, -1);
+    expect(laps.reduce((total, lap) => total + lap.movingMs, 0)).toBeCloseTo(live.final.movingMs - live.final.lap.movingMs, -1);
+    expect(live.final.lap.index).toBe(laps.length);
+  });
+
   it("stops counting during a manual pause and matches the recorded moving time", () => {
     const scenario = coreScenarios.steadyRun(3);
     const marks: TrackerMark[] = [{ kind: "start", t: 0 }, { kind: "pause", t: 600_000 }, { kind: "resume", t: 900_000 }];

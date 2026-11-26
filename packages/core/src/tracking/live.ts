@@ -174,6 +174,7 @@ export class LiveTracker {
   private lapIndex = 0;
   private lapStart: LapPoint = { t: 0, distance: 0, moving: 0 };
   private lastPoint: LapPoint = { t: 0, distance: 0, moving: 0 };
+  private completed: readonly LiveLap[] = [];
   private firstStepCount: number | null = null;
   private lastStepCount: number | null = null;
   private latestReading: HeartRateSample | null = null;
@@ -244,8 +245,12 @@ export class LiveTracker {
     if (mark.kind !== "lap") return;
     const at: LapPoint = { ...this.lastPoint, t: mark.t };
     this.lapper.restart(at);
-    this.lapIndex += 1;
-    this.lapStart = at;
+    this.closeLap(at);
+  }
+
+  /** Finished laps, oldest first; a new array after each lap (`REC-040`, `REC-041`). */
+  get laps(): readonly LiveLap[] {
+    return this.completed;
   }
 
   /** Display points added since the previous call (`GPS-071`). */
@@ -345,12 +350,21 @@ export class LiveTracker {
     const trigger = this.lapper.trigger;
     if (trigger !== null) {
       for (const fraction of this.lapper.advance(this.lastPoint, point)) {
-        this.lapIndex += 1;
-        this.lapStart = { t: this.lastPoint.t + (t - this.lastPoint.t) * fraction, distance: this.lastPoint.distance + (point.distance - this.lastPoint.distance) * fraction, moving: this.lastPoint.moving + (point.moving - this.lastPoint.moving) * fraction };
+        this.closeLap({ t: this.lastPoint.t + (t - this.lastPoint.t) * fraction, distance: this.lastPoint.distance + (point.distance - this.lastPoint.distance) * fraction, moving: this.lastPoint.moving + (point.moving - this.lastPoint.moving) * fraction });
         events.push({ type: "lap", trigger, t: this.lapStart.t });
       }
     }
     this.lastPoint = point;
+  }
+
+  private closeLap(at: LapPoint): void {
+    const start = this.lapStart;
+    this.completed = [
+      ...this.completed,
+      { index: this.lapIndex, startMs: start.t, elapsedMs: Math.max(at.t - start.t, 0), movingMs: Math.round(at.moving - start.moving), distanceMm: Math.round((at.distance - start.distance) * 1000) },
+    ];
+    this.lapIndex += 1;
+    this.lapStart = at;
   }
 
   private liveAltitude(settled: SettledFix): number | null {

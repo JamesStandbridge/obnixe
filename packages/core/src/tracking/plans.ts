@@ -42,6 +42,13 @@ export function recordingSettingsOf(db: ObnixeDatabase, profile: ResolvedProfile
   return stored ?? { autoPause: profile.autoPauseDefault, autoLap: null, readout: null, alerts: { disabled: [], sound: false }, heartRateDevice: null };
 }
 
+/** Stores the sport's recording settings (`DAT-003`), adding its preference row, disabled, when the sport has none yet. */
+export function recordingSettingsMutation(db: ObnixeDatabase, sport: SportKey, settings: RecordingSettings): Mutation {
+  const preferences = db.select({ sport: sportPreference.sport }).from(sportPreference).all();
+  if (preferences.some((preference) => preference.sport === sport)) return { kind: "update", table: "sport_preference", key: sport, patch: { recordingSettings: settings } };
+  return { kind: "insert", table: "sport_preference", row: { sport, enabled: false, position: preferences.length, recordingSettings: settings } };
+}
+
 export interface RecordingStartRequest {
   readonly sport: SportKey;
   readonly values: FieldValues;

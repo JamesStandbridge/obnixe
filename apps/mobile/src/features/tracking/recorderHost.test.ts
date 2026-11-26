@@ -349,6 +349,7 @@ describe("recording", () => {
     await vi.advanceTimersByTimeAsync(1000);
     expect(feedback.calls).toContain("alert:lap");
     expect(recordingOf(host).live.lap.index).toBe(1);
+    expect(recordingOf(host).laps.map((lap) => lap.index)).toEqual([0]);
   });
 });
 
