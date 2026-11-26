@@ -1,0 +1,101 @@
+package app.obnixe.tracker
+
+import android.content.Context
+import expo.modules.kotlin.types.Enumerable
+import org.json.JSONException
+import org.json.JSONObject
+
+/** `saver` and `critical` are the battery modes of `NRG-001`: a fix every 5 s, then every 10 s. */
+enum class TrackerPower(val value: String) : Enumerable {
+  NORMAL("normal"),
+  SAVER("saver"),
+  CRITICAL("critical"),
+}
+
+data class TrackerNotificationContent(
+  val title: String,
+  val text: String,
+  /** EpochMs at which the notification timer read zero; null hides the timer. */
+  val timerBaseAt: Long?,
+)
+
+data class ReplaySource(val gpxPath: String, val speed: Double)
+
+data class RecordingConfig(
+  val sessionId: String,
+  val journalPath: String,
+  val power: TrackerPower,
+  val barometer: Boolean,
+  val pedometer: Boolean,
+  /** Bluetooth address of the heart rate source. */
+  val heartRateDevice: String?,
+  /** Batch interval while the screen is on; batches are [screenOffBatchIntervalMs] apart while it is off. */
+  val batchIntervalMs: Long,
+  val notification: TrackerNotificationContent,
+  val replay: ReplaySource?,
+) {
+  companion object {
+    const val screenOffBatchIntervalMs = 5_000L
+  }
+}
+
+data class StoredRecording(val config: RecordingConfig, val stepBaseline: Long?)
+
+/**
+ * The live recording's configuration, kept in shared preferences so that a service restarted by the system
+ * (`START_STICKY`) resumes the same journal. Replays are not kept: they are development runs.
+ */
+object RecordingStore {
+  private const val preferences = "obnixe-tracker"
+  private const val key = "recording"
+
+  fun save(context: Context, recording: StoredRecording) {
+    if (recording.config.replay != null) return
+    val config = recording.config
+    val json = JSONObject()
+      .put("sessionId", config.sessionId)
+      .put("journalPath", config.journalPath)
+      .put("power", config.power.value)
+      .put("barometer", config.barometer)
+      .put("pedometer", config.pedometer)
+      .put("heartRateDevice", config.heartRateDevice ?: JSONObject.NULL)
+      .put("batchIntervalMs", config.batchIntervalMs)
+      .put("title", config.notification.title)
+      .put("text", config.notification.text)
+      .put("timerBaseAt", config.notification.timerBaseAt ?: JSONObject.NULL)
+      .put("stepBaseline", recording.stepBaseline ?: JSONObject.NULL)
+    store(context).edit().putString(key, json.toString()).commit()
+  }
+
+  fun load(context: Context): StoredRecording? {
+    val raw = store(context).getString(key, null) ?: return null
+    return try {
+      val json = JSONObject(raw)
+      val config = RecordingConfig(
+        sessionId = json.getString("sessionId"),
+        journalPath = json.getString("journalPath"),
+        power = TrackerPower.entries.firstOrNull { it.value == json.getString("power") } ?: TrackerPower.NORMAL,
+        barometer = json.getBoolean("barometer"),
+        pedometer = json.getBoolean("pedometer"),
+        heartRateDevice = json.optNullableString("heartRateDevice"),
+        batchIntervalMs = json.getLong("batchIntervalMs"),
+        notification = TrackerNotificationContent(json.getString("title"), json.getString("text"), json.optNullableLong("timerBaseAt")),
+        replay = null,
+      )
+      StoredRecording(config, json.optNullableLong("stepBaseline"))
+    } catch (error: JSONException) {
+      clear(context)
+      null
+    }
+  }
+
+  fun clear(context: Context) {
+    store(context).edit().remove(key).commit()
+  }
+
+  private fun store(context: Context) = context.getSharedPreferences(preferences, Context.MODE_PRIVATE)
+
+  private fun JSONObject.optNullableString(name: String): String? = if (isNull(name)) null else getString(name)
+
+  private fun JSONObject.optNullableLong(name: String): Long? = if (isNull(name)) null else getLong(name)
+}

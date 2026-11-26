@@ -1,0 +1,134 @@
+{
+  "header": {
+    "sessionId": "019abc12-3456-7def-8123-456789abcdef",
+    "startedAt": 1795678200000,
+    "monotonicOriginNs": "987654321012345678",
+    "platform": "android",
+    "device": "Google Pixel 9 Pro · Android 16"
+  },
+  "samples": [
+    {
+      "type": "fix",
+      "t": 1000,
+      "fixAgeMs": 180,
+      "latitudeE7": 458326412,
+      "longitudeE7": 68652087,
+      "altitudeEllipsoidMm": 1092400,
+      "altitudeMslMm": 1042100,
+      "horizontalAccuracyDm": 36,
+      "verticalAccuracyDm": 51,
+      "speedCmS": 298,
+      "speedAccuracyCmS": 42,
+      "bearingCentiDeg": 27050,
+      "bearingAccuracyCentiDeg": 1150,
+      "simulated": false
+    },
+    {
+      "type": "pressure",
+      "t": 1020,
+      "pascals": 89412
+    },
+    {
+      "type": "steps",
+      "t": 1100,
+      "count": 2
+    },
+    {
+      "type": "heart_rate",
+      "t": 1150,
+      "bpm": 142,
+      "contact": "contact",
+      "rrInterval": 433
+    },
+    {
+      "type": "fix",
+      "t": 2000,
+      "fixAgeMs": -4,
+      "latitudeE7": 458326610,
+      "longitudeE7": 68652301,
+      "altitudeEllipsoidMm": 1092400,
+      "altitudeMslMm": 1042100,
+      "horizontalAccuracyDm": 36,
+      "verticalAccuracyDm": 51,
+      "speedCmS": 65534,
+      "speedAccuracyCmS": 42,
+      "bearingCentiDeg": 27050,
+      "bearingAccuracyCentiDeg": 1150,
+      "simulated": false
+    },
+    {
+      "type": "heart_rate",
+      "t": 2150,
+      "bpm": 143,
+      "contact": "absent",
+      "rrInterval": null
+    },
+    {
+      "type": "steps",
+      "t": 2900,
+      "count": 5
+    },
+    {
+      "type": "heart_rate",
+      "t": 3000,
+      "bpm": 141,
+      "contact": "unsupported",
+      "rrInterval": 1024
+    },
+    {
+      "type": "pressure",
+      "t": 9000,
+      "pascals": 89430
+    },
+    {
+      "type": "fix",
+      "t": 10000,
+      "fixAgeMs": 0,
+      "latitudeE7": -900000000,
+      "longitudeE7": 1800000000,
+      "altitudeEllipsoidMm": -430500,
+      "altitudeMslMm": null,
+      "horizontalAccuracyDm": 50,
+      "verticalAccuracyDm": null,
+      "speedCmS": null,
+      "speedAccuracyCmS": null,
+      "bearingCentiDeg": null,
+      "bearingAccuracyCentiDeg": null,
+      "simulated": true
+    },
+    {
+      "type": "steps",
+      "t": 10100,
+      "count": 19
+    },
+    {
+      "type": "pressure",
+      "t": 11000,
+      "pascals": 89401
+    }
+  ],
+  "marks": [
+    {
+      "kind": "start",
+      "t": 0
+    },
+    {
+      "kind": "pause",
+      "t": 3100
+    },
+    {
+      "kind": "resume",
+      "t": 9200
+    },
+    {
+      "kind": "lap",
+      "t": 10500
+    },
+    {
+      "kind": "stop",
+      "t": 11000
+    }
+  ],
+  "lastSequence": 5,
+  "validLength": 375
+}
