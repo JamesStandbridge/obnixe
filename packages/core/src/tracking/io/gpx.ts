@@ -1,6 +1,9 @@
 import { assembleActivity } from "./activity.ts";
+import type { RoutePoint } from "../routes.ts";
 import type { ExportPoint, FilePoint, ImportedActivity } from "./activity.ts";
 import { ImportError } from "./errors.ts";
+import { fileRoute } from "./fileRoute.ts";
+import type { FileRoute } from "./fileRoute.ts";
 import { sportOfGpxType } from "./sports.ts";
 import { centiDegrees, contentId, parseDecimal, parseTime, positionE7 } from "./values.ts";
 import { degreesOf, escapeXml, obnixeElements, obnixeNamespace, readXmlFile } from "./xml.ts";
@@ -153,6 +156,81 @@ export function readGpx(bytes: Uint8Array): ImportedActivity {
     totals: null,
     pool: null,
   });
+}
+
+interface RoutePointDraft {
+  readonly latitudeE7: number;
+  readonly longitudeE7: number;
+  altitudeMm: number | null;
+}
+
+/** GPX route reader: the points of every `trk`, timed or not, else those of every `rte`, in document order. */
+class GpxRouteReader implements XmlHandler {
+  readonly trackPoints: RoutePoint[] = [];
+  readonly routePoints: RoutePoint[] = [];
+  name: string | null = null;
+  type: string | null = null;
+  private readonly path: string[] = [];
+  private content = "";
+  private point: RoutePointDraft | null = null;
+
+  open(name: string, attributes: XmlAttributes): void {
+    if (this.path.length === 0 && name !== "gpx") throw new ImportError("unsupported_format", `the root element is <${name}>, not <gpx>`);
+    const parent = this.path[this.path.length - 1];
+    this.path.push(name);
+    this.content = "";
+    if (!((name === "trkpt" && parent === "trkseg") || (name === "rtept" && parent === "rte"))) return;
+    const latitude = attributes.lat;
+    const longitude = attributes.lon;
+    if (latitude === undefined || longitude === undefined) throw new ImportError("invalid_value", `a ${name} has no lat or lon`);
+    this.point = { ...positionE7(parseDecimal(latitude, "latitude"), parseDecimal(longitude, "longitude")), altitudeMm: null };
+  }
+
+  text(text: string): void {
+    this.content += text;
+  }
+
+  close(name: string): void {
+    this.path.pop();
+    const parent = this.path[this.path.length - 1];
+    const point = this.point;
+    if (point !== null) {
+      if (name === "ele" && (parent === "trkpt" || parent === "rtept")) point.altitudeMm = Math.round(parseDecimal(this.content, "elevation") * 1000);
+      if (name === "trkpt") this.trackPoints.push(point);
+      if (name === "rtept") this.routePoints.push(point);
+      if (name === "trkpt" || name === "rtept") this.point = null;
+      return;
+    }
+    const value = this.content.trim();
+    if (value === "") return;
+    if (name === "name" && (parent === "trk" || parent === "rte")) this.name ??= value;
+    if (name === "name" && parent === "metadata") this.name ??= value;
+    if (name === "type" && (parent === "trk" || parent === "rte")) this.type ??= value;
+  }
+}
+
+/** Reads a GPX route (`RTE-001`): a `trk`, timed or not, or a `rte` of waypoints joined by straight lines. */
+export function readGpxRoute(bytes: Uint8Array): FileRoute {
+  const reader = new GpxRouteReader();
+  readXmlFile(bytes, reader);
+  const points = reader.trackPoints.length >= 2 ? reader.trackPoints : reader.routePoints;
+  return fileRoute("gpx", reader.name, reader.type === null ? null : sportOfGpxType(reader.type), points);
+}
+
+export interface GpxPoint {
+  readonly latitudeE7: number;
+  readonly longitudeE7: number;
+  /** Orthometric altitude. */
+  readonly altitudeMm: number | null;
+  readonly time: number;
+  readonly heartRate: number | null;
+  readonly cadence: number | null;
+  readonly speedMmS: number | null;
+  readonly courseCentiDeg: number | null;
+  readonly horizontalAccuracyDm: number | null;
+  readonly verticalAccuracyDm: number | null;
+  readonly speedAccuracyCmS: number | null;
+  readonly pressurePa: number | null;
 }
 
 export interface GpxDocument {

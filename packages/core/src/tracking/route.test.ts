@@ -303,6 +303,7 @@ describe("route scenarios", () => {
     expect(middle).toBeGreaterThan(0);
     expect(progress.slice(middle).every((value) => value >= half - 40)).toBe(true);
     expect(routeOf(run.final).fraction).toBeGreaterThan(0.98);
+    expect(run.final.metrics).toMatchObject({ route_remaining: routeOf(run.final).remaining, route_progress: routeOf(run.final).fraction });
     expect(run.events.filter(({ event }) => event.type === "off_route")).toEqual([]);
   });
 

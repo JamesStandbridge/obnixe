@@ -502,6 +502,7 @@ export class LiveTracker {
     const moving = this.classifier.state === "moving";
     const gradeFactor = gradeAdjustmentFactor(this.grade ?? Number.NaN);
     const reading = this.heldReading(now);
+    const route = this.route?.state ?? null;
     const values: Record<MetricKey, number | null> = {
       elapsed: Math.max(now - this.startMs, 0),
       moving: totals.moving,
@@ -531,6 +532,9 @@ export class LiveTracker {
       energy: null,
       gps_quality: accuracy,
       clock: null,
+      route_remaining: route?.remaining ?? null,
+      route_ascent_remaining: route?.remainingAscent ?? null,
+      route_progress: route?.fraction ?? null,
     };
     const metrics: Partial<Record<MetricKey, number>> = {};
     for (const key of profile.metrics) {

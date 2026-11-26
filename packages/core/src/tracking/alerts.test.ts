@@ -4,6 +4,7 @@ import { AlertMonitor, heartRateBounds, rangeAlertTiming, speedBounds } from "./
 import type { AlertMonitorOptions, RecordingAlertEvent } from "./alerts.ts";
 import type { LiveLap, LiveSnapshot } from "./live.ts";
 import type { RecorderPhase } from "./recorder.ts";
+import type { RouteProgress, RouteRejoin } from "./route.ts";
 import { heartRateZones } from "./zones.ts";
 
 const noAlerts: RecordingAlertSettings = { disabled: [], sound: false, paceRange: null, heartRateRange: null };
@@ -146,5 +147,30 @@ describe("signal, sensor, battery and settings", () => {
     expect(monitor().segments([entered, finished])).toEqual([entered, finished]);
     expect(monitor().segments([])).toEqual([]);
     expect(monitor({ settings: { ...noAlerts, disabled: ["segment"] } }).segments([entered, finished])).toEqual([]);
+  });
+});
+
+describe("route", () => {
+  const rejoin: RouteRejoin = { latitude: 45.9, longitude: 6.1, progress: 1200, distance: 80, bearing: 135 };
+  const onRoute: RouteProgress = { joined: true, matched: true, progress: 1000, remaining: 4000, fraction: 0.2, remainingAscent: null, distance: 3, offRoute: false, rejoin: null };
+  const offRoute: RouteProgress = { ...onRoute, matched: false, distance: 80, offRoute: true, rejoin };
+  const along = (offFrom: number, offTo: number) => (t: number) => ({ route: t >= offFrom && t < offTo ? offRoute : onRoute });
+
+  it("repeats the departure every 15 s at most 4 times, then signals the return (RTE-005, REC-075)", () => {
+    const events = feed(monitor(), 0, 200_000, along(10_000, 150_000));
+    expect(events).toEqual([
+      { kind: "route", status: "off", repeat: 0, rejoin },
+      { kind: "route", status: "off", repeat: 1, rejoin },
+      { kind: "route", status: "off", repeat: 2, rejoin },
+      { kind: "route", status: "off", repeat: 3, rejoin },
+      { kind: "route", status: "back" },
+    ]);
+  });
+
+  it("stays silent while paused, for a monitor created off the route, and when the sport switched it off", () => {
+    expect(feed(monitor(), 0, 60_000, along(10_000, 40_000), "paused")).toEqual([]);
+    const reloaded = feed(monitor(), 0, 60_000, along(0, 40_000));
+    expect(reloaded).toEqual([{ kind: "route", status: "back" }]);
+    expect(feed(monitor({ settings: { ...noAlerts, disabled: ["route"] } }), 0, 60_000, along(10_000, 40_000))).toEqual([]);
   });
 });
