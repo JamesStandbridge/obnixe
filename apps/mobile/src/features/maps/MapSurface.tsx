@@ -1,13 +1,17 @@
 import { useImperativeHandle, useRef, useState } from "react";
 import { StyleSheet } from "react-native";
 import { Camera, GeoJSONSource, Images, Layer, Map } from "@maplibre/maplibre-react-native";
-import type { CameraRef, StyleSpecification } from "@maplibre/maplibre-react-native";
-import type { MapSurfaceProps } from "@/features/maps/surface";
+import type { CameraRef, StyleSpecification, ViewStateChangeEvent } from "@maplibre/maplibre-react-native";
+import type { MapSurfaceProps, MapView } from "@/features/maps/surface";
 import { headingImage } from "@/features/maps/trackLayers";
 
 const overlayImages = { [headingImage]: { source: require("../../../public/maps/overlay/heading.png"), sdf: true } };
 
-export function MapSurface({ mapStyle, fallbackStyle, initialCamera, overlays = [], interactive = true, onUserGesture, onViewChanged, ref }: MapSurfaceProps) {
+function viewOf(state: ViewStateChangeEvent): MapView {
+  return { center: state.center, bounds: state.bounds, zoom: state.zoom };
+}
+
+export function MapSurface({ mapStyle, fallbackStyle, initialCamera, overlays = [], interactive = true, onUserGesture, onViewChanging, onViewChanged, ref }: MapSurfaceProps) {
   const camera = useRef<CameraRef>(null);
   const [failedStyle, setFailedStyle] = useState<StyleSpecification | string | null>(null);
 
@@ -34,7 +38,8 @@ export function MapSurface({ mapStyle, fallbackStyle, initialCamera, overlays = 
       onRegionWillChange={(event) => {
         if (event.nativeEvent.userInteraction) onUserGesture?.();
       }}
-      onRegionDidChange={(event) => onViewChanged?.({ bounds: event.nativeEvent.bounds, zoom: event.nativeEvent.zoom })}
+      onRegionIsChanging={onViewChanging === undefined ? undefined : (event) => onViewChanging(viewOf(event.nativeEvent))}
+      onRegionDidChange={(event) => onViewChanged?.(viewOf(event.nativeEvent))}
     >
       <Camera ref={camera} initialViewState={{ center: [initialCamera.center[0], initialCamera.center[1]], zoom: initialCamera.zoom }} />
       <Images images={overlayImages} />

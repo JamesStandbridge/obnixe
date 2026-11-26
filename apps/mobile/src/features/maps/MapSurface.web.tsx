@@ -3,7 +3,7 @@ import maplibregl from "maplibre-gl";
 import type { AddLayerObject, GeoJSONSource, StyleSpecification } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { mapAssetsUrl } from "@/features/maps/assets";
-import type { MapOverlay, MapSurfaceProps } from "@/features/maps/surface";
+import type { MapOverlay, MapSurfaceProps, MapView } from "@/features/maps/surface";
 import { headingImage } from "@/features/maps/trackLayers";
 
 const headingUrl = `${mapAssetsUrl}/overlay/heading@2x.png`;
@@ -37,14 +37,20 @@ function syncOverlays(map: maplibregl.Map, overlays: readonly MapOverlay[], appl
   }
 }
 
-export function MapSurface({ mapStyle, fallbackStyle, initialCamera, overlays = [], interactive = true, onUserGesture, onViewChanged, ref }: MapSurfaceProps) {
+function viewOf(map: maplibregl.Map): MapView {
+  const bounds = map.getBounds();
+  const center = map.getCenter();
+  return { center: [center.lng, center.lat], bounds: [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()], zoom: map.getZoom() };
+}
+
+export function MapSurface({ mapStyle, fallbackStyle, initialCamera, overlays = [], interactive = true, onUserGesture, onViewChanging, onViewChanged, ref }: MapSurfaceProps) {
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
   const applied = useRef(new Map<string, AppliedOverlay>());
   const styleReady = useRef(false);
   const shownStyle = useRef(mapStyle);
-  const latest = useRef({ overlays, onUserGesture, onViewChanged, fallbackStyle });
-  latest.current = { overlays, onUserGesture, onViewChanged, fallbackStyle };
+  const latest = useRef({ overlays, onUserGesture, onViewChanging, onViewChanged, fallbackStyle });
+  latest.current = { overlays, onUserGesture, onViewChanging, onViewChanged, fallbackStyle };
 
   useImperativeHandle(ref, () => ({
     moveTo: ({ center, zoom, bearing, durationMs }) =>
@@ -84,11 +90,9 @@ export function MapSurface({ mapStyle, fallbackStyle, initialCamera, overlays = 
     instance.on("dragstart", gesture);
     instance.on("zoomstart", gesture);
     instance.on("rotatestart", gesture);
-    const viewChanged = (): void => {
-      const bounds = instance.getBounds();
-      latest.current.onViewChanged?.({ bounds: [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()], zoom: instance.getZoom() });
-    };
+    const viewChanged = (): void => latest.current.onViewChanged?.(viewOf(instance));
     instance.once("load", viewChanged);
+    instance.on("move", () => latest.current.onViewChanging?.(viewOf(instance)));
     instance.on("moveend", viewChanged);
     return () => {
       instance.remove();

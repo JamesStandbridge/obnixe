@@ -38,7 +38,7 @@ export function drawMaskScalePermille(uniform: () => number): number {
 }
 
 /** Distance from the center within which no point is ever shown, and the along-track distance masked around each visit. */
-export function effectiveRadiusMeters(zone: MaskZone): number {
+export function effectiveRadiusMeters(zone: Pick<MaskZone, "radiusMeters" | "maskScalePermille">): number {
   return (zone.radiusMeters * zone.maskScalePermille) / 1000;
 }
 

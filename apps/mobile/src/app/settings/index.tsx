@@ -17,6 +17,7 @@ import { BackButton, Chevron } from "@/features/data/parts";
 import { MapSettingsSection } from "@/features/maps/MapSettingsSection";
 import { MassUnitSheet, RemindersSheet, massUnitLabels } from "@/features/data/PreferenceSheets";
 import { RestAlertsRow } from "@/features/data/RestAlertsRow";
+import { PrivacySettingsSection } from "@/features/privacy/PrivacySettingsSection";
 import { updateSettings } from "@/data/settings";
 import { SportsSheet } from "@/features/data/SportsSheet";
 import { TrashSheet, useTrash } from "@/features/data/TrashSheet";
@@ -127,6 +128,8 @@ export default function Settings() {
         </Section>
 
         <MapSettingsSection cacheMegabytes={current?.mapCacheMegabytes ?? 200} />
+
+        <PrivacySettingsSection hideTrackEndsMeters={current?.hideTrackEndsMeters ?? 0} exportPrivacy={current?.exportPrivacy ?? true} />
 
         <Section title="Unités">
           <Row
