@@ -1,9 +1,10 @@
 import { asc, eq } from "drizzle-orm";
 import { gear, lap, programSlot, recording, session, sportPreference } from "@obnixe/schema";
-import type { EpochMs, FieldValues, Id, Lap, Recording, RecordingSettings, Session, SportKey } from "@obnixe/schema";
+import type { EpochMs, FieldValues, Id, Lap, PainLevel, Recording, RecordingSettings, Session, SportKey, ZoneKey } from "@obnixe/schema";
 import { sportOf } from "../activity/catalog.ts";
 import { OpenSessionExistsError } from "../activity/climb.ts";
 import type { SlotLink } from "../activity/freeSession.ts";
+import { painReportMutations, trackedZones } from "../activity/pain.ts";
 import { weighInBefore } from "../body/weight.ts";
 import type { Environment, ObnixeDatabase } from "../database.ts";
 import { localDateOf } from "../dates.ts";
@@ -39,7 +40,12 @@ export class NotRecordingError extends Error {
 /** The sport's recording settings, or the defaults of its profile when none were chosen. */
 export function recordingSettingsOf(db: ObnixeDatabase, profile: ResolvedProfile): RecordingSettings {
   const stored = db.select({ settings: sportPreference.recordingSettings }).from(sportPreference).where(eq(sportPreference.sport, profile.sport)).get()?.settings ?? null;
-  return stored ?? { autoPause: profile.autoPauseDefault, autoLap: null, readout: null, alerts: { disabled: [], sound: false }, heartRateDevice: null };
+  return stored ?? defaultRecordingSettings(profile);
+}
+
+/** Annex A defaults: every alert on, no sound, no span watched, no heart-rate source. */
+export function defaultRecordingSettings(profile: Pick<ResolvedProfile, "autoPauseDefault">): RecordingSettings {
+  return { autoPause: profile.autoPauseDefault, autoLap: null, readout: null, alerts: { disabled: [], sound: false, paceRange: null, heartRateRange: null }, heartRateDevice: null };
 }
 
 /** Stores the sport's recording settings (`DAT-003`), adding its preference row, disabled, when the sport has none yet. */
@@ -141,7 +147,7 @@ export function recordingStartMutations(plan: RecordingStartPlan, started: Start
         steps: null,
         heartRateAvg: null,
         heartRateMax: null,
-        heartRateDevice: plan.settings.heartRateDevice,
+        heartRateDevice: plan.settings.heartRateDevice?.name ?? null,
         energyKcal: null,
         energyMethod: null,
         importedEnergyKcal: null,
@@ -291,25 +297,57 @@ export interface RecordingSaveInput {
   /** `processTrack` of `track` with the recorded laps and no trim, as shown by the stop summary. */
   readonly processed: ProcessedTrack;
   readonly stored: StoredTrack;
+  /** `INT-020`: pains signalled from the live screen, oldest first. */
+  readonly pains: readonly ActivityPain[];
+}
+
+/** A pain signalled during the activity, in two touches: a zone of the sport, then its level. */
+export interface ActivityPain {
+  readonly zone: ZoneKey;
+  readonly level: Exclude<PainLevel, "none">;
+  readonly occurredAt: EpochMs;
 }
 
 /**
  * The « Sortie de 12,3 km » changeset (`INT-030`, `DAT-010`): the session completed at the end of the activity with its
- * derived values (`SPT-003`), the recording summarized with its energy, masked preview and track file, and its laps.
+ * derived values (`SPT-003`), the recording summarized with its energy, masked preview and track file, its laps, and the
+ * pains signalled on the way as `during` reports (`INT-020`).
  */
 export function planRecordingSave(db: ObnixeDatabase, env: Environment, input: RecordingSaveInput): readonly Mutation[] {
   const live = liveRecordingOf(db, input.sessionId);
   if (live.session.status === "completed") throw new SessionStateError(live.session.id, "open");
-  return rewrite(
-    db,
-    env,
-    live,
-    input.track,
-    input.processed,
-    profileOfSession(live.session),
-    { trimStartMs: 0, trimEndMs: null, trackFile: input.stored.file, trackSha256: input.stored.sha256, trackBytes: input.stored.bytes },
-    { status: "completed", endedAt: endOf(live, input.track, input.processed) },
-  );
+  return [
+    ...rewrite(
+      db,
+      env,
+      live,
+      input.track,
+      input.processed,
+      profileOfSession(live.session),
+      { trimStartMs: 0, trimEndMs: null, trackFile: input.stored.file, trackSha256: input.stored.sha256, trackBytes: input.stored.bytes },
+      { status: "completed", endedAt: endOf(live, input.track, input.processed) },
+    ),
+    ...duringPainMutations(db, env, live.session, input.pains),
+  ];
+}
+
+function duringPainMutations(db: ObnixeDatabase, env: Environment, current: Session, pains: readonly ActivityPain[]): readonly Mutation[] {
+  const tracked = trackedZones(db);
+  return pains.flatMap((pain) => {
+    const plan = painReportMutations({
+      sessionId: current.id,
+      phase: "during",
+      sessionItemId: null,
+      strengthSetId: null,
+      occurredAt: pain.occurredAt,
+      timeZone: current.timeZone,
+      newId: env.newId,
+      levels: new Map([[pain.zone, pain.level]]),
+      tracked,
+    });
+    if (!tracked.includes(pain.zone)) tracked.push(pain.zone);
+    return plan.mutations;
+  });
 }
 
 /** Deletes the open session with its recording and laps; undoable for 10 s while the journal is kept (`REC-052`). */

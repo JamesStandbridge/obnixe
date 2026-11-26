@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { bestEffort, lap, recording, recordingDerivation, session, settings } from "@obnixe/schema";
+import { bestEffort, lap, painReport, recording, recordingDerivation, session, settings, zoneTracking } from "@obnixe/schema";
 import type { EpochMs, Id } from "@obnixe/schema";
 import { OpenSessionExistsError } from "../activity/climb.ts";
 import { packSnapshot, unpackSnapshot } from "../data/backup/container.ts";
@@ -21,6 +21,7 @@ import { analyzeRecording, heartRateZoneReport } from "./analysis.ts";
 import {
   NotMeasuredError,
   NotRecordableError,
+  defaultRecordingSettings,
   measuredRecordingOf,
   planInterruption,
   planRecompute,
@@ -31,10 +32,11 @@ import {
   planSportChange,
   planTrim,
   profileOfSession,
+  recordingSettingsMutation,
   recordingStartMutations,
   retrimmedLaps,
 } from "./plans.ts";
-import type { RecordingStartPlan } from "./plans.ts";
+import type { ActivityPain, RecordingStartPlan } from "./plans.ts";
 import { journalDisposition, openLiveRecording, referencedTrackFiles, trackRebuildMutations } from "./reconcile.ts";
 import { coreScenarios } from "./testing/scenarios.ts";
 import { profileOf, recordedLaps, untrimmed } from "./testing/run.ts";
@@ -71,9 +73,9 @@ function start(): RecordingStartPlan {
   return plan;
 }
 
-function save(plan: RecordingStartPlan): void {
+function save(plan: RecordingStartPlan, pains: readonly ActivityPain[] = []): void {
   const bytes = encodeTrack(track);
-  make.write(planRecordingSave(context.db, context.env, { sessionId: plan.sessionId, track, processed, stored: { file: `tracks/${plan.recordingId}.otrk`, sha256: trackDigest(bytes), bytes: bytes.length } }));
+  make.write(planRecordingSave(context.db, context.env, { sessionId: plan.sessionId, track, processed, stored: { file: `tracks/${plan.recordingId}.otrk`, sha256: trackDigest(bytes), bytes: bytes.length }, pains }));
 }
 
 const sessionOf = (id: Id) => context.db.select().from(session).where(eq(session.id, id)).get();
@@ -106,6 +108,27 @@ describe("recording save", () => {
     const laps = context.db.select().from(lap).where(eq(lap.sessionId, plan.sessionId)).all();
     expect(laps.map((row) => row.trigger)).toEqual(["manual", "manual"]);
     expect(laps.at(-1)?.endOffsetMs).toBe(processed.summary.elapsedMs);
+  });
+
+  it("stores the pains signalled during the activity as during reports and tracks their zones (INT-020)", () => {
+    const plan = start();
+    const pains: readonly ActivityPain[] = [
+      { zone: "knee_left", level: "discomfort", occurredAt: (startedAt + 600_000) as EpochMs },
+      { zone: "knee_left", level: "stop", occurredAt: (startedAt + 900_000) as EpochMs },
+    ];
+    save(plan, pains);
+    const reports = context.db.select().from(painReport).where(eq(painReport.sessionId, plan.sessionId)).all();
+    expect(reports.map((row) => ({ zone: row.zone, level: row.level, phase: row.phase, occurredAt: row.occurredAt, localDate: row.localDate }))).toEqual([
+      { zone: "knee_left", level: "discomfort", phase: "during", occurredAt: startedAt + 600_000, localDate: "2026-10-24" },
+      { zone: "knee_left", level: "stop", phase: "during", occurredAt: startedAt + 900_000, localDate: "2026-10-24" },
+    ]);
+    expect(context.db.select().from(zoneTracking).all().map((row) => ({ zone: row.zone, reason: row.reason }))).toEqual([{ zone: "knee_left", reason: "pain_reported" }]);
+  });
+
+  it("names the heart-rate source on the recording, not its address", () => {
+    make.write([recordingSettingsMutation(context.db, "run", { ...defaultRecordingSettings({ autoPauseDefault: true }), heartRateDevice: { id: "C4:7D:2A:10:9E:01", name: "Venu 3S" } })]);
+    const plan = start();
+    expect(recordingOf(plan.sessionId)?.heartRateDevice).toBe("Venu 3S");
   });
 
   it("estimates the energy with the last weigh-in before the start (CAL-003)", () => {

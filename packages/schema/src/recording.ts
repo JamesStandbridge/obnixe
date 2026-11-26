@@ -11,6 +11,22 @@ export const readoutSchema = z
   .strictObject({ main: metricKey, secondary: z.array(metricKey).min(3).max(5) })
   .refine((readout) => new Set([readout.main, ...readout.secondary]).size === readout.secondary.length + 1, { path: ["secondary"], message: "Metrics must be distinct" });
 
+const secondsPerKm = z.int().min(120).max(1800);
+const speedMmS = z.int().min(500).max(30_000);
+const heartRateZone = z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5)]);
+
+/** Pace sports watch a pace span, speed sports a speed span (the profile's `primary`). */
+export const paceRangeSchema = z.discriminatedUnion("kind", [
+  z
+    .strictObject({ kind: z.literal("pace"), fastestSecondsPerKm: secondsPerKm, slowestSecondsPerKm: secondsPerKm })
+    .refine((range) => range.fastestSecondsPerKm < range.slowestSecondsPerKm, { path: ["slowestSecondsPerKm"] }),
+  z.strictObject({ kind: z.literal("speed"), minMmS: speedMmS, maxMmS: speedMmS }).refine((range) => range.minMmS < range.maxMmS, { path: ["maxMmS"] }),
+]);
+export type PaceRange = z.infer<typeof paceRangeSchema>;
+
+export const heartRateRangeSchema = z.strictObject({ lowest: heartRateZone, highest: heartRateZone }).refine((range) => range.lowest <= range.highest, { path: ["highest"] });
+export type HeartRateRange = z.infer<typeof heartRateRangeSchema>;
+
 export const recordingSettingsSchema = z.strictObject({
   autoPause: z.boolean(),
   autoLap: z
@@ -20,10 +36,17 @@ export const recordingSettingsSchema = z.strictObject({
     ])
     .nullable(),
   readout: readoutSchema.nullable(),
-  alerts: z.strictObject({ disabled: z.array(z.enum(recordingAlerts)), sound: z.boolean() }),
-  heartRateDevice: z.string().min(1).nullable(),
+  alerts: z.strictObject({
+    disabled: z.array(z.enum(recordingAlerts)),
+    sound: z.boolean(),
+    paceRange: paceRangeSchema.nullable(),
+    heartRateRange: heartRateRangeSchema.nullable(),
+  }),
+  heartRateDevice: z.strictObject({ id: z.string().min(1), name: z.string().trim().min(1) }).nullable(),
 });
 export type RecordingSettings = z.infer<typeof recordingSettingsSchema>;
+export type RecordingAlertSettings = RecordingSettings["alerts"];
+export type HeartRateDeviceChoice = NonNullable<RecordingSettings["heartRateDevice"]>;
 
 const latitudeE7 = z.int().min(-900_000_000).max(900_000_000);
 const longitudeE7 = z.int().min(-1_800_000_000).max(1_800_000_000);
