@@ -28,10 +28,10 @@ struct RecordingConfig {
   let pedometer: Bool
   /// Core Bluetooth identifier of the heart rate source.
   let heartRateDevice: UUID?
-  /// Batch interval while the app is in the foreground; batches are `backgroundBatchIntervalMs` apart otherwise.
+  /// Batch interval while the app is in the foreground.
   let batchIntervalMs: Int64
+  /// Batch interval while the app is in the background.
+  let backgroundBatchIntervalMs: Int64
   var notification: TrackerNotificationContent
   let replay: ReplaySource?
-
-  static let backgroundBatchIntervalMs: Int64 = 5_000
 }

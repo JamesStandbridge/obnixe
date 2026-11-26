@@ -1,6 +1,6 @@
 import { heartRateZones } from "@obnixe/core";
-import type { AlertGoal, RangeStatus, RecordingAlertEvent, ResolvedProfile } from "@obnixe/core";
-import type { HeartRateRange, PaceRange } from "@obnixe/schema";
+import type { AlertGoal, RangeStatus, RecordingAlertEvent, ResolvedProfile, WorkoutStepRun } from "@obnixe/core";
+import type { HeartRateRange, PaceRange, WorkoutDuration, WorkoutIntent, WorkoutTarget } from "@obnixe/schema";
 import { lapFigures } from "@/features/recording/metrics";
 import { targetLabel } from "@/features/recording/target";
 import { formatClock, formatLongClock } from "@/format/durations";
@@ -43,9 +43,11 @@ export function alertPulses(event: RecordingAlertEvent): AlertPulses {
     case "split":
       return pulses.single;
     case "goal":
+    case "workout_step":
       return pulses.double;
     case "pace_range":
     case "heart_rate_range":
+    case "workout_target":
       return event.status === "back" ? pulses.back : pulses.triple;
     case "auto_pause":
       return pulses.long;
@@ -141,6 +143,61 @@ function segmentFinishDetail(elapsedMs: number, bestElapsedMs: number | null): s
   return elapsedMs < bestElapsedMs ? `Meilleur passage, ${gap}` : `${gap} sur le meilleur passage`;
 }
 
+const intentLabels: Readonly<Record<WorkoutIntent, string>> = {
+  warmup: "Échauffement",
+  work: "Travail",
+  recovery: "Récupération",
+  rest: "Repos",
+  cooldown: "Retour au calme",
+};
+
+function durationLabel(duration: WorkoutDuration): string {
+  switch (duration.kind) {
+    case "time":
+      return formatLongClock(duration.ms / 1000);
+    case "distance":
+      return duration.mm < 1_000_000 ? `${formatNumber(duration.mm / 1000, 0)} m` : `${formatNumber(duration.mm / 1_000_000, 2)} km`;
+    case "open":
+      return "Jusqu'à l'étape suivante";
+    default: {
+      const unreachable: never = duration;
+      throw new Error(`Unhandled workout duration ${JSON.stringify(unreachable)}`);
+    }
+  }
+}
+
+function workoutTargetSpan(target: Exclude<WorkoutTarget, { readonly kind: "none" }>): string {
+  switch (target.kind) {
+    case "pace":
+    case "speed":
+      return paceSpan(target);
+    case "heart_rate_zone":
+      return `Z${target.zone}`;
+    case "heart_rate":
+      return `${target.minBpm} – ${target.maxBpm} bpm`;
+    default: {
+      const unreachable: never = target;
+      throw new Error(`Unhandled workout target ${JSON.stringify(unreachable)}`);
+    }
+  }
+}
+
+function stepNotice(step: WorkoutStepRun | null): AlertNotice {
+  if (step === null) return { title: "Séance terminée", detail: "Toutes les étapes sont faites", tone: "mark" };
+  const parts = [
+    ...(step.repetition === null ? [] : [`Répétition ${step.repetition.number}/${step.repetition.count}`]),
+    durationLabel(step.duration),
+    ...(step.target.kind === "none" ? [] : [workoutTargetSpan(step.target)]),
+  ];
+  return { title: step.label ?? intentLabels[step.intent], detail: parts.join(" · "), tone: "mark" };
+}
+
+function workoutTargetNotice(target: WorkoutTarget, status: RangeStatus["status"]): AlertNotice {
+  if (target.kind === "none") throw new Error("A step without a target raised a target alert");
+  const title = target.kind === "pace" || target.kind === "speed" ? paceTitle(target, status) : heartRateTitle(status);
+  return { title, detail: `Cible ${workoutTargetSpan(target)}`, tone: status === "back" ? "mark" : "warn" };
+}
+
 function goalDetail(goal: AlertGoal): string {
   return `Objectif ${targetLabel(goal)} atteint`;
 }
@@ -170,6 +227,10 @@ export function alertNotice(event: RecordingAlertEvent, profile: Pick<ResolvedPr
       return { title: `Segment ${event.name}`, detail: event.bestElapsedMs === null ? "Premier passage, chrono lancé" : `Meilleur passage ${formatLongClock(event.bestElapsedMs / 1000)}`, tone: "mark" };
     case "segment_finished":
       return { title: `${event.name} · ${formatLongClock(event.elapsedMs / 1000)}`, detail: segmentFinishDetail(event.elapsedMs, event.bestElapsedMs), tone: "mark" };
+    case "workout_step":
+      return stepNotice(event.step);
+    case "workout_target":
+      return workoutTargetNotice(event.step.target, event.status);
     case "gps":
       return event.change === "lost"
         ? { title: "Signal GPS perdu", detail: "La distance reprend au retour du signal", tone: "warn" }

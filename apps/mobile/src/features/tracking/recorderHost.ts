@@ -22,16 +22,19 @@ import {
   readJournal,
   readSettings,
   recorderClock,
+  recordingLapSource,
   recordingSettingsOf,
   recordingStartMutations,
   signalLevelOf,
   storeDerivation,
   transition,
+  WorkoutRunner,
   zoneProposalFor,
 } from "@obnixe/core";
 import type {
   ActivityPain,
   AlertGoal,
+  AutoLap,
   BatteryAlertLevel,
   ElevationPoint,
   Fix,
@@ -54,10 +57,11 @@ import type {
   Sample,
   Track,
   TrackerMark,
+  WorkoutView,
   ZoneProposal,
 } from "@obnixe/core";
 import { programSlot, session } from "@obnixe/schema";
-import type { EpochMs, Id, RecordingSettings, ZoneKey } from "@obnixe/schema";
+import type { EpochMs, Id, RecordingSettings, WorkoutPlan, ZoneKey } from "@obnixe/schema";
 import { db, environment } from "@/data/database";
 import { LiveTrack } from "@/features/maps/liveTrack";
 import type { LiveMapFeed } from "@/features/maps/liveTrack";
@@ -142,6 +146,8 @@ export interface RecordingView {
   readonly laps: readonly LiveLap[];
   /** `UX-002`: altitude along the counted distance. */
   readonly elevation: readonly ElevationPoint[];
+  /** `WKT-004`: the course of the guided workout, null for a free recording. */
+  readonly workout: WorkoutView | null;
   readonly alert: LiveAlert | null;
   /** `INT-020`: the pains signalled so far, saved with the activity. */
   readonly pains: readonly ActivityPain[];
@@ -187,11 +193,13 @@ interface Active {
   readonly profile: ResolvedProfile;
   readonly settings: RecordingSettings;
   readonly heartRate: readonly HeartRateZoneBounds[] | null;
+  readonly workout: WorkoutPlan | null;
   readonly live: LiveTracker;
   readonly map: LiveTrack;
   readonly monitor: AlertMonitor;
   /** `SEG-004`: the known segments of the sport, followed on the live track. */
   readonly segments: LiveSegmentWatch;
+  readonly runner: WorkoutRunner | null;
   readonly replay: TrackerReplay | null;
   readonly pains: ActivityPain[];
   alert: LiveAlert | null;
@@ -235,6 +243,10 @@ const commitSummaries: Readonly<Record<Exclude<RecorderCommit, "save" | "discard
 
 function isActivePhase(state: RecorderState): boolean {
   return state.phase === "recording" || state.phase === "auto_paused" || state.phase === "paused";
+}
+
+function autoLapOf(active: Pick<Active, "settings" | "workout">): AutoLap {
+  return active.workout === null ? active.settings.autoLap : null;
 }
 
 function codeOf(error: unknown): string | null {
@@ -358,7 +370,7 @@ export class RecorderHost {
       const settings: RecordingSettings = { ...plan.settings, autoPause: start.autoPause };
       this.preparing = null;
       const active = this.activate(
-        { sessionId: plan.sessionId, recordingId: plan.recordingId, profile: plan.profile, settings, replay: start.replay, power: start.power, startedAt: environment.now() },
+        { sessionId: plan.sessionId, recordingId: plan.recordingId, profile: plan.profile, settings, workout: start.request.workout, replay: start.replay, power: start.power, startedAt: environment.now() },
         goalOf(start.request.slot?.slotId ?? null),
       );
       active.plan = { ...plan, settings };
@@ -501,7 +513,7 @@ export class RecorderHost {
     const profile = profileOfSession(open.session);
     const settings: RecordingSettings = { ...recordingSettingsOf(db(), profile), autoPause: open.recording.autoPause };
     const active = this.activate(
-      { sessionId: open.session.id, recordingId: open.recording.id, profile, settings, replay: null, power: "normal", startedAt: open.session.startedAt },
+      { sessionId: open.session.id, recordingId: open.recording.id, profile, settings, workout: open.recording.workout, replay: null, power: "normal", startedAt: open.session.startedAt },
       goalOf(open.session.slotId),
     );
     active.started = true;
@@ -557,16 +569,21 @@ export class RecorderHost {
     }
   }
 
-  private activate(fields: Pick<Active, "sessionId" | "recordingId" | "profile" | "settings" | "replay" | "power" | "startedAt">, goal: AlertGoal | null): Active {
+  /** A guided workout replaces the automatic laps and the pace and heart-rate spans with its steps and their targets. */
+  private activate(fields: Pick<Active, "sessionId" | "recordingId" | "profile" | "settings" | "workout" | "replay" | "power" | "startedAt">, goal: AlertGoal | null): Active {
     const physiology = readSettings(db());
     const maximum = maxHeartRateOf(physiology, fields.startedAt);
     const heartRate = maximum === null ? null : heartRateZones(maximum);
+    const { workout } = fields;
+    const autoLap = autoLapOf(fields);
+    const alerts = workout === null ? fields.settings.alerts : { ...fields.settings.alerts, paceRange: null, heartRateRange: null };
     const active: Active = {
       ...fields,
       heartRate,
-      live: new LiveTracker(fields.profile, fields.settings.autoLap),
+      live: new LiveTracker(fields.profile, autoLap),
       map: new LiveTrack(),
-      monitor: new AlertMonitor({ splitMeters: fields.settings.autoLap === null ? fields.profile.splitMeters : null, settings: fields.settings.alerts, heartRateZones: heartRate, goal }),
+      monitor: new AlertMonitor({ splitMeters: autoLap === null ? fields.profile.splitMeters : null, settings: alerts, heartRateZones: heartRate, goal }),
+      runner: workout === null ? null : new WorkoutRunner(workout, { heartRateZones: heartRate }),
       segments: new LiveSegmentWatch(liveSegmentTargets(db(), fields.profile.sport)),
       pains: [],
       alert: null,
@@ -629,6 +646,7 @@ export class RecorderHost {
         this.options.feedback.haptic();
         return;
       case "alert":
+        if (effect.alert === "lap" && active.runner !== null) return;
         this.signal(active, active.monitor.recorder(effect.alert, effect.alert === "lap" ? (active.live.laps.at(-1) ?? null) : null));
         return;
       case "refresh_notification":
@@ -658,6 +676,7 @@ export class RecorderHost {
       power: active.power,
       sensors: { barometer: true, pedometer: active.profile.cadence === "steps", heartRateDevice: active.settings.heartRateDevice?.id ?? null },
       batchIntervalMs: 1000,
+      backgroundBatchIntervalMs: active.workout === null ? 5000 : 1000,
       notification: notificationOf(active.profile, active.state, active.live.snapshot(active.lastT), active.startedAt, null),
       replay: create ? active.replay : null,
     });
@@ -728,7 +747,7 @@ export class RecorderHost {
 
   private async summarize(active: Active, endT: number): Promise<void> {
     const { track } = journalTrackOf(await readJournalFile(active.sessionId), active.startedAt);
-    const processed = processTrack(track, active.profile, { laps: { kind: "recorded", autoLap: active.settings.autoLap }, trim: { startMs: 0, endMs: null } });
+    const processed = processTrack(track, active.profile, { laps: recordingLapSource(track, active.profile, autoLapOf(active), active.workout), trim: { startMs: 0, endMs: null } });
     active.summary = { endT, track, processed };
     this.publish(true);
     await this.dispatch({ type: "summarized", endT, brief: { movingMs: processed.summary.movingMs, distanceMm: processed.summary.distanceMm } }, "live", true);
@@ -898,11 +917,19 @@ export class RecorderHost {
         }
       }
     }
+    if (sample.type === "fix" && active.runner !== null) {
+      const events = active.runner.push(active.live.progress(sample.t));
+      if (mode === "live") this.signal(active, events);
+    }
   }
 
   private applyMark(active: Active, mark: TrackerMark, mode: Mode): void {
     active.lastT = Math.max(active.lastT, mark.t);
     active.live.mark(mark);
+    if (active.runner !== null) {
+      const events = active.runner.mark(mark);
+      if (mode === "live") this.signal(active, events);
+    }
     const report = this.options.feedback.report;
     switch (mark.kind) {
       case "pause":
@@ -973,6 +1000,7 @@ export class RecorderHost {
     if (active === null) return;
     this.ticks += 1;
     void this.dispatch({ type: "tick", t: this.trackTime(active) }, "live").catch(this.options.feedback.report);
+    if (active.runner !== null && isActivePhase(active.state)) this.signal(active, active.runner.advance(this.trackTime(active)));
     this.observe(active);
     if (this.ticks % (notificationIntervalMs / publishIntervalMs) === 0) this.refreshNotification(active);
     this.publish(false);
@@ -1018,6 +1046,7 @@ export class RecorderHost {
         live: zone === null ? snapshot : { ...snapshot, metrics: { ...snapshot.metrics, heart_rate_zone: zone } },
         laps: active.live.laps,
         elevation: active.live.elevationProfile,
+        workout: active.runner?.view(t) ?? null,
         alert: active.alert,
         pains: [...active.pains],
         issues: [...active.issues],

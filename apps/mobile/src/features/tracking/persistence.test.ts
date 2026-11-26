@@ -83,7 +83,7 @@ function journalOf(sessionId: Id, startedAt: EpochMs, seconds: number): Uint8Arr
 }
 
 async function recorded(seconds: number, saved: boolean): Promise<Recorded> {
-  const plan = planRecordingStart(db(), environment, { sport: "run", values: {}, gearId: null, slot: null, timeZone: "Europe/Paris", routeId: null });
+  const plan = planRecordingStart(db(), environment, { sport: "run", values: {}, gearId: null, slot: null, timeZone: "Europe/Paris", routeId: null, workout: null });
   const startedAt = (environment.now() - (seconds + 60) * 1000) as EpochMs;
   const journal = journalOf(plan.sessionId, startedAt, seconds);
   storedFiles.set(journalUri(plan.sessionId), journal);

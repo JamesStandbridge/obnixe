@@ -399,6 +399,8 @@ export interface LapBounds {
   readonly trigger: LapTrigger;
   readonly startOffsetMs: number;
   readonly endOffsetMs: number;
+  /** Rank of the unfolded step of a guided workout, exactly for the `workout` trigger (`WKT-007`). */
+  readonly workoutStep: number | null;
 }
 
 export interface LapSummary extends StretchSummary {
@@ -446,7 +448,7 @@ export function recordedLapBounds(series: TrackSeries, marks: readonly TrackerMa
   for (const boundary of [...boundaries, { t: window.endMs, trigger: lastTrigger }]) {
     const endMs = Math.min(Math.round(boundary.t), window.endMs);
     if (endMs <= startMs) continue;
-    bounds.push({ trigger: boundary.trigger, startOffsetMs: startMs - window.startMs, endOffsetMs: endMs - window.startMs });
+    bounds.push({ trigger: boundary.trigger, startOffsetMs: startMs - window.startMs, endOffsetMs: endMs - window.startMs, workoutStep: null });
     startMs = endMs;
   }
   return bounds;
@@ -460,7 +462,7 @@ export function summarizeLaps(series: TrackSeries, heartRate: HeartRateColumns |
     const startOffsetMs = Math.max(lap.startOffsetMs, 0);
     const endOffsetMs = Math.min(lap.endOffsetMs, elapsedMs);
     if (endOffsetMs <= startOffsetMs) continue;
-    const clipped: LapBounds = { trigger: lap.trigger, startOffsetMs, endOffsetMs };
+    const clipped: LapBounds = { trigger: lap.trigger, startOffsetMs, endOffsetMs, workoutStep: lap.workoutStep };
     laps.push({ bounds: clipped, ...summarizeStretch(series, heartRate, hasElevation, window.startMs + startOffsetMs, window.startMs + endOffsetMs) });
   }
   return laps;

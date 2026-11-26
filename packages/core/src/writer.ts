@@ -9,6 +9,8 @@ import {
   journaled,
   journaledTables,
   lap,
+  programSlot,
+  programVariant,
   recording,
   rowSchemas,
   schema,
@@ -17,8 +19,10 @@ import {
   sessionValuesSchema,
   sports,
   targetValuesSchema,
+  workoutFitsMeasure,
+  workoutStepCount,
 } from "@obnixe/schema";
-import type { Author, ChangeOperation, FieldValues, Id, JournaledTable, RowImage, SportKey } from "@obnixe/schema";
+import type { Author, ChangeOperation, FieldValues, Id, JournaledTable, RowImage, SportKey, WorkoutPlan } from "@obnixe/schema";
 import type { Environment, ObnixeDatabase } from "./database.ts";
 import { keyColumnsOf, keyValues, rowKey } from "./keys.ts";
 import { resolveProfile } from "./tracking/profile.ts";
@@ -81,6 +85,20 @@ export class UnrecordableSportError extends Error {
 export class LapOutsideRecordingError extends Error {
   constructor(readonly sessionId: Id, readonly endOffsetMs: number, readonly elapsedMs: number | null) {
     super(elapsedMs === null ? `Session ${sessionId} has no recording for its laps` : `Lap of session ${sessionId} ends at ${endOffsetMs} ms, after the recording (${elapsedMs} ms)`);
+  }
+}
+
+/** `WKT-002`: a guided workout needs a sport with a recording profile, its pace or speed targets the measure of that profile. */
+export class IncompatibleWorkoutError extends Error {
+  constructor(readonly variantId: Id, readonly sport: SportKey) {
+    super(`The workout of variant ${variantId} does not fit ${sport}`);
+  }
+}
+
+/** `WKT-007`: a `workout` lap names a step of its recording's workout. */
+export class LapOutsideWorkoutError extends Error {
+  constructor(readonly sessionId: Id, readonly step: number, readonly stepCount: number | null) {
+    super(stepCount === null ? `Session ${sessionId} has workout laps but no workout` : `Lap of session ${sessionId} names step ${step} of a ${stepCount}-step workout`);
   }
 }
 
@@ -177,9 +195,22 @@ function validateSportValues(db: ObnixeDatabase, table: JournaledTable, row: Row
       itemValuesSchema(sports[parent.sport], parent.values).parse(row.values);
       return;
     }
-    case "program_slot":
-      targetValuesSchema(sports[row.sport as SportKey]).parse(row.targetValues as FieldValues);
+    case "program_slot": {
+      const targetValues = targetValuesSchema(sports[row.sport as SportKey]).parse(row.targetValues as FieldValues);
+      for (const variant of db.select({ id: programVariant.id, workout: programVariant.workout }).from(programVariant).where(eq(programVariant.slotId, row.id as Id)).all()) {
+        if (variant.workout !== null) validateVariantWorkout(variant.id, variant.workout, row.sport as SportKey, targetValues);
+      }
       return;
+    }
+    case "program_variant": {
+      const workout = (row.workout ?? null) as WorkoutPlan | null;
+      if (workout === null) return;
+      const slotId = row.slotId as Id;
+      const slot = db.select({ sport: programSlot.sport, targetValues: programSlot.targetValues }).from(programSlot).where(eq(programSlot.id, slotId)).get();
+      if (slot === undefined) throw new RowNotFoundError("program_slot", slotId);
+      validateVariantWorkout(row.id as Id, workout, slot.sport, slot.targetValues);
+      return;
+    }
     case "recording": {
       const sessionId = row.sessionId as Id;
       const parent = db.select({ sport: session.sport, values: session.values }).from(session).where(eq(session.id, sessionId)).get();
@@ -187,6 +218,8 @@ function validateSportValues(db: ObnixeDatabase, table: JournaledTable, row: Row
       if (row.source === "live" && resolveProfile(parent.sport, parent.values) === null) throw new UnrecordableSportError(sessionId, parent.sport);
       const lastLapEnd = db.select({ end: max(lap.endOffsetMs) }).from(lap).where(eq(lap.sessionId, sessionId)).get()?.end ?? null;
       if (lastLapEnd !== null && lastLapEnd > (row.elapsedMs as number)) throw new LapOutsideRecordingError(sessionId, lastLapEnd, row.elapsedMs as number);
+      const lastStep = db.select({ step: max(lap.workoutStep) }).from(lap).where(eq(lap.sessionId, sessionId)).get()?.step ?? null;
+      if (lastStep !== null) validateLapStep(sessionId, lastStep, (row.workout ?? null) as WorkoutPlan | null);
       return;
     }
     case "lap": {
@@ -194,6 +227,8 @@ function validateSportValues(db: ObnixeDatabase, table: JournaledTable, row: Row
       const elapsedMs = db.select({ elapsedMs: recording.elapsedMs }).from(recording).where(eq(recording.sessionId, sessionId)).get()?.elapsedMs ?? null;
       const endOffsetMs = row.endOffsetMs as number;
       if (elapsedMs === null || endOffsetMs > elapsedMs) throw new LapOutsideRecordingError(sessionId, endOffsetMs, elapsedMs);
+      const step = (row.workoutStep ?? null) as number | null;
+      if (step !== null) validateLapStep(sessionId, step, db.select({ workout: recording.workout }).from(recording).where(eq(recording.sessionId, sessionId)).get()?.workout ?? null);
       return;
     }
     case "sport_preference":
@@ -203,7 +238,6 @@ function validateSportValues(db: ObnixeDatabase, table: JournaledTable, row: Row
     case "measurement_kind":
     case "program":
     case "program_version":
-    case "program_variant":
     case "program_item":
     case "rotation_skip":
     case "strength_entry":
@@ -223,6 +257,16 @@ function validateSportValues(db: ObnixeDatabase, table: JournaledTable, row: Row
       throw new Error(`Unhandled table ${String(unreachable)}`);
     }
   }
+}
+
+function validateVariantWorkout(variantId: Id, workout: WorkoutPlan, sport: SportKey, targetValues: FieldValues): void {
+  const profile = resolveProfile(sport, targetValues);
+  if (profile === null || !workoutFitsMeasure(workout, profile.primary)) throw new IncompatibleWorkoutError(variantId, sport);
+}
+
+function validateLapStep(sessionId: Id, step: number, workout: WorkoutPlan | null): void {
+  const stepCount = workout === null ? null : workoutStepCount(workout);
+  if (stepCount === null || step >= stepCount) throw new LapOutsideWorkoutError(sessionId, step, stepCount);
 }
 
 function withManaged(columns: Record<string, SQLiteColumn>, row: RowImage, changesetId: Id, now: number, inserting: boolean): RowImage {

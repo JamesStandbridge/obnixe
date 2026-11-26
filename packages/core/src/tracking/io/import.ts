@@ -103,7 +103,7 @@ export function fileDevice(activity: ImportedActivity): string {
 
 function fileLaps(activity: ImportedActivity, elapsed: TimeSpan): readonly LapBounds[] {
   const spans = activity.laps.length > 0 ? activity.laps : [elapsed];
-  return spans.map((span): LapBounds => ({ trigger: "import", startOffsetMs: span.startMs, endOffsetMs: Math.min(span.endMs, elapsed.endMs) })).filter((lap) => lap.endOffsetMs > lap.startOffsetMs);
+  return spans.map((span): LapBounds => ({ trigger: "import", startOffsetMs: span.startMs, endOffsetMs: Math.min(span.endMs, elapsed.endMs), workoutStep: null })).filter((lap) => lap.endOffsetMs > lap.startOffsetMs);
 }
 
 const reading = (bpm: number | null): number | null => (bpm !== null && isHeartRateReading(bpm) ? bpm : null);

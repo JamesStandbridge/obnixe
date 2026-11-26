@@ -4,6 +4,7 @@ import type { SportKey } from "../catalog/sports.ts";
 import { id, ref, sport, timestamp, tracked, trashable } from "../columns.ts";
 import { cadenceSources, elevationSources, energyMethods, importFormats, lapTriggers, recordingSources, segmentFamilies, sensorSources } from "../enums.ts";
 import type { BoundingBoxE7, RecordingWeather } from "../recording.ts";
+import type { WorkoutPlan } from "../workout.ts";
 import { session } from "./sessions.ts";
 
 export type BestEffortKey = `${SportKey}:distance:${number}` | `${SportKey}:ascent_1h`;
@@ -43,6 +44,7 @@ export const recording = sqliteTable(
     importedEnergyKcal: integer("imported_energy_kcal"),
     weather: text("weather", { mode: "json" }).$type<RecordingWeather>(),
     routeId: ref("route_id").references(() => route.id, { onDelete: "set null" }),
+    workout: text("workout", { mode: "json" }).$type<WorkoutPlan>(),
     goodFixPermille: integer("good_fix_permille").notNull(),
     bbox: text("bbox", { mode: "json" }).$type<BoundingBoxE7>(),
     previewPolyline: text("preview_polyline"),
@@ -74,8 +76,14 @@ export const lap = sqliteTable(
     trigger: text("trigger", { enum: lapTriggers }).notNull(),
     startOffsetMs: integer("start_offset_ms").notNull(),
     endOffsetMs: integer("end_offset_ms").notNull(),
+    /** Rank of the step in the unfolded `recording.workout`, for the laps of a guided workout (`WKT-007`). */
+    workoutStep: integer("workout_step"),
   },
-  (t) => [uniqueIndex("lap_position").on(t.sessionId, t.position), check("lap_bounds", sql`${t.startOffsetMs} >= 0 AND ${t.endOffsetMs} > ${t.startOffsetMs}`)],
+  (t) => [
+    uniqueIndex("lap_position").on(t.sessionId, t.position),
+    check("lap_bounds", sql`${t.startOffsetMs} >= 0 AND ${t.endOffsetMs} > ${t.startOffsetMs}`),
+    check("lap_workout", sql`(${t.trigger} = 'workout') = (${t.workoutStep} IS NOT NULL) AND (${t.workoutStep} IS NULL OR ${t.workoutStep} >= 0)`),
+  ],
 );
 
 export const privacyZone = sqliteTable(

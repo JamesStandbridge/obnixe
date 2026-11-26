@@ -63,7 +63,7 @@ function bestEffortJson(row: BestEffort, standing: RecordStanding): Json {
 }
 
 function lapJson(row: Lap): Json {
-  return { trigger: row.trigger, startOffsetSeconds: seconds(row.startOffsetMs), endOffsetSeconds: seconds(row.endOffsetMs) };
+  return { trigger: row.trigger, workoutStep: row.workoutStep, startOffsetSeconds: seconds(row.startOffsetMs), endOffsetSeconds: seconds(row.endOffsetMs) };
 }
 
 interface RecordingParts {
@@ -100,6 +100,7 @@ function recordingJson({ row, profile, laps, efforts, standings }: RecordingPart
     energyMethod: row.energyMethod,
     importedEnergyKcal: row.importedEnergyKcal,
     weather: orNull(row.weather, weatherJson),
+    workout: row.workout,
     laps: laps.map(lapJson),
     bestEfforts: efforts.map((effort) => bestEffortJson(effort, standings?.get(effort.effort) ?? null)),
     hasTrack: row.trackFile !== null,

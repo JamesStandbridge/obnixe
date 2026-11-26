@@ -71,7 +71,7 @@ describe("processTrack (GPS-001, GPS-002)", () => {
     expect(trimmed.summary.elapsedMs).toBe(1_200_000);
     expect(trimmed.summary.distanceMm / 1000).toBeGreaterThan(3950);
     expect(trimmed.summary.distanceMm / 1000).toBeLessThan(4050);
-    expect(trimmed.laps.map((lap) => lap.bounds)).toEqual([{ trigger: "manual", startOffsetMs: 0, endOffsetMs: 1_200_000 }]);
+    expect(trimmed.laps.map((lap) => lap.bounds)).toEqual([{ trigger: "manual", startOffsetMs: 0, endOffsetMs: 1_200_000, workoutStep: null }]);
     for (const effort of trimmed.bestEfforts) expect(effort.startOffsetMs + effort.elapsedMs).toBeLessThanOrEqual(1_200_000);
   });
 

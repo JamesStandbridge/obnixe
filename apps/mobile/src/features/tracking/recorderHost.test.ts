@@ -2,8 +2,8 @@ import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { commit, defaultRecordingSettings, encodeJournalBatch, encodeJournalHeader, encodePolyline, readJournal, recordingSettingsMutation, revert } from "@obnixe/core";
 import type { Fix, JournalRecord, Mutation, Sample, TrackerMarkKind } from "@obnixe/core";
-import { bestEffort, painReport, recording, session, settings } from "@obnixe/schema";
-import type { EpochMs, Id, RecordingSettings } from "@obnixe/schema";
+import { bestEffort, lap, painReport, recording, session, settings } from "@obnixe/schema";
+import type { EpochMs, Id, RecordingSettings, WorkoutPlan, WorkoutStep } from "@obnixe/schema";
 import { RecorderHost } from "@/features/tracking/recorderHost";
 import type { RecorderFeedback, RecorderView, RecordingStart, RecordingView, TrackerPort } from "@/features/tracking/recorderHost";
 import { journalUri, readTrackFile } from "@/features/tracking/trackStore";
@@ -148,7 +148,7 @@ const writer = {
   },
 };
 
-const start: RecordingStart = { request: { sport: "run", values: {}, gearId: null, slot: null, timeZone: "Europe/Paris", routeId: null }, autoPause: false, power: "normal", replay: null };
+const start: RecordingStart = { request: { sport: "run", values: {}, gearId: null, slot: null, timeZone: "Europe/Paris", routeId: null, workout: null }, autoPause: false, power: "normal", replay: null };
 
 let tracker: FakeTracker;
 let feedback: RecorderFeedback & { readonly calls: string[] };
@@ -513,5 +513,73 @@ describe("launch recovery", () => {
     const saved = await host.save();
     expect(saved.ok).toBe(true);
     expect(sessionRow(sessionId)?.status).toBe("completed");
+  });
+});
+
+describe("guided workout", () => {
+  const timed = (intent: WorkoutStep["intent"], seconds: number): WorkoutStep => ({ type: "step", intent, duration: { kind: "time", ms: seconds * 1000 }, target: { kind: "none" }, label: null });
+  const workout: WorkoutPlan = {
+    version: 1,
+    nodes: [
+      timed("warmup", 30),
+      { type: "repeat", count: 2, steps: [{ type: "step", intent: "work", duration: { kind: "distance", mm: 150_000 }, target: { kind: "none" }, label: null }, timed("recovery", 20)] },
+      { type: "step", intent: "cooldown", duration: { kind: "open" }, target: { kind: "none" }, label: null },
+    ],
+  };
+  const guided: RecordingStart = { ...start, request: { ...start.request, workout } };
+
+  async function startedGuided(host: RecorderHost): Promise<Id> {
+    const outcome = await host.start(guided);
+    if (!outcome.ok) throw new Error(`Start failed: ${outcome.failure.kind}`);
+    await settle();
+    return outcome.value;
+  }
+
+  const stepAlerts = (): number => feedback.calls.filter((call) => call === "alert:workout_step").length;
+
+  it("batches every second with the screen off, announces each step and saves one lap per step (WKT-006, WKT-007, WKT-009)", async () => {
+    const host = newHost();
+    const sessionId = await startedGuided(host);
+    expect(tracker.requests.at(-1)).toMatchObject({ batchIntervalMs: 1000, backgroundBatchIntervalMs: 1000 });
+    expect(recordingRow(sessionId)?.workout).toEqual(workout);
+    expect(recordingOf(host).workout).toMatchObject({ started: true, current: { index: 0, intent: "warmup" }, next: { index: 1 } });
+    let meters = await run(200, 0);
+    expect(stepAlerts()).toBe(6);
+    expect(recordingOf(host).workout).toMatchObject({ current: { index: 5, intent: "cooldown" }, remaining: { kind: "open" } });
+    expect(recordingOf(host).alert?.notice).toMatchObject({ title: "Retour au calme", detail: "Jusqu'à l'étape suivante" });
+    expect(host.lap().ok).toBe(true);
+    await settle();
+    expect(stepAlerts()).toBe(7);
+    expect(recordingOf(host).alert?.notice.title).toBe("Séance terminée");
+    expect(feedback.calls).not.toContain("alert:lap");
+    meters = await run(10, meters);
+    await host.stop();
+    await settle();
+    const laps = recordingOf(host).summary?.processed.laps.map((summary) => ({ trigger: summary.bounds.trigger, workoutStep: summary.bounds.workoutStep }));
+    expect(laps).toEqual([...[0, 1, 2, 3, 4, 5].map((workoutStep) => ({ trigger: "workout", workoutStep })), { trigger: "manual", workoutStep: null }]);
+    const saved = await host.save();
+    expect(saved.ok).toBe(true);
+    expect(db().select({ workoutStep: lap.workoutStep }).from(lap).where(eq(lap.sessionId, sessionId)).all().map((row) => row.workoutStep)).toEqual([0, 1, 2, 3, 4, 5, null]);
+    expect(meters).toBeGreaterThan(600);
+  });
+
+  it("batches every 5 s with the screen off without a workout (PRF-051)", async () => {
+    await started(newHost());
+    expect(tracker.requests.at(-1)).toMatchObject({ batchIntervalMs: 1000, backgroundBatchIntervalMs: 5000 });
+    expect(recordingOf(hosts[0] as RecorderHost).workout).toBeNull();
+  });
+
+  it("finds its step again from the journal at launch", async () => {
+    const first = newHost();
+    await startedGuided(first);
+    const meters = await run(40, 0);
+    first.dispose();
+    const host = newHost();
+    await host.recover();
+    expect(recordingOf(host).workout).toMatchObject({ current: { index: 1, intent: "work" } });
+    const before = feedback.calls.length;
+    await run(65, meters);
+    expect(feedback.calls.slice(before).filter((call) => call === "alert:workout_step")).toHaveLength(2);
+    expect(recordingOf(host).workout?.current?.index).toBe(3);
   });
 });
