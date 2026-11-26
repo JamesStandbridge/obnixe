@@ -1,0 +1,1 @@
+ALTER TABLE `strength_entry` ADD `planned_sets` integer;

@@ -13,7 +13,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "db:generate": "rm -rf migrations/meta migrations/*.sql && drizzle-kit generate --name init",
+    "db:generate": "drizzle-kit generate",
     "test": "vitest run",
     "catalog:snapshot": "node --experimental-strip-types scripts/update-catalog-snapshot.ts"
   },

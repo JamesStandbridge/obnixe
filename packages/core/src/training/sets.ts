@@ -125,6 +125,27 @@ export function stopEntryMutations(data: WorkoutData, entryId: Id, interrupted: 
   return mutations;
 }
 
+export const maxPlannedSets = 20;
+
+export interface PlannedSetsRange {
+  readonly min: number;
+  readonly max: number;
+}
+
+export function plannedSetsRange(target: WorkoutExercise): PlannedSetsRange {
+  return { min: Math.max(1, target.sets.length), max: maxPlannedSets };
+}
+
+/** Reaching the sets already done finishes the exercise, as logging its last planned set would. */
+export function plannedSetsMutations(data: WorkoutData, entryId: Id, plannedSets: number): Mutation[] {
+  const target = findExercise(data, entryId);
+  if (target.entry.status !== "pending") throw new InvalidSetError("only a pending exercise can change its planned sets");
+  const range = plannedSetsRange(target);
+  if (!Number.isInteger(plannedSets) || plannedSets < range.min || plannedSets > range.max) throw new InvalidSetError(`planned sets must be between ${range.min} and ${range.max}`);
+  if (plannedSets === target.target.sets) return [];
+  return [{ kind: "update", table: "strength_entry", key: target.entry.id, patch: plannedSets <= target.sets.length ? { plannedSets, status: "done" } : { plannedSets } }];
+}
+
 export function skipEntryMutations(data: WorkoutData, entryId: Id): Mutation[] {
   const target = findExercise(data, entryId);
   return [{ kind: "update", table: "strength_entry", key: target.entry.id, patch: { status: target.sets.length > 0 ? "done" : "skipped" } }];

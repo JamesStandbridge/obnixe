@@ -9,7 +9,7 @@ import { PainMark } from "@/ui/Controls";
 import { Icon } from "@/ui/icons/Icon";
 import { Text } from "@/ui/Text";
 import { useTheme } from "@/ui/theme";
-import { fonts, radii } from "@/ui/tokens";
+import { fonts, layout, radii } from "@/ui/tokens";
 
 interface StepsProps {
   readonly exercises: readonly WorkoutExercise[];
@@ -207,6 +207,55 @@ export function Track({ exercise, previous, currentSetIndex, editingSetId, pains
   );
 }
 
+interface SetCountProps {
+  readonly planned: number;
+  readonly done: number;
+  readonly min: number;
+  readonly max: number;
+  readonly onChange: (planned: number) => void;
+}
+
+export function SetCount({ planned, done, min, max, onChange }: SetCountProps) {
+  return (
+    <View style={styles.setCount}>
+      <Text style={styles.setCountLabel} tone="secondary">
+        Séries
+      </Text>
+      <View style={styles.setCountControl} accessibilityLabel={`${planned} séries prévues, ${done} faites`}>
+        <SetCountButton icon="minus" label={planned - 1 <= done && done > 0 ? `Terminer à ${done} séries` : "Une série de moins"} disabled={planned <= min} onPress={() => onChange(planned - 1)} />
+        <Text style={styles.setCountValue} accessibilityElementsHidden importantForAccessibility="no">
+          {planned}
+        </Text>
+        <SetCountButton icon="plus" label="Une série de plus" disabled={planned >= max} onPress={() => onChange(planned + 1)} />
+      </View>
+    </View>
+  );
+}
+
+interface SetCountButtonProps {
+  readonly icon: "minus" | "plus";
+  readonly label: string;
+  readonly disabled: boolean;
+  readonly onPress: () => void;
+}
+
+function SetCountButton({ icon, label, disabled, onPress }: SetCountButtonProps) {
+  const { colors } = useTheme();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled }}
+      disabled={disabled}
+      onPress={onPress}
+      hitSlop={6}
+      style={({ pressed }) => [styles.setCountButton, { backgroundColor: pressed ? colors.surfacePress : colors.surface, borderColor: colors.controlBorder }, disabled && styles.setCountDisabled]}
+    >
+      <Icon name={icon} size={18} color={colors.text} />
+    </Pressable>
+  );
+}
+
 interface UpNextProps {
   readonly exercises: readonly WorkoutExercise[];
   readonly fromIndex: number;
@@ -279,6 +328,12 @@ const styles = StyleSheet.create({
   setWord: { fontFamily: fonts.text700, fontSize: 17, lineHeight: 21 },
   setSmall: { fontFamily: fonts.text400, fontSize: 13, lineHeight: 13 },
   currentBar: { position: "absolute", left: 0, right: 0, bottom: 0, height: 3 },
+  setCount: { marginTop: 14, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  setCountLabel: { fontFamily: fonts.text700, fontSize: 15, lineHeight: 19 },
+  setCountControl: { flexDirection: "row", alignItems: "center", gap: 4 },
+  setCountButton: { width: 44, height: 38, borderRadius: radii.control, borderWidth: layout.borderControl, alignItems: "center", justifyContent: "center" },
+  setCountValue: { minWidth: 40, textAlign: "center", fontFamily: fonts.figure700, fontSize: 22, lineHeight: 24 },
+  setCountDisabled: { opacity: 0.4 },
   upnext: { marginTop: 32 },
   upnextHead: { paddingBottom: 6, borderBottomWidth: 1 },
   upnextRow: { flexDirection: "row", alignItems: "baseline", gap: 8, paddingVertical: 12, minHeight: 48 },

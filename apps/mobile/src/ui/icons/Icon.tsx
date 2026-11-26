@@ -24,6 +24,7 @@ const glyphs = {
   check: { viewBox: 20, render: (color) => <Path d="m4 10.5 4 4 8-9" {...stroke(color, 2.2)} /> },
   close: { viewBox: 22, render: (color) => <Path d="m6 6 10 10M16 6 6 16" {...stroke(color, 1.8)} /> },
   plus: { viewBox: 22, render: (color) => <Path d="M11 5v12M5 11h12" {...stroke(color, 1.8)} /> },
+  minus: { viewBox: 22, render: (color) => <Path d="M5 11h12" {...stroke(color, 1.8)} /> },
   reorder: { viewBox: 18, render: (color) => <Path d="M3.5 6h11M3.5 9h11M3.5 12h11" {...stroke(color, 1.7)} /> },
   backspace: {
     viewBox: 24,

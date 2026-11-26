@@ -54,6 +54,7 @@ export const strengthEntry = sqliteTable(
     programItemId: ref("program_item_id").references(() => programItem.id),
     status: text("status", { enum: strengthEntryStatuses }).notNull(),
     note: text("note"),
+    plannedSets: integer("planned_sets"),
   },
   (t) => [uniqueIndex("strength_entry_position").on(t.sessionId, t.position), index("strength_entry_exercise").on(t.exerciseId)],
 );

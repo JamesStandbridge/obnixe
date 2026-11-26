@@ -26,7 +26,7 @@ export const rowSchemas = {
   program_item: createInsertSchema(tables.programItem),
   rotation_skip: createInsertSchema(tables.rotationSkip).extend({ localDate }),
   session: createInsertSchema(tables.session).extend({ values: fieldValues, localDate, timeZone, title: optionalText, note: optionalText }),
-  strength_entry: createInsertSchema(tables.strengthEntry).extend({ note: optionalText }),
+  strength_entry: createInsertSchema(tables.strengthEntry).extend({ note: optionalText, plannedSets: z.int().positive().nullable().optional() }),
   strength_set: createInsertSchema(tables.strengthSet),
   session_item: createInsertSchema(tables.sessionItem).extend({ values: fieldValues }),
   weigh_in: createInsertSchema(tables.weighIn).extend(occurred),

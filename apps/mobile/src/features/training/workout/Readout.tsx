@@ -190,7 +190,7 @@ function AdjustButton({ label, accessibilityLabel, disabled, onStep }: AdjustBut
   const press = usePressScale(0.96);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const holdStartedAt = useRef(0);
-  const lastPressInAt = useRef(0);
+  const steppedOnPressIn = useRef(false);
   const stepRef = useRef(onStep);
   stepRef.current = onStep;
 
@@ -218,8 +218,9 @@ function AdjustButton({ label, accessibilityLabel, disabled, onStep }: AdjustBut
         accessibilityState={{ disabled }}
         disabled={disabled}
         onPressIn={() => {
+          stop();
           press.onPressIn();
-          lastPressInAt.current = Date.now();
+          steppedOnPressIn.current = true;
           holdStartedAt.current = Date.now();
           step();
           timer.current = setTimeout(repeat, holdDelayMs);
@@ -229,7 +230,10 @@ function AdjustButton({ label, accessibilityLabel, disabled, onStep }: AdjustBut
           stop();
         }}
         onPress={() => {
-          if (Date.now() - lastPressInAt.current < 600) return;
+          if (steppedOnPressIn.current) {
+            steppedOnPressIn.current = false;
+            return;
+          }
           step();
         }}
         style={({ pressed }) => [styles.adjustButton, { backgroundColor: pressed ? colors.surfacePress : colors.surface, borderColor: colors.controlBorder }]}

@@ -9,10 +9,21 @@ import { addExerciseMutations, bringForwardMutations, ExerciseNotFoundError, pos
 import { addExercise, apply, reload, seedProgram, startWorkout, timeZone } from "./fixtures.ts";
 import type { SeededProgram } from "./fixtures.ts";
 import { finishMutations, interruptMutations, openSessionRow, resumeMutations, SessionStateError, startFreeWorkoutMutations, startWorkoutMutations, VariantNotInSlotError } from "./lifecycle.ts";
-import { correctSetMutations, deleteSetMutations, hasPendingDuringPain, InvalidSetError, logSetMutations, skipEntryMutations, stopEntryMutations } from "./sets.ts";
+import {
+  correctSetMutations,
+  deleteSetMutations,
+  hasPendingDuringPain,
+  InvalidSetError,
+  logSetMutations,
+  maxPlannedSets,
+  plannedSetsMutations,
+  plannedSetsRange,
+  skipEntryMutations,
+  stopEntryMutations,
+} from "./sets.ts";
 import type { SetValues } from "./sets.ts";
 import { workoutProgress } from "./workout.ts";
-import type { WorkoutData } from "./workout.ts";
+import type { WorkoutData, WorkoutExercise } from "./workout.ts";
 
 let context: TestContext;
 let program: SeededProgram;
@@ -148,6 +159,34 @@ describe("logging sets", () => {
     expect(data.pains[0]?.strengthSetId).toBeNull();
     data = logSet(data, 0, kgReps(80, 8));
     expect(data.exercises[0]?.sets[0]?.position).toBe(0);
+  });
+
+  it("changes the planned sets of the current exercise", () => {
+    let data = startWorkout(context, program);
+    apply(context, plannedSetsMutations(data, entryId(data, 0), 4));
+    data = reload(context, data.session.id);
+    expect(data.exercises[0]?.target.sets).toBe(4);
+    expect(workoutProgress(data)).toMatchObject({ setsPlanned: 7 });
+    data = logSet(data, 0, kgReps(80, 8));
+    data = logSet(data, 0, kgReps(80, 8));
+    expect(data.exercises[0]?.entry.status).toBe("pending");
+    expect(plannedSetsRange(data.exercises[0] as WorkoutExercise)).toEqual({ min: 2, max: maxPlannedSets });
+    expect(plannedSetsMutations(data, entryId(data, 0), 4)).toEqual([]);
+    expect(() => plannedSetsMutations(data, entryId(data, 0), 1)).toThrow(InvalidSetError);
+    expect(() => plannedSetsMutations(data, entryId(data, 0), maxPlannedSets + 1)).toThrow(InvalidSetError);
+    data = logSet(data, 0, kgReps(80, 8));
+    expect(data.exercises[0]?.entry.status).toBe("pending");
+    data = logSet(data, 0, kgReps(80, 8));
+    expect(data.exercises[0]?.entry.status).toBe("done");
+    expect(() => plannedSetsMutations(data, entryId(data, 0), 5)).toThrow(InvalidSetError);
+  });
+
+  it("finishes the exercise when the planned sets drop to the sets already done", () => {
+    let data = logSet(startWorkout(context, program), 1, kgReps(60, 9));
+    apply(context, plannedSetsMutations(data, entryId(data, 1), 1));
+    data = reload(context, data.session.id);
+    expect(data.exercises[1]).toMatchObject({ entry: { status: "done", plannedSets: 1 }, target: { sets: 1 } });
+    expect(workoutProgress(data).currentIndex).toBe(0);
   });
 
   it("undoes a logged set through the journal", () => {

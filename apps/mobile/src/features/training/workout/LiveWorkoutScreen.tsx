@@ -23,6 +23,8 @@ import {
   massToGrams,
   normalizeCues,
   planExerciseCues,
+  plannedSetsMutations,
+  plannedSetsRange,
   postponeEntryMutations,
   previousEntry,
   previousSetAt,
@@ -70,7 +72,7 @@ import { RestBand } from "@/features/training/workout/RestBand";
 import type { Band } from "@/features/training/workout/RestBand";
 import { cancelRestAlert } from "@/features/training/workout/restAlert";
 import { useRestAlert } from "@/features/training/workout/useRestAlert";
-import { ExerciseNav, Steps, Track, UpNext } from "@/features/training/workout/WorkoutParts";
+import { ExerciseNav, SetCount, Steps, Track, UpNext } from "@/features/training/workout/WorkoutParts";
 import { ControlButton, LinkButton, PrimaryButton } from "@/ui/Button";
 import { PainMark } from "@/ui/Controls";
 import { Icon } from "@/ui/icons/Icon";
@@ -484,6 +486,17 @@ export function LiveWorkoutScreen({ live }: LiveWorkoutScreenProps) {
     commitUndoable(`Consignes · ${display.exercise.name}`, [mutation], normalizeCues(text) === null ? "Consignes effacées" : "Consignes enregistrées");
   };
 
+  const changePlannedSets = (planned: number): void => {
+    if (display === undefined) return;
+    const mutations = plannedSetsMutations(data, display.entry.id, planned);
+    if (mutations.length === 0) return;
+    const finishes = planned <= display.sets.length;
+    const message = !finishes ? `${display.exercise.name} · ${planned} séries` : pendingOthers(display.entry.id) === 0 ? "Séance terminée" : `${display.exercise.name} terminé`;
+    if (!commitUndoable(`${display.exercise.name} : ${planned} séries`, mutations, message)) return;
+    void impactAsync(ImpactFeedbackStyle.Light);
+    if (finishes) setActiveSet(null);
+  };
+
   const postpone = (): void => {
     closeSheet();
     if (display === undefined) return;
@@ -622,6 +635,9 @@ export function LiveWorkoutScreen({ live }: LiveWorkoutScreenProps) {
                 {baseLabel === null ? "" : ` · ${baseLabel}`}
               </Text>
             )}
+            {editing === null && display.entry.status === "pending" ? (
+              <SetCount planned={display.target.sets} done={display.sets.length} {...plannedSetsRange(display)} onChange={changePlannedSets} />
+            ) : null}
             <Track
               exercise={display}
               previous={live.previous.get(display.entry.id) ?? null}

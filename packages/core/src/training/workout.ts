@@ -131,11 +131,12 @@ export function loadWorkout(db: ObnixeDatabase, sessionId: Id): WorkoutData | nu
       const found = exercises.get(entry.exerciseId);
       if (found === undefined) throw new Error(`Exercise ${entry.exerciseId} is missing`);
       const item = entry.programItemId === null ? null : (items.get(entry.programItemId) ?? null);
+      const planned = item === null ? freeTarget(previousSetCount(db, row, entry.exerciseId)) : targetFor(item);
       return {
         entry,
         exercise: found,
         item,
-        target: item === null ? freeTarget(previousSetCount(db, row, entry.exerciseId)) : targetFor(item),
+        target: entry.plannedSets === null ? planned : { ...planned, sets: entry.plannedSets },
         sets: sets.filter((set) => set.entryId === entry.id),
         zones: zones.filter((zone) => zone.exerciseId === entry.exerciseId).map((zone) => zone.zone),
       };
