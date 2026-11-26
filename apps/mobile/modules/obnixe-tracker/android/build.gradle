@@ -13,9 +13,12 @@ android {
     versionName "1.0.0"
   }
   testOptions {
+    unitTests.includeAndroidResources = true
     unitTests.all {
       systemProperty "obnixe.journalFixtures", file("../../../../../packages/core/test/fixtures/journal").absolutePath
       systemProperty "obnixe.updateFixtures", System.getenv("OBNIXE_UPDATE_FIXTURES") ?: ""
+      // Robolectric runs the Android 16 framework only on Java 21.
+      javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(21) }
     }
   }
 }
@@ -26,4 +29,5 @@ dependencies {
 
   testImplementation "junit:junit:4.13.2"
   testImplementation "net.sf.kxml:kxml2:2.3.0"
+  testImplementation "org.robolectric:robolectric:4.16.1"
 }
