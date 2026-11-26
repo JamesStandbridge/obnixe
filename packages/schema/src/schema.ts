@@ -63,6 +63,7 @@ export type ZoneProposalRow = InferSelectModel<typeof tables.zoneProposal>;
 export type WeatherFetch = InferSelectModel<typeof tables.weatherFetch>;
 export type Segment = InferSelectModel<typeof tables.segment>;
 export type SegmentEffort = InferSelectModel<typeof tables.segmentEffort>;
+export type SegmentDerivation = InferSelectModel<typeof tables.segmentDerivation>;
 export type AgentConnection = InferSelectModel<typeof tables.agentConnection>;
 export type AgentCall = InferSelectModel<typeof tables.agentCall>;
 export type Changeset = InferSelectModel<typeof tables.changeset>;

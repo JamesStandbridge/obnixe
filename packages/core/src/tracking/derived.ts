@@ -1,6 +1,6 @@
-import { and, asc, count, eq, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
+import { and, asc, count, eq, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
-import { bestEffort, recording, recordingDerivation, session, zoneProposal } from "@obnixe/schema";
+import { bestEffort, recording, recordingDerivation, segmentEffort, session, zoneProposal } from "@obnixe/schema";
 import type { EpochMs, FieldValues, Id, Recording, Session, SportKey } from "@obnixe/schema";
 import type { Environment, ObnixeDatabase } from "../database.ts";
 import { readSettings } from "../settings.ts";
@@ -13,6 +13,9 @@ import { maskTrack } from "./privacy.ts";
 import { previewPolyline } from "./simplify.ts";
 import { activePrivacyMask } from "./privacyZones.ts";
 import type { PrivacyMask } from "./privacyZones.ts";
+import { segmentShapesNear } from "./segmentRows.ts";
+import { candidateShapes, segmentPasses } from "./segments.ts";
+import type { SegmentShape } from "./segments.ts";
 import type { TrackSeries } from "./stages/derive.ts";
 import { trackingAlgorithmVersion } from "./version.ts";
 import { proposeZone, zoneProposalRules } from "./zoneProposal.ts";
@@ -108,7 +111,8 @@ function endsOf(track: Track): ActivityEnds | null {
 }
 
 /**
- * Replaces the session's `best_effort` rows (`PR-001`, `PR-002`) and marks its derivation current, outside the journal.
+ * Replaces the session's `best_effort` rows (`PR-001`, `PR-002`) and its `segment_effort` rows on every segment it may pass
+ * (`SEG-002`), and marks its derivation current, outside the journal.
  * Reads the session and recording rows as they are now, so call it after the commit of the preview they show.
  */
 export function storeDerivation(db: ObnixeDatabase, sessionId: Id, track: Track, processed: ProcessedTrack, mask: PrivacyMask): void {
@@ -116,10 +120,15 @@ export function storeDerivation(db: ObnixeDatabase, sessionId: Id, track: Track,
     const current = tx.select({ session, recording }).from(recording).innerJoin(session, eq(session.id, recording.sessionId)).where(eq(recording.sessionId, sessionId)).get();
     if (current === undefined) return;
     tx.delete(bestEffort).where(eq(bestEffort.sessionId, sessionId)).run();
-    if (countsInRecords(current.recording, current.session.sport, current.session.values) && processed.bestEfforts.length > 0) {
-      tx.insert(bestEffort)
-        .values(processed.bestEfforts.map((effort) => ({ sessionId, ...effort, algorithmVersion: processed.algorithmVersion })))
-        .run();
+    tx.delete(segmentEffort).where(eq(segmentEffort.sessionId, sessionId)).run();
+    if (countsInRecords(current.recording, current.session.sport, current.session.values)) {
+      if (processed.bestEfforts.length > 0) {
+        tx.insert(bestEffort)
+          .values(processed.bestEfforts.map((effort) => ({ sessionId, ...effort, algorithmVersion: processed.algorithmVersion })))
+          .run();
+      }
+      const passes = segmentPasses(processed, segmentShapesNear(tx, current.session.sport, processed.summary.bbox));
+      if (passes.length > 0) tx.insert(segmentEffort).values(passes.map((pass) => ({ sessionId, ...pass }))).run();
     }
     const ends = endsOf(track);
     const row = {
@@ -136,6 +145,32 @@ export function storeDerivation(db: ObnixeDatabase, sessionId: Id, track: Track,
       .values({ sessionId, ...row })
       .onConflictDoUpdate({ target: recordingDerivation.sessionId, set: row })
       .run();
+  });
+}
+
+/**
+ * One session of a segment sweep (`SEG-003`): replaces its efforts on the swept segments, from the session and recording rows
+ * as they are now.
+ */
+export function storeSweptEfforts(db: ObnixeDatabase, sessionId: Id, processed: ProcessedTrack, shapes: readonly SegmentShape[]): void {
+  if (shapes.length === 0) return;
+  db.transaction((tx) => {
+    const current = tx.select({ session, recording }).from(recording).innerJoin(session, eq(session.id, recording.sessionId)).where(eq(recording.sessionId, sessionId)).get();
+    if (current === undefined) return;
+    tx.delete(segmentEffort)
+      .where(
+        and(
+          eq(segmentEffort.sessionId, sessionId),
+          inArray(
+            segmentEffort.segmentId,
+            shapes.map((shape) => shape.id),
+          ),
+        ),
+      )
+      .run();
+    if (!countsInRecords(current.recording, current.session.sport, current.session.values)) return;
+    const passes = segmentPasses(processed, candidateShapes(shapes, current.session.sport, processed.summary.bbox));
+    if (passes.length > 0) tx.insert(segmentEffort).values(passes.map((pass) => ({ sessionId, ...pass }))).run();
   });
 }
 
