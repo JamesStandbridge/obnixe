@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
+import type { FieldValues, SportKey } from "@obnixe/schema";
 import type { LiveSnapshot } from "./live.ts";
-import { cadenceReadings, cadenceStepsPerCycle, forEachSensorSpan, powerReadings, sensorAverage, sensorMaxBetween, sensorMeanOver, sensorReader } from "./sensors.ts";
-import type { SensorReadings } from "./sensors.ts";
+import { resolveProfile } from "./profile.ts";
+import { cadenceReadings, cadenceStepsPerCycle, forEachSensorSpan, powerReadings, sensorAverage, sensorMaxBetween, sensorMeanOver, sensorReader, sensorRolesOf } from "./sensors.ts";
+import type { SensorReadings, SensorRole } from "./sensors.ts";
 import { coreScenarios } from "./testing/scenarios.ts";
 import type { Scenario } from "./testing/scenarios.ts";
 import { runBatch, runLive } from "./testing/run.ts";
@@ -64,6 +66,19 @@ describe("sensor readings (SPT-008)", () => {
     expect(valuesOf([pedalOnly])).toBeNull();
     expect(Array.from(powerReadings(toSampleColumns([crank]).power).value)).toEqual([250]);
     expect([cadenceStepsPerCycle("steps"), cadenceStepsPerCycle("none")]).toEqual([2, 1]);
+  });
+
+  it("pair the sources each profile shows: no sensor for a swim, the heart rate alone on snow, water and skates (SPT-008)", () => {
+    const rolesOf = (sport: SportKey, values: FieldValues = {}): readonly SensorRole[] | undefined => {
+      const profile = resolveProfile(sport, values);
+      return profile === null ? undefined : sensorRolesOf(profile);
+    };
+    expect(rolesOf("run")).toEqual(["heart_rate", "cadence", "power"]);
+    expect(rolesOf("trail")).toEqual(["heart_rate", "cadence", "power"]);
+    expect(rolesOf("bike", { kind: "mtb" })).toEqual(["heart_rate", "cadence", "power"]);
+    expect(rolesOf("hike")).toEqual(["heart_rate", "cadence"]);
+    expect(rolesOf("swim", { water: "open_water" })).toEqual([]);
+    for (const sport of ["ski_touring", "nordic_ski", "alpine_ski", "paddle", "inline_skate"] as const) expect(rolesOf(sport)).toEqual(["heart_rate"]);
   });
 
   it("give a ride its power and crank cadence averages, live and in batch, coasting and dropout included", () => {

@@ -67,7 +67,7 @@ describe("catalog", () => {
     }
   });
 
-  it.each(recordingProfiles())("%s has a coherent recording profile", (_, profile) => {
+  it.each(recordingProfiles())("%s has a coherent recording profile", (name, profile) => {
     const { motion } = profile;
     expect(motion.startSpeedMmS).toBeGreaterThan(motion.stopSpeedMmS);
     expect(motion.stopSpeedMmS).toBeGreaterThan(0);
@@ -87,7 +87,7 @@ describe("catalog", () => {
     expect(new Set(profile.metrics).size).toBe(profile.metrics.length);
     expect(readoutSchema.safeParse(profile.readout).success).toBe(true);
     for (const metric of [profile.readout.main, ...profile.readout.secondary]) expect(profile.metrics).toContain(metric);
-    expect(profile.metrics).toContain("cadence");
+    expect(profile.metrics.includes("cadence")).toBe(profile.cadence === "steps" || name.split(":")[0] === "bike");
     expect(profile.metrics.includes("gap_now")).toBe(profile.gradeAdjustedPace);
     expect(profile.metrics.includes(profile.primary === "pace" ? "pace_now" : "speed_now")).toBe(true);
     expect([...profile.bestEffortMeters].sort((left, right) => left - right)).toEqual(profile.bestEffortMeters);

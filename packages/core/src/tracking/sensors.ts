@@ -1,4 +1,5 @@
-import type { RecordingProfile } from "@obnixe/schema";
+import type { RecordingProfile, SportKey } from "@obnixe/schema";
+import type { ResolvedProfile } from "./profile.ts";
 import { absentValue } from "./types.ts";
 import type { PowerColumns, SampleColumns } from "./types.ts";
 import type { TimeSpan } from "./zones.ts";
@@ -6,6 +7,26 @@ import type { TimeSpan } from "./zones.ts";
 /** What a paired Bluetooth source measures (`SPT-007`, `SPT-008`). */
 export const sensorRoles = ["heart_rate", "cadence", "power"] as const;
 export type SensorRole = (typeof sensorRoles)[number];
+
+/** Sports whose power a Cycling Power source measures: crank, pedal or hub meters on the bike, running pods on foot (`SPT-008`). */
+const powerSports: ReadonlySet<SportKey> = new Set<SportKey>(["bike", "run", "trail"]);
+
+/** The sources a profile pairs: the heart rate and the cadence where it shows them, the power on the `powerSports`. */
+export function sensorRolesOf(profile: Pick<ResolvedProfile, "sport" | "metrics">): readonly SensorRole[] {
+  return sensorRoles.filter((role) => {
+    switch (role) {
+      case "heart_rate":
+      case "cadence":
+        return profile.metrics.includes(role);
+      case "power":
+        return powerSports.has(profile.sport);
+      default: {
+        const unhandled: never = role;
+        throw new Error(`Unhandled sensor role ${String(unhandled)}`);
+      }
+    }
+  });
+}
 
 /** A Bluetooth reading holds until the next one, at most this long: a dropout is never filled with an invented value (`SPT-008`). */
 export const sensorHoldMs = 5000;
