@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ellipsoidDistance } from "./geo.ts";
-import { displayStepMeters, signalLevelOf, signalTimeoutMs } from "./live.ts";
+import { displayStepMeters, elevationProfilePoints, signalLevelOf, signalTimeoutMs } from "./live.ts";
 import { coreScenarios } from "./testing/scenarios.ts";
 import type { Scenario } from "./testing/scenarios.ts";
 import { processTrack } from "./batch.ts";
@@ -76,6 +76,30 @@ describe("LiveTracker", () => {
       expect(ellipsoidDistance(previous.latitude, previous.longitude, point.latitude, point.longitude)).toBeGreaterThanOrEqual(displayStepMeters);
     }
     expect(live.track.length).toBeLessThan(10_000 / displayStepMeters + 10);
+  });
+
+  it("draws the elevation profile along the counted distance, bounded in points (UX-002)", () => {
+    const trail = runLive(coreScenarios.forestCanopy(6));
+    const profile = trail.tracker.elevationProfile;
+    expect(profile.length).toBeGreaterThan(200);
+    expect(profile.length).toBeLessThanOrEqual(elevationProfilePoints);
+    for (let index = 1; index < profile.length; index += 1) expect(profile[index]?.distance).toBeGreaterThan(profile[index - 1]?.distance ?? 0);
+    expect(profile.at(-1)?.distance).toBeLessThanOrEqual(trail.final.distanceMm / 1000);
+    const altitudes = profile.map((point) => point.altitude);
+    expect(Math.max(...altitudes) - Math.min(...altitudes)).toBeGreaterThan(30);
+    const ride = runLive(coreScenarios.longRide200km(7)).tracker.elevationProfile;
+    expect(ride.length).toBeLessThanOrEqual(elevationProfilePoints);
+    expect(ride.length).toBeGreaterThan(elevationProfilePoints / 2);
+  });
+
+  it("reports speed and the held heart rate whatever the profile's metrics", () => {
+    const run = runLive(coreScenarios.hrDropout(8));
+    for (const snapshot of run.snapshots) expect(snapshot.heartRate ?? undefined).toBe(snapshot.metrics.heart_rate);
+    expect(run.snapshots.some((snapshot) => snapshot.heartRate !== null)).toBe(true);
+    const ride = runLive(coreScenarios.tunnel90s(8)).final;
+    expect(ride.metrics.pace_now).toBeUndefined();
+    expect(ride.speed).toBeCloseTo(ride.metrics.speed_now ?? 0, 6);
+    expect(ride.heartRate).toBeNull();
   });
 
   it("reports only the profile's metrics", () => {

@@ -353,7 +353,7 @@ function ResumeCard({ open, onFinish }: { readonly open: OpenSession; readonly o
     <HeroCard
       sport={open.session.sport}
       eyebrow={eyebrow}
-      title={sessionTitle({ sport: open.session.sport, title: open.session.title, slotName: open.slotName, variantName: open.variantName, values: open.session.values })}
+      title={sessionTitle({ ...open.session, slotName: open.slotName, variantName: open.variantName, recorded: open.recorded })}
       detail={detail}
       live={!interrupted}
     >
@@ -368,7 +368,7 @@ function RecordingCard({ open }: { readonly open: OpenSession }) {
     <HeroCard
       sport={open.session.sport}
       eyebrow="Sortie en cours"
-      title={sessionTitle({ sport: open.session.sport, title: open.session.title, slotName: open.slotName, variantName: open.variantName, values: open.session.values })}
+      title={sessionTitle({ ...open.session, slotName: open.slotName, variantName: open.variantName, recorded: open.recorded })}
       detail={`Depuis ${formatTimeAt(open.session.startedAt, deviceTimeZone())}`}
       live={open.session.status !== "interrupted"}
     >

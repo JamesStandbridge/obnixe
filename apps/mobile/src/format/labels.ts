@@ -1,6 +1,7 @@
+import { localTimeOf } from "@obnixe/core";
 import type { SessionSummary } from "@obnixe/core";
 import { sports, zones } from "@obnixe/schema";
-import type { FieldDefinition, FieldValue, FieldValues, SportDefinition, ZoneKey } from "@obnixe/schema";
+import type { FieldDefinition, FieldValue, FieldValues, Session, SportDefinition, ZoneKey } from "@obnixe/schema";
 import { formatInteger } from "@/format/numbers";
 
 export function plural(count: number, singular: string, pluralForm = `${singular}s`): string {
@@ -21,7 +22,21 @@ export function zoneLabel(zone: ZoneKey): string {
 
 export const freeStrengthTitle = "Musculation libre";
 
-export type SessionTitleSource = Pick<SessionSummary, "sport" | "title" | "slotName" | "variantName" | "values">;
+export interface SessionTitleSource extends Pick<Session, "sport" | "title" | "values" | "startedAt" | "timeZone"> {
+  readonly slotName: string | null;
+  readonly variantName: string | null;
+  /** Whether a track backs the session, recorded or imported. */
+  readonly recorded: boolean;
+}
+
+/** The moment of the day a recorded activity started, as its derived title says it (`REC-053`). */
+export function dayMoment(source: Pick<SessionTitleSource, "startedAt" | "timeZone">): string {
+  const hour = Math.floor(localTimeOf(source.startedAt, source.timeZone).minutes / 60);
+  if (hour >= 5 && hour < 12) return "du matin";
+  if (hour >= 12 && hour < 18) return "de l'après-midi";
+  if (hour >= 18 && hour < 22) return "du soir";
+  return "de nuit";
+}
 
 export function choiceLabel(field: FieldDefinition | undefined, value: FieldValue | undefined): string | null {
   if (field?.type !== "choice" || typeof value !== "string") return null;
@@ -44,6 +59,10 @@ function firstChoice(sport: SportDefinition, values: FieldValues): string | null
   return null;
 }
 
+export function summaryTitle(summary: SessionSummary): string {
+  return sessionTitle({ ...summary, recorded: summary.recording !== null });
+}
+
 export function sessionTitle(source: SessionTitleSource): string {
   if (source.title !== null) return source.title;
   const sport: SportDefinition = sports[source.sport];
@@ -60,7 +79,8 @@ export function sessionTitle(source: SessionTitleSource): string {
       const text = textValue(sport, source.values);
       const choice = firstChoice(sport, source.values);
       const suffix = text ?? (choice === null ? null : lowerFirst(choice));
-      return suffix === null ? (source.slotName ?? sport.label) : `${sport.label} · ${suffix}`;
+      const label = source.recorded ? `${sport.label} ${dayMoment(source)}` : sport.label;
+      return suffix === null ? (source.slotName ?? label) : `${label} · ${suffix}`;
     }
     default: {
       const unreachable: never = sport.archetype;

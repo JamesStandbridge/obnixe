@@ -22,7 +22,7 @@ export function activityArea(database: ObnixeDatabase, sessionId: Id): ActivityA
     if (recording.bbox === null) return null;
     const { south, west, north, east } = recording.bbox;
     return {
-      title: sessionTitle({ sport: session.sport, title: session.title, slotName: null, variantName: null, values: session.values }),
+      title: sessionTitle({ ...session, slotName: null, variantName: null, recorded: true }),
       corners: [
         { latitude: south / 1e7, longitude: west / 1e7 },
         { latitude: north / 1e7, longitude: east / 1e7 },

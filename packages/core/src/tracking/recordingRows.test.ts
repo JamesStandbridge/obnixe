@@ -137,7 +137,7 @@ describe("recording rows", () => {
 });
 
 describe("sport preference recording settings", () => {
-  const settings: RecordingSettings = { autoPause: false, autoLap: { trigger: "distance", meters: 1000 }, readout: { main: "distance", secondary: ["moving", "ascent", "vam"] }, alerts: { disabled: ["split"], sound: false }, heartRateDevice: null };
+  const settings: RecordingSettings = { autoPause: false, autoLap: { trigger: "distance", meters: 1000 }, readout: { main: "distance", secondary: ["moving", "ascent", "vam"] }, alerts: { disabled: ["split"], sound: false, paceRange: { kind: "pace", fastestSecondsPerKm: 300, slowestSecondsPerKm: 360 }, heartRateRange: { lowest: 2, highest: 3 } }, heartRateDevice: { id: "C4:7D:2A:10:9E:01", name: "Venu 3S" } };
 
   it("accepts settings whose readout uses metrics of the profile", () => {
     make.write([{ kind: "insert", table: "sport_preference", row: { sport: "trail", enabled: true, position: 0, recordingSettings: settings } }]);
@@ -146,6 +146,14 @@ describe("sport preference recording settings", () => {
   it("refuses metrics the profile does not compute and settings on a sport without a profile", () => {
     expect(() => make.write([{ kind: "insert", table: "sport_preference", row: { sport: "run", enabled: true, position: 0, recordingSettings: settings } }])).toThrow(ZodError);
     expect(() => make.write([{ kind: "insert", table: "sport_preference", row: { sport: "yoga", enabled: true, position: 0, recordingSettings: { ...settings, readout: null } } }])).toThrow(ZodError);
+  });
+
+  it("refuses a span that does not follow the sport's primary measure and an inverted one", () => {
+    const speed = { ...settings, alerts: { ...settings.alerts, paceRange: { kind: "speed" as const, minMmS: 4000, maxMmS: 6000 } } };
+    expect(() => make.write([{ kind: "insert", table: "sport_preference", row: { sport: "trail", enabled: true, position: 0, recordingSettings: speed } }])).toThrow(ZodError);
+    expect(() => make.write([{ kind: "insert", table: "sport_preference", row: { sport: "bike", enabled: true, position: 0, recordingSettings: { ...speed, readout: null } } }])).not.toThrow();
+    const inverted = { ...settings, alerts: { ...settings.alerts, heartRateRange: { lowest: 4 as const, highest: 2 as const } } };
+    expect(() => make.write([{ kind: "insert", table: "sport_preference", row: { sport: "trail", enabled: true, position: 0, recordingSettings: inverted } }])).toThrow(ZodError);
   });
 
   it("refuses unknown auto lap distances and duplicated metrics", () => {

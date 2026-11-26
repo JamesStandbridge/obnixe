@@ -1,6 +1,7 @@
 import { sports } from "@obnixe/schema";
 import type { EpochMs } from "@obnixe/schema";
 import type { LiveSnapshot, RecorderState, ResolvedProfile } from "@obnixe/core";
+import type { AlertNotice } from "@/features/recording/alerts";
 import { formatClock } from "@/format/durations";
 import { formatNumber } from "@/format/numbers";
 import type { TrackerNotification } from "../../../modules/obnixe-tracker";
@@ -42,9 +43,9 @@ function primaryText(profile: ResolvedProfile, live: LiveSnapshot): string {
   }
 }
 
-/** `REC-071`, `REC-072`: "Course · 5,24 km", then the main metric, or the pause. */
-export function notificationOf(profile: ResolvedProfile, state: RecorderState, live: LiveSnapshot, startedAt: EpochMs): TrackerNotification {
+/** `REC-071`, `REC-072`, `REC-075`: "Course · 5,24 km", then a recent alert, the pause or the main metric. */
+export function notificationOf(profile: ResolvedProfile, state: RecorderState, live: LiveSnapshot, startedAt: EpochMs, alert: AlertNotice | null): TrackerNotification {
   const title = `${sports[profile.sport].label} · ${formatNumber(live.distanceMm / 1_000_000, 2, 2)} km`;
-  const text = state.phase === "paused" ? "En pause" : state.phase === "auto_paused" ? "Pause automatique" : primaryText(profile, live);
+  const text = alert !== null ? `${alert.title} · ${alert.detail}` : state.phase === "paused" ? "En pause" : state.phase === "auto_paused" ? "Pause automatique" : primaryText(profile, live);
   return { title, text, timerBaseAt: timerBaseOf(state, startedAt) };
 }

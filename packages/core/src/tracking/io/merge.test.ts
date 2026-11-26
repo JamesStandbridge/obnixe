@@ -45,7 +45,7 @@ function recordPhone(track: Track = phoneTrack): Id {
   commit(context.db, context.env, { actor: { author: "user", connectionId: null }, summary: "Sortie démarrée", revertsId: null, mutations: recordingStartMutations(plan, { startedAt, device: "Pixel 9 Pro" }) });
   const processed = processTrack(track, profileOf({ sport: "run" }), { laps: recordedLaps, trim: untrimmed });
   const bytes = encodeTrack(track);
-  const mutations = planRecordingSave(context.db, context.env, { sessionId: plan.sessionId, track, processed, stored: { file: `tracks/${plan.recordingId}.otrk`, sha256: trackDigest(bytes), bytes: bytes.length } });
+  const mutations = planRecordingSave(context.db, context.env, { sessionId: plan.sessionId, track, processed, stored: { file: `tracks/${plan.recordingId}.otrk`, sha256: trackDigest(bytes), bytes: bytes.length }, pains: [] });
   commit(context.db, context.env, { actor: { author: "user", connectionId: null }, summary: "Sortie", revertsId: null, mutations });
   return plan.sessionId;
 }

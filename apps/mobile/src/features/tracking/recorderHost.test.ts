@@ -1,15 +1,15 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { commit, encodeJournalBatch, encodeJournalHeader, readJournal, revert } from "@obnixe/core";
+import { commit, defaultRecordingSettings, encodeJournalBatch, encodeJournalHeader, readJournal, recordingSettingsMutation, revert } from "@obnixe/core";
 import type { Fix, JournalRecord, Mutation, Sample, TrackerMarkKind } from "@obnixe/core";
-import { bestEffort, recording, session, settings } from "@obnixe/schema";
-import type { EpochMs, Id } from "@obnixe/schema";
+import { bestEffort, painReport, recording, session, settings } from "@obnixe/schema";
+import type { EpochMs, Id, RecordingSettings } from "@obnixe/schema";
 import { RecorderHost } from "@/features/tracking/recorderHost";
 import type { RecorderFeedback, RecorderView, RecordingStart, RecordingView, TrackerPort } from "@/features/tracking/recorderHost";
 import { journalUri, readTrackFile } from "@/features/tracking/trackStore";
 import { db, environment } from "../../../test/mocks/database.ts";
 import { Paths, storedFiles } from "../../../test/mocks/expoFileSystem.ts";
-import type { TrackerEvents, TrackerNotification, TrackerPower, TrackerStartRequest, TrackerStatus } from "../../../modules/obnixe-tracker";
+import type { TrackerEvents, TrackerIssueKind, TrackerNotification, TrackerPower, TrackerStartRequest, TrackerStatus } from "../../../modules/obnixe-tracker";
 
 type Listeners = { [Name in keyof TrackerEvents]: Set<TrackerEvents[Name]> };
 
@@ -115,7 +115,7 @@ class FakeTracker implements TrackerPort {
     if (mark !== null) for (const listener of this.listeners.onMark) listener({ sessionId, sequence, kind: mark, t: markT });
   }
 
-  issue(kind: "storage_full" | "storage_low"): void {
+  issue(kind: TrackerIssueKind): void {
     for (const listener of this.listeners.onIssue) listener({ sessionId: this.state.sessionId ?? "", kind });
   }
 }
@@ -196,7 +196,7 @@ beforeEach(() => {
   feedback = {
     calls,
     haptic: () => calls.push("haptic"),
-    alert: (alert) => calls.push(`alert:${alert}`),
+    alert: (event, sound) => calls.push(`alert:${event.kind}${sound ? ":sound" : ""}`),
     pauseReminder: () => calls.push("pause_reminder"),
     clearPauseReminder: () => calls.push("clear_pause_reminder"),
     report: (error) => {
@@ -350,6 +350,81 @@ describe("recording", () => {
     expect(feedback.calls).toContain("alert:lap");
     expect(recordingOf(host).live.lap.index).toBe(1);
     expect(recordingOf(host).laps.map((lap) => lap.index)).toEqual([0]);
+  });
+});
+
+describe("alerts and sensors", () => {
+  const runSettings = (changes: Partial<RecordingSettings>): void => {
+    writer.write("Réglages", [recordingSettingsMutation(db(), "run", { ...defaultRecordingSettings({ autoPauseDefault: true }), ...changes })]);
+  };
+
+  it("announces each kilometer on the screen and in the notification, with the sport's sound choice (REC-075)", async () => {
+    runSettings({ alerts: { disabled: [], sound: true, paceRange: null, heartRateRange: null } });
+    const host = newHost();
+    await started(host);
+    await run(350, 0);
+    expect(feedback.calls.filter((call) => call.startsWith("alert:"))).toEqual(["alert:split:sound"]);
+    expect(recordingOf(host).alert).toMatchObject({ id: 1, event: { kind: "split", index: 1, meters: 1000 }, notice: { title: "Kilomètre 1" } });
+    const announced = tracker.notifications.findIndex((notification) => notification.text.startsWith("Kilomètre 1 · "));
+    expect(announced).toBeGreaterThan(0);
+    expect(tracker.notifications.at(-1)?.text).toMatch(/^Allure /);
+  });
+
+  it("keeps quiet about the alerts the sport switched off", async () => {
+    runSettings({ alerts: { disabled: ["split", "gps", "battery"], sound: false, paceRange: null, heartRateRange: null } });
+    const host = newHost();
+    await started(host);
+    await run(350, 0);
+    await vi.advanceTimersByTimeAsync(15_000);
+    host.setBatteryLevel(0.1);
+    expect(feedback.calls.filter((call) => call.startsWith("alert:"))).toEqual([]);
+    expect(recordingOf(host).alert).toBeNull();
+  });
+
+  it("signals the GPS lost and back, a low battery once, and the heart-rate source lost and back", async () => {
+    const host = newHost();
+    await started(host);
+    const meters = await run(20, 0);
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(recordingOf(host).alert?.event).toEqual({ kind: "gps", change: "lost" });
+    await run(3, meters);
+    expect(recordingOf(host).alert?.event).toEqual({ kind: "gps", change: "back" });
+    host.setBatteryLevel(0.12);
+    host.setBatteryLevel(0.11);
+    tracker.issue("heart_rate_lost");
+    await settle();
+    expect(recordingOf(host).issues).toContain("heart_rate_lost");
+    tracker.write([{ type: "heart_rate", t: tracker.now(), bpm: 142, contact: "contact", rrInterval: null }], null, 0);
+    await settle();
+    expect(recordingOf(host).issues).not.toContain("heart_rate_lost");
+    expect(feedback.calls.filter((call) => call.startsWith("alert:"))).toEqual(["alert:gps", "alert:gps", "alert:battery", "alert:sensor", "alert:sensor"]);
+  });
+
+  it("connects the paired heart-rate source by its address and names it on the recording (SPT-007)", async () => {
+    runSettings({ heartRateDevice: { id: "C4:7D:2A:10:9E:01", name: "Venu 3S" } });
+    const host = newHost();
+    const sessionId = await started(host);
+    expect(tracker.requests[0]?.sensors.heartRateDevice).toBe("C4:7D:2A:10:9E:01");
+    expect(recordingRow(sessionId)?.heartRateDevice).toBe("Venu 3S");
+    expect(recordingOf(host).settings.heartRateDevice).toEqual({ id: "C4:7D:2A:10:9E:01", name: "Venu 3S" });
+  });
+
+  it("saves the pains signalled during the activity at the instant they were (INT-020)", async () => {
+    const host = newHost();
+    const sessionId = await started(host);
+    await run(30, 0);
+    const signalledAt = Date.now();
+    expect(host.reportPain("knee_right", "discomfort").ok).toBe(true);
+    expect(recordingOf(host).pains).toEqual([{ zone: "knee_right", level: "discomfort", occurredAt: signalledAt }]);
+    await run(10, 90);
+    await host.stop();
+    await settle();
+    expect((await host.save()).ok).toBe(true);
+    const reports = db().select().from(painReport).where(eq(painReport.sessionId, sessionId)).all();
+    expect(reports.map((row) => ({ zone: row.zone, level: row.level, phase: row.phase, occurredAt: row.occurredAt }))).toEqual([
+      { zone: "knee_right", level: "discomfort", phase: "during", occurredAt: signalledAt },
+    ]);
+    expect(host.reportPain("knee_right", "stop")).toEqual({ ok: false, failure: { kind: "no_recording" } });
   });
 });
 

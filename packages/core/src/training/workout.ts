@@ -1,5 +1,5 @@
 import { and, asc, eq, inArray, isNull } from "drizzle-orm";
-import { exercise, exerciseZone, painReport, programItem, programSlot, programVariant, programVersion, session, strengthEntry, strengthSet } from "@obnixe/schema";
+import { exercise, exerciseZone, painReport, programItem, programSlot, programVariant, programVersion, recording, session, strengthEntry, strengthSet } from "@obnixe/schema";
 import type {
   EpochMs,
   Exercise,
@@ -44,6 +44,7 @@ export interface WorkoutData {
   readonly version: ProgramVersion | null;
   readonly exercises: readonly WorkoutExercise[];
   readonly pains: readonly PainReport[];
+  readonly recorded: boolean;
 }
 
 export interface LastSet {
@@ -121,12 +122,14 @@ export function loadWorkout(db: ObnixeDatabase, sessionId: Id): WorkoutData | nu
     .where(and(eq(painReport.sessionId, sessionId), isNull(painReport.deletedAt)))
     .orderBy(asc(painReport.occurredAt))
     .all();
+  const recorded = db.select({ id: recording.id }).from(recording).where(eq(recording.sessionId, sessionId)).get() !== undefined;
   return {
     session: row,
     slot: slot ?? null,
     variant: variant ?? null,
     version: version ?? null,
     pains,
+    recorded,
     exercises: entries.map((entry) => {
       const found = exercises.get(entry.exerciseId);
       if (found === undefined) throw new Error(`Exercise ${entry.exerciseId} is missing`);

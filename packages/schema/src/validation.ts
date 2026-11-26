@@ -15,13 +15,14 @@ const optionalText = z.string().trim().min(1).nullable().optional();
 const label = z.string().trim().min(1);
 const sha256 = z.string().regex(/^[0-9a-f]{64}$/);
 
-function readoutFitsProfile(row: { readonly sport: keyof typeof sports; readonly recordingSettings?: RecordingSettings | null | undefined }): boolean {
+function settingsFitProfile(row: { readonly sport: keyof typeof sports; readonly recordingSettings?: RecordingSettings | null | undefined }): boolean {
   const settings = row.recordingSettings ?? null;
   if (settings === null) return true;
   const profile = sports[row.sport].recording;
   if (profile === null) return false;
   const readout = settings.readout;
-  return readout === null || [readout.main, ...readout.secondary].every((metric) => profile.metrics.includes(metric));
+  const range = settings.alerts.paceRange;
+  return (readout === null || [readout.main, ...readout.secondary].every((metric) => profile.metrics.includes(metric))) && (range === null || range.kind === profile.primary);
 }
 
 export const exerciseCuesMaxLength = 2000;
@@ -29,7 +30,7 @@ export const exerciseCuesMaxLength = 2000;
 export const rowSchemas = {
   sport_preference: createInsertSchema(tables.sportPreference)
     .extend({ recordingSettings: recordingSettingsSchema.nullable().optional() })
-    .refine(readoutFitsProfile, { path: ["recordingSettings"], message: "Recording settings need a recordable sport and metrics of its profile" }),
+    .refine(settingsFitProfile, { path: ["recordingSettings"], message: "Recording settings need a recordable sport, metrics of its profile and a pace or speed span after its primary measure" }),
   exercise: createInsertSchema(tables.exercise)
     .extend({ name: z.string().trim().min(1), cues: z.string().trim().min(1).max(exerciseCuesMaxLength).nullable().optional() })
     .refine((row) => row.nameKey === exerciseNameKey(row.name), { path: ["nameKey"] }),

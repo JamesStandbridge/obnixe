@@ -74,13 +74,18 @@ export function slotStartOf(slotId: Id, variantId: Id | null): SlotStart | null 
 
 export function recordingTitle(sessionId: Id): string | null {
   const row = db()
-    .select({ sport: session.sport, title: session.title, values: session.values, slotName: programSlot.name, variantName: programVariant.name })
+    .select({ sport: session.sport, title: session.title, values: session.values, startedAt: session.startedAt, timeZone: session.timeZone, slotName: programSlot.name, variantName: programVariant.name })
     .from(session)
     .leftJoin(programSlot, eq(session.slotId, programSlot.id))
     .leftJoin(programVariant, eq(session.variantId, programVariant.id))
     .where(eq(session.id, sessionId))
     .get();
-  return row === undefined ? null : sessionTitle(row);
+  return row === undefined ? null : sessionTitle({ ...row, recorded: true });
+}
+
+/** `PLT-011`: the battery help is offered until a first live recording went through. */
+export function hasLiveRecording(): boolean {
+  return db().select({ id: recording.id }).from(recording).where(eq(recording.source, "live")).limit(1).get() !== undefined;
 }
 
 /** Where a recording link leads once the recording is over: its session, unless it was deleted. */

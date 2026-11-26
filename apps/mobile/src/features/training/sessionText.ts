@@ -15,8 +15,8 @@ export function choiceLabel(field: FieldDefinition, key: string): string {
 }
 
 export function titleSource(report: Pick<SessionReport, "data">): SessionTitleSource {
-  const { session, slot, variant } = report.data;
-  return { sport: session.sport, title: session.title, slotName: slot?.name ?? null, variantName: variant?.name ?? null, values: session.values };
+  const { session, slot, variant, recorded } = report.data;
+  return { sport: session.sport, title: session.title, slotName: slot?.name ?? null, variantName: variant?.name ?? null, values: session.values, startedAt: session.startedAt, timeZone: session.timeZone, recorded };
 }
 
 export function shortTitle(report: Pick<SessionReport, "data">): string {

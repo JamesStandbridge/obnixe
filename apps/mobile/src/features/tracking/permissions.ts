@@ -61,6 +61,11 @@ export async function requestBluetooth(): Promise<boolean> {
   return (await tracker.requestPermission("bluetooth")).grant === "granted";
 }
 
+/** Whether a heart-rate scan may run without asking, for the preparation screen. */
+export async function bluetoothGranted(): Promise<boolean> {
+  return tracker !== null && (await tracker.getPermission("bluetooth")).grant === "granted";
+}
+
 export function openSystemSettings(): void {
   Linking.openSettings().catch((error: unknown) => ErrorUtils.getGlobalHandler()(error, false));
 }

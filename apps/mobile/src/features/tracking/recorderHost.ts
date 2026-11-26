@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import {
+  AlertMonitor,
   LiveTracker,
   OpenSessionExistsError,
   activePrivacyMask,
@@ -27,6 +28,10 @@ import {
   zoneProposalFor,
 } from "@obnixe/core";
 import type {
+  ActivityPain,
+  AlertGoal,
+  BatteryAlertLevel,
+  ElevationPoint,
   Fix,
   HeartRateZoneBounds,
   LiveLap,
@@ -34,13 +39,13 @@ import type {
   LiveSnapshot,
   Mutation,
   ProcessedTrack,
-  RecorderAlert,
   RecorderClock,
   RecorderCommit,
   RecorderEffect,
   RecorderEvent,
   RecorderRefusal,
   RecorderState,
+  RecordingAlertEvent,
   RecordingStartPlan,
   RecordingStartRequest,
   ResolvedProfile,
@@ -49,11 +54,14 @@ import type {
   TrackerMark,
   ZoneProposal,
 } from "@obnixe/core";
-import { session } from "@obnixe/schema";
-import type { EpochMs, Id, RecordingAlert, RecordingSettings } from "@obnixe/schema";
+import { programSlot, session } from "@obnixe/schema";
+import type { EpochMs, Id, RecordingSettings, ZoneKey } from "@obnixe/schema";
 import { db, environment } from "@/data/database";
 import { LiveTrack } from "@/features/maps/liveTrack";
 import type { LiveMapFeed } from "@/features/maps/liveTrack";
+import { alertNotice } from "@/features/recording/alerts";
+import type { AlertNotice } from "@/features/recording/alerts";
+import { slotTarget } from "@/features/recording/target";
 import { feedOf, journalTrackOf } from "@/features/tracking/journalFeed";
 import type { FeedItem } from "@/features/tracking/journalFeed";
 import { notificationOf, timerBaseOf } from "@/features/tracking/notification";
@@ -72,8 +80,8 @@ export interface RecorderWriter {
 
 export interface RecorderFeedback {
   readonly haptic: () => void;
-  /** `REC-075`: one 200 ms vibration, already filtered by the sport's settings. */
-  readonly alert: (alert: RecorderAlert) => void;
+  /** `REC-075`: the vibration of the alert, and its brief sound when the sport asks for it; already filtered by the sport's settings. */
+  readonly alert: (event: RecordingAlertEvent, sound: boolean) => void;
   /** `REC-022`: the local notification after 10 minutes of manual pause. */
   readonly pauseReminder: () => void;
   readonly clearPauseReminder: () => void;
@@ -92,6 +100,8 @@ export const storageFloorBytes = 10 * 1024 * 1024;
 export const batteryThresholds = { saver: 0.15, critical: 0.05 } as const;
 export const notificationIntervalMs = 5000;
 export const publishIntervalMs = 1000;
+/** How long the notification says the latest alert instead of the main metric. */
+export const alertNotificationMs = 10_000;
 
 export interface RecordingStart {
   readonly request: RecordingStartRequest;
@@ -99,6 +109,14 @@ export interface RecordingStart {
   readonly autoPause: boolean;
   readonly power: TrackerPower;
   readonly replay: TrackerReplay | null;
+}
+
+/** The latest alert of a recording; `id` grows with each one so the screen shows each once. */
+export interface LiveAlert {
+  readonly id: number;
+  readonly at: EpochMs;
+  readonly event: RecordingAlertEvent;
+  readonly notice: AlertNotice;
 }
 
 export interface StopSummary {
@@ -120,6 +138,11 @@ export interface RecordingView {
   readonly live: LiveSnapshot;
   /** Finished laps, oldest first; the current one is `live.lap`. */
   readonly laps: readonly LiveLap[];
+  /** `UX-002`: altitude along the counted distance. */
+  readonly elevation: readonly ElevationPoint[];
+  readonly alert: LiveAlert | null;
+  /** `INT-020`: the pains signalled so far, saved with the activity. */
+  readonly pains: readonly ActivityPain[];
   readonly issues: readonly TrackerIssueKind[];
   readonly power: TrackerPower;
   readonly saverOffered: boolean;
@@ -164,7 +187,10 @@ interface Active {
   readonly heartRate: readonly HeartRateZoneBounds[] | null;
   readonly live: LiveTracker;
   readonly map: LiveTrack;
+  readonly monitor: AlertMonitor;
   readonly replay: TrackerReplay | null;
+  readonly pains: ActivityPain[];
+  alert: LiveAlert | null;
   plan: RecordingStartPlan | null;
   startedAt: EpochMs;
   state: RecorderState;
@@ -197,8 +223,6 @@ type Mode = "live" | "replay";
 
 const idleView: RecorderView = { kind: "idle" };
 
-const alertSettings: Readonly<Record<RecorderAlert, RecordingAlert>> = { lap: "lap", auto_pause: "auto_pause", auto_resume: "auto_pause" };
-
 const commitSummaries: Readonly<Record<Exclude<RecorderCommit, "save" | "discard">, string>> = {
   start: "Sortie démarrée",
   interrupt: "Sortie interrompue",
@@ -215,6 +239,17 @@ function codeOf(error: unknown): string | null {
 
 function asError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error));
+}
+
+function batteryAlertOf(level: number): BatteryAlertLevel | null {
+  if (level < batteryThresholds.critical) return "critical";
+  return level < batteryThresholds.saver ? "low" : null;
+}
+
+function goalOf(slotId: Id | null): AlertGoal | null {
+  if (slotId === null) return null;
+  const slot = db().select({ targetValues: programSlot.targetValues, targetDurationSeconds: programSlot.targetDurationSeconds }).from(programSlot).where(eq(programSlot.id, slotId)).get();
+  return slot === undefined ? null : slotTarget(slot);
 }
 
 const failed = <T>(failure: RecorderFailure): RecorderOutcome<T> => ({ ok: false, failure });
@@ -318,7 +353,10 @@ export class RecorderHost {
       }
       const settings: RecordingSettings = { ...plan.settings, autoPause: start.autoPause };
       this.preparing = null;
-      const active = this.activate({ sessionId: plan.sessionId, recordingId: plan.recordingId, profile: plan.profile, settings, replay: start.replay, power: start.power, startedAt: environment.now() });
+      const active = this.activate(
+        { sessionId: plan.sessionId, recordingId: plan.recordingId, profile: plan.profile, settings, replay: start.replay, power: start.power, startedAt: environment.now() },
+        goalOf(start.request.slot?.slotId ?? null),
+      );
       active.plan = { ...plan, settings };
       try {
         await this.dispatch({ type: "start" }, "live");
@@ -420,6 +458,8 @@ export class RecorderHost {
   setBatteryLevel(level: number): void {
     const active = this.active;
     if (active === null || !isActivePhase(active.state) || level < 0) return;
+    const alert = batteryAlertOf(level);
+    if (alert !== null) this.signal(active, active.monitor.battery(alert));
     if (level < batteryThresholds.critical) {
       this.setPower("critical");
       return;
@@ -428,6 +468,15 @@ export class RecorderHost {
       active.saverOffer = "offered";
       this.publish(true);
     }
+  }
+
+  /** `INT-020`: a pain signalled during the activity, saved with it as reported at this instant. */
+  reportPain(zone: ZoneKey, level: ActivityPain["level"]): RecorderOutcome<void> {
+    const active = this.active;
+    if (active === null || !(isActivePhase(active.state) || active.state.phase === "finishing")) return failed({ kind: "no_recording" });
+    active.pains.push({ zone, level, occurredAt: environment.now() });
+    this.publish(true);
+    return succeeded(undefined);
   }
 
   dismissSaverOffer(): void {
@@ -446,8 +495,11 @@ export class RecorderHost {
     const open = openLiveRecording(db());
     if (open === null) return;
     const profile = profileOfSession(open.session);
-    const settings: RecordingSettings = { ...recordingSettingsOf(db(), profile), autoPause: open.recording.autoPause, heartRateDevice: open.recording.heartRateDevice };
-    const active = this.activate({ sessionId: open.session.id, recordingId: open.recording.id, profile, settings, replay: null, power: "normal", startedAt: open.session.startedAt });
+    const settings: RecordingSettings = { ...recordingSettingsOf(db(), profile), autoPause: open.recording.autoPause };
+    const active = this.activate(
+      { sessionId: open.session.id, recordingId: open.recording.id, profile, settings, replay: null, power: "normal", startedAt: open.session.startedAt },
+      goalOf(open.session.slotId),
+    );
     active.started = true;
     this.buffered = [];
     try {
@@ -461,6 +513,7 @@ export class RecorderHost {
       const status = this.options.tracker?.status() ?? null;
       const recording = status !== null && status.state === "recording" && status.sessionId === active.sessionId;
       if (!recording && (isActivePhase(active.state) || active.state.phase === "finishing")) await this.dispatch({ type: "interrupt", lastSampleT: active.lastT }, "live");
+      else this.observe(active);
     } finally {
       const pending = this.buffered;
       this.buffered = null;
@@ -500,14 +553,18 @@ export class RecorderHost {
     }
   }
 
-  private activate(fields: Pick<Active, "sessionId" | "recordingId" | "profile" | "settings" | "replay" | "power" | "startedAt">): Active {
+  private activate(fields: Pick<Active, "sessionId" | "recordingId" | "profile" | "settings" | "replay" | "power" | "startedAt">, goal: AlertGoal | null): Active {
     const physiology = readSettings(db());
     const maximum = maxHeartRateOf(physiology, fields.startedAt);
+    const heartRate = maximum === null ? null : heartRateZones(maximum);
     const active: Active = {
       ...fields,
-      heartRate: maximum === null ? null : heartRateZones(maximum),
+      heartRate,
       live: new LiveTracker(fields.profile, fields.settings.autoLap),
       map: new LiveTrack(),
+      monitor: new AlertMonitor({ splitMeters: fields.settings.autoLap === null ? fields.profile.splitMeters : null, settings: fields.settings.alerts, heartRateZones: heartRate, goal }),
+      pains: [],
+      alert: null,
       plan: null,
       state: { phase: "preparing", autoPause: fields.settings.autoPause },
       sequence: -1,
@@ -567,7 +624,7 @@ export class RecorderHost {
         this.options.feedback.haptic();
         return;
       case "alert":
-        if (!active.settings.alerts.disabled.includes(alertSettings[effect.alert])) this.options.feedback.alert(effect.alert);
+        this.signal(active, active.monitor.recorder(effect.alert, effect.alert === "lap" ? (active.live.laps.at(-1) ?? null) : null));
         return;
       case "refresh_notification":
         this.refreshNotification(active);
@@ -594,9 +651,9 @@ export class RecorderHost {
       journalPath: journalUri(active.sessionId),
       journal: create ? "create" : "continue",
       power: active.power,
-      sensors: { barometer: true, pedometer: active.profile.cadence === "steps", heartRateDevice: active.settings.heartRateDevice },
+      sensors: { barometer: true, pedometer: active.profile.cadence === "steps", heartRateDevice: active.settings.heartRateDevice?.id ?? null },
       batchIntervalMs: 1000,
-      notification: notificationOf(active.profile, active.state, active.live.snapshot(active.lastT), active.startedAt),
+      notification: notificationOf(active.profile, active.state, active.live.snapshot(active.lastT), active.startedAt, null),
       replay: create ? active.replay : null,
     });
     active.started = true;
@@ -658,7 +715,7 @@ export class RecorderHost {
     const kilometers = summary.processed.summary.distanceMm / 1_000_000;
     const changesetId = this.options.writer.write(
       `Sortie de ${formatNumber(kilometers)} km`,
-      planRecordingSave(db(), environment, { sessionId: active.sessionId, track: summary.track, processed: summary.processed, stored }),
+      planRecordingSave(db(), environment, { sessionId: active.sessionId, track: summary.track, processed: summary.processed, stored, pains: active.pains }),
     );
     storeDerivation(db(), active.sessionId, summary.track, summary.processed, activePrivacyMask(db()));
     return { sessionId: active.sessionId, changesetId, zoneProposal: zoneProposalFor(db(), active.sessionId) };
@@ -737,6 +794,7 @@ export class RecorderHost {
         );
         active.sequence = batch.sequence;
         active.markApplied = false;
+        this.observe(active);
         return;
       }
       case "mark": {
@@ -773,6 +831,7 @@ export class RecorderHost {
 
   private async onIssue(active: Active, kind: TrackerIssueKind): Promise<void> {
     active.issues.add(kind);
+    if (kind === "heart_rate_lost") this.signal(active, active.monitor.heartRateSource(false));
     this.publish(true);
     if (kind === "storage_full") void this.dispatch({ type: "stop", reason: "storage_full", t: active.lastT }, "live").catch(this.options.feedback.report);
   }
@@ -808,7 +867,10 @@ export class RecorderHost {
       active.issues.delete("permission_lost");
       active.issues.delete("provider_disabled");
     }
-    if (sample.type === "heart_rate") active.issues.delete("heart_rate_lost");
+    if (sample.type === "heart_rate") {
+      active.issues.delete("heart_rate_lost");
+      if (mode === "live") this.signal(active, active.monitor.heartRateSource(true));
+    }
     for (const event of active.live.push(sample)) {
       switch (event.type) {
         case "motion_started":
@@ -856,9 +918,26 @@ export class RecorderHost {
     this.publish(false);
   }
 
+  /** `REC-075`: runs the alerts of the latest snapshot; the journal batches keep it going while the ticks sleep in the background. */
+  private observe(active: Active): void {
+    if (!isActivePhase(active.state)) return;
+    this.signal(active, active.monitor.observe(active.live.snapshot(this.trackTime(active)), active.state.phase));
+  }
+
+  /** Signals the last of simultaneous alerts, a reached target coming after the split it ends on. */
+  private signal(active: Active, events: readonly RecordingAlertEvent[]): void {
+    const event = events.at(-1);
+    if (event === undefined) return;
+    active.alert = { id: (active.alert?.id ?? 0) + 1, at: environment.now(), event, notice: alertNotice(event, active.profile) };
+    this.options.feedback.alert(event, active.settings.alerts.sound);
+    this.refreshNotification(active);
+    this.publish(true);
+  }
+
   private refreshNotification(active: Active): void {
     if (!active.started || !isActivePhase(active.state)) return;
-    this.options.tracker?.setNotification(notificationOf(active.profile, active.state, active.live.snapshot(this.trackTime(active)), active.startedAt));
+    const alert = active.alert !== null && environment.now() - active.alert.at < alertNotificationMs ? active.alert.notice : null;
+    this.options.tracker?.setNotification(notificationOf(active.profile, active.state, active.live.snapshot(this.trackTime(active)), active.startedAt, alert));
   }
 
   private syncTicker(): void {
@@ -882,6 +961,7 @@ export class RecorderHost {
     if (active === null) return;
     this.ticks += 1;
     void this.dispatch({ type: "tick", t: this.trackTime(active) }, "live").catch(this.options.feedback.report);
+    this.observe(active);
     if (this.ticks % (notificationIntervalMs / publishIntervalMs) === 0) this.refreshNotification(active);
     this.publish(false);
   }
@@ -925,6 +1005,9 @@ export class RecorderHost {
         timerBaseAt: timerBaseOf(active.state, active.startedAt),
         live: zone === null ? snapshot : { ...snapshot, metrics: { ...snapshot.metrics, heart_rate_zone: zone } },
         laps: active.live.laps,
+        elevation: active.live.elevationProfile,
+        alert: active.alert,
+        pains: [...active.pains],
         issues: [...active.issues],
         power: active.power,
         saverOffered: active.saverOffer === "offered",

@@ -18,10 +18,12 @@ import type { SportChoice } from "@/features/activity/components";
 import { CatalogueSheet, GearSheet } from "@/features/activity/LogSheets";
 import { formatKilometers, gearLabel } from "@/features/activity/presentation";
 import { signalWord, SignalBars } from "@/features/recording/LiveParts";
-import { defaultGear, lastRecordedSport, recordableSports, slotStartOf } from "@/features/recording/queries";
+import { HeartRateCard } from "@/features/recording/HeartRateParts";
+import { defaultGear, hasLiveRecording, lastRecordedSport, recordableSports, slotStartOf } from "@/features/recording/queries";
 import { liveReadout, storedReadout } from "@/features/recording/readout";
 import { ReadoutEditor } from "@/features/recording/ReadoutEditor";
 import { targetLabel } from "@/features/recording/target";
+import { BatteryHint } from "@/features/tracking/BatteryHelpScreen";
 import { ensureActivityPermission, locationAccess, openSystemSettings, requestLocation } from "@/features/tracking/permissions";
 import type { LocationAccess } from "@/features/tracking/permissions";
 import { recorder, recordingAvailable, useRecorderView } from "@/features/tracking/recorder";
@@ -234,7 +236,6 @@ function Preparation({ sport: requested, kind: requestedKind, slotId, variantId,
   const kind = typeof values.kind === "string" ? values.kind : null;
   const [gearId, setGearId] = useState<Id | null>(() => defaultGear(sport, kind));
   const [gearVersion, setGearVersion] = useState(0);
-  const [settingsVersion, setSettingsVersion] = useState(0);
   const [sheet, setSheet] = useState<PrepareSheet>({ kind: "none" });
   const [counting, setCounting] = useState(false);
   const [starting, setStarting] = useState(false);
@@ -242,7 +243,8 @@ function Preparation({ sport: requested, kind: requestedKind, slotId, variantId,
 
   const definition = sports[sport];
   const profile = useMemo(() => resolveProfile(sport, values), [sport, values]);
-  const settings = useMemo(() => (profile === null ? null : recordingSettingsOf(db(), profile)), [profile, settingsVersion]);
+  const settings = useMemo(() => (profile === null ? null : recordingSettingsOf(db(), profile)), [profile, preferences]);
+  const firstRecording = useMemo(() => !hasLiveRecording(), []);
   const [autoPause, setAutoPause] = useState<{ readonly sport: SportKey; readonly value: boolean } | null>(null);
   const autoPauseOn = autoPause?.sport === sport ? autoPause.value : (settings?.autoPause ?? false);
   const readout = profile === null || settings === null ? null : liveReadout(profile, settings);
@@ -289,7 +291,6 @@ function Preparation({ sport: requested, kind: requestedKind, slotId, variantId,
     if (profile === null || settings === null) return;
     const stored = next === null ? null : storedReadout(profile, settings, next);
     write(`Écran de direct : ${definition.label.toLowerCase()}`, [recordingSettingsMutation(db(), sport, { ...settings, readout: stored === null ? null : { main: stored.main, secondary: [...stored.secondary] } })]);
-    setSettingsVersion((version) => version + 1);
   };
 
   const createGear = (name: string): void => {
@@ -419,6 +420,8 @@ function Preparation({ sport: requested, kind: requestedKind, slotId, variantId,
         ) : (
           <>
             <SignalCard signal={signal} />
+            <HeartRateCard sport={sport} device={settings?.heartRateDevice ?? null} />
+            {firstRecording ? <BatteryHint /> : null}
 
             <View style={styles.options}>
               {definition.usesGear ? (
@@ -436,6 +439,7 @@ function Preparation({ sport: requested, kind: requestedKind, slotId, variantId,
             {readout === null || settings === null ? null : (
               <ReadoutEditor profile={profile} readout={readout} customized={settings.readout !== null} onChange={saveReadout} onReset={() => saveReadout(null)} />
             )}
+            <LinkButton label={`Alertes et réglages · ${definition.label}`} onPress={() => router.push({ pathname: "/settings/recording/[sport]", params: { sport } })} style={styles.settingsLink} />
           </>
         )}
       </Screen>
@@ -610,6 +614,7 @@ const styles = StyleSheet.create({
   signalText: { flex: 1, minWidth: 0, gap: 3 },
   signalBars: { alignItems: "center", gap: 4 },
   options: { marginTop: 12 },
+  settingsLink: { alignSelf: "center", marginTop: 20 },
   indoor: { marginTop: 24, padding: 18, gap: 8 },
   indoorButton: { alignSelf: "flex-start", marginTop: 6 },
   weak: { textAlign: "center", marginBottom: 8 },

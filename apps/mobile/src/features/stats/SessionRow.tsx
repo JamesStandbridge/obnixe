@@ -4,7 +4,7 @@ import { TrackPreview } from "@/features/recordings/TrackPreview";
 import { SportIcon } from "@/ui/icons/SportIcon";
 import { Row } from "@/ui/Layout";
 import { rowDay } from "@/features/stats/format";
-import { sessionTitle, zoneLabel } from "@/format/labels";
+import { summaryTitle, zoneLabel } from "@/format/labels";
 import { DetailLine } from "@/features/stats/parts";
 import type { DetailPart } from "@/features/stats/parts";
 import { sessionFigure, sportLabel } from "@/features/stats/presentation";
@@ -43,7 +43,7 @@ export function SessionRow({ summary, withDate, last = false }: SessionRowProps)
   return (
     <Row
       leading={<SportIcon sport={summary.sport} label={sportLabel(summary.sport)} />}
-      title={sessionTitle(summary)}
+      title={summaryTitle(summary)}
       detail={parts.length === 0 ? undefined : <DetailLine parts={parts} />}
       {...(figure === null ? {} : { value: figure.value, valueDetail: figure.unit === "" ? " " : figure.unit })}
       {...(preview === null ? {} : { trailing: <TrackPreview polyline={preview} color={colors.sport[summary.sport]} width={44} height={32} /> })}

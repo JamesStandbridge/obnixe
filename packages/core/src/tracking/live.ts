@@ -75,6 +75,38 @@ export interface LiveSnapshot {
   readonly metrics: LiveMetrics;
   readonly signal: LiveSignal;
   readonly position: { readonly latitude: number; readonly longitude: number } | null;
+  /** Smoothed speed in m/s, 0 while stopped, whatever the profile's metrics. */
+  readonly speed: number;
+  /** Latest heart-rate reading still held, whatever the profile's metrics. */
+  readonly heartRate: number | null;
+}
+
+/** A point of the live elevation profile (`UX-002`), in meters along the counted distance. */
+export interface ElevationPoint {
+  readonly distance: number;
+  readonly altitude: number;
+}
+
+/** Points kept by the live elevation profile: past it, every other point goes and the spacing doubles. */
+export const elevationProfilePoints = 400;
+const elevationStepMeters = 10;
+
+/** Altitude against counted distance, bounded to `elevationProfilePoints`; a new array after each change. */
+class ElevationProfile {
+  private step = elevationStepMeters;
+  points: readonly ElevationPoint[] = [];
+
+  push(distance: number, altitude: number): void {
+    const last = this.points[this.points.length - 1];
+    if (last !== undefined && distance - last.distance < this.step) return;
+    const next = [...this.points, { distance, altitude }];
+    if (next.length <= elevationProfilePoints) {
+      this.points = next;
+      return;
+    }
+    this.step *= 2;
+    this.points = next.filter((_, index) => index % 2 === 0 || index === next.length - 1);
+  }
 }
 
 /** An interval whose motion state may still be backdated by the classifier. */
@@ -153,6 +185,7 @@ export class LiveTracker {
   private readonly vam = new VamMeter();
   private readonly gnssAltitude: ScalarKalman = gnssAltitudeFilter({ smoothing: false });
   private readonly heartRate = new HeartRateLedger();
+  private readonly elevation = new ElevationProfile();
   private hysteresis: ElevationHysteresis | null = null;
   private pending: PendingInterval[] = [];
   private previous: SettledFix | null = null;
@@ -253,6 +286,11 @@ export class LiveTracker {
     return this.completed;
   }
 
+  /** Altitude along the counted distance (`UX-002`); a new array after each added point. */
+  get elevationProfile(): readonly ElevationPoint[] {
+    return this.elevation.points;
+  }
+
   /** Display points added since the previous call (`GPS-071`). */
   takeTrack(): readonly LivePoint[] {
     const points = this.track;
@@ -282,7 +320,13 @@ export class LiveTracker {
       metrics: this.metrics(now, totals, lap, accuracy),
       signal: { level: signalLevelOf(accuracy), accuracy },
       position: estimate === null ? null : { latitude: estimate.latitude, longitude: estimate.longitude },
+      speed: this.speedNow,
+      heartRate: this.heldReading(now),
     };
+  }
+
+  private heldReading(now: number): number | null {
+    return this.latestReading !== null && now - this.latestReading.t <= heartRateHoldMs ? this.latestReading.bpm : null;
   }
 
   private settle(settled: SettledFix, events: LiveEvent[]): void {
@@ -394,7 +438,10 @@ export class LiveTracker {
         this.hysteresis ??= new ElevationHysteresis(this.pipeline.hasBarometer ? elevationThresholdMeters.barometer : elevationThresholdMeters.gnss);
         const ascentBefore = this.hysteresis.ascent;
         this.hysteresis.push(interval.altitude, counted);
-        if (counted) this.grade = this.gradeMeter.push(this.distance, interval.altitude);
+        if (counted) {
+          this.grade = this.gradeMeter.push(this.distance, interval.altitude);
+          this.elevation.push(this.distance, interval.altitude);
+        }
         this.vam.push(durationMs, this.hysteresis.ascent - ascentBefore, this.grade ?? Number.NaN, counted);
       }
       if (counted && this.profile.gradeAdjustedPace) this.gradeAdjustedDistance += interval.meters * gradeAdjustmentFactor(this.grade ?? Number.NaN);
@@ -430,7 +477,7 @@ export class LiveTracker {
     const paceNow = (speed: number): number | null => (speed > 0 && 1000 / speed <= slowestPaceSecondsPerKm ? Math.round(profile.pacePerMeters / speed) : null);
     const moving = this.classifier.state === "moving";
     const gradeFactor = gradeAdjustmentFactor(this.grade ?? Number.NaN);
-    const reading = this.latestReading !== null && now - this.latestReading.t <= heartRateHoldMs ? this.latestReading.bpm : null;
+    const reading = this.heldReading(now);
     const values: Record<MetricKey, number | null> = {
       elapsed: Math.max(now - this.startMs, 0),
       moving: totals.moving,

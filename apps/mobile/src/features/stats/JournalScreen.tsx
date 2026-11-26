@@ -19,7 +19,7 @@ import { useLiveValue, useLocalNow } from "@/features/stats/live";
 import { FilterChips, JournalHeader } from "@/features/stats/parts";
 import type { ChipOption } from "@/features/stats/parts";
 import { sportLabel } from "@/features/stats/presentation";
-import { sessionTitle } from "@/format/labels";
+import { summaryTitle } from "@/format/labels";
 import { ActivityCard } from "@/features/stats/ActivityCard";
 import { useMassUnit } from "@/data/settings";
 
@@ -98,7 +98,7 @@ function groupByWeek(sessions: readonly SessionSummary[]): WeekGroup[] {
 
 function matchesQuery(item: SessionSummary, query: string): boolean {
   if (query === "") return true;
-  const haystack = exerciseNameKey([sessionTitle(item), sports[item.sport].label, item.note ?? ""].join(" "));
+  const haystack = exerciseNameKey([summaryTitle(item), sports[item.sport].label, item.note ?? ""].join(" "));
   return haystack.includes(query);
 }
 

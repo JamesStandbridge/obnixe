@@ -1,8 +1,9 @@
+import type { AlertGoal } from "@obnixe/core";
 import type { FieldValues } from "@obnixe/schema";
 import { formatLongClock } from "@/format/durations";
 import { formatNumber } from "@/format/numbers";
 
-export type SlotTarget = { readonly kind: "distance"; readonly meters: number } | { readonly kind: "duration"; readonly seconds: number };
+export type SlotTarget = AlertGoal;
 
 export interface TargetProgress {
   /** From 0 to 1. */
