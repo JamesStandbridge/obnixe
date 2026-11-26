@@ -27,6 +27,9 @@ export type PaceRange = z.infer<typeof paceRangeSchema>;
 export const heartRateRangeSchema = z.strictObject({ lowest: heartRateZoneSchema, highest: heartRateZoneSchema }).refine((range) => range.lowest <= range.highest, { path: ["highest"] });
 export type HeartRateRange = z.infer<typeof heartRateRangeSchema>;
 
+/** A paired Bluetooth source: its platform identifier and the name shown to the user. */
+const sensorDeviceSchema = z.strictObject({ id: z.string().min(1), name: z.string().trim().min(1) });
+
 export const recordingSettingsSchema = z.strictObject({
   autoPause: z.boolean(),
   autoLap: z
@@ -42,11 +45,15 @@ export const recordingSettingsSchema = z.strictObject({
     paceRange: paceRangeSchema.nullable(),
     heartRateRange: heartRateRangeSchema.nullable(),
   }),
-  heartRateDevice: z.strictObject({ id: z.string().min(1), name: z.string().trim().min(1) }).nullable(),
+  heartRateDevice: sensorDeviceSchema.nullable(),
+  /** A Running Speed and Cadence footpod for the sports whose cadence counts steps, a Cycling Speed and Cadence sensor otherwise (`SPT-008`). */
+  cadenceDevice: sensorDeviceSchema.nullable(),
+  /** A Cycling Power sensor: a pedal, crank or hub meter, or a running power footpod (`SPT-008`). */
+  powerDevice: sensorDeviceSchema.nullable(),
 });
 export type RecordingSettings = z.infer<typeof recordingSettingsSchema>;
 export type RecordingAlertSettings = RecordingSettings["alerts"];
-export type HeartRateDeviceChoice = NonNullable<RecordingSettings["heartRateDevice"]>;
+export type SensorDeviceChoice = z.infer<typeof sensorDeviceSchema>;
 
 const latitudeE7 = z.int().min(-900_000_000).max(900_000_000);
 const longitudeE7 = z.int().min(-1_800_000_000).max(1_800_000_000);

@@ -121,6 +121,11 @@ final class JournalWriter {
       pending.u16(UInt16(min(max(sample.bpm, 0), 0xFFFF)))
       pending.u8(sample.contact.rawValue)
       pending.u16(sample.rrInterval.map { UInt16(min(max($0, 1), 0xFFFF)) } ?? 0)
+    case .cadence(let sample):
+      pending.u16(UInt16(min(max(sample.perMinute, 0), JournalFormat.maxUInt16)))
+    case .power(let sample):
+      pending.u16(UInt16(min(max(sample.watts, 0), JournalFormat.maxUInt16)))
+      pending.u16(uint16(sample.cadence))
     }
   }
 
@@ -227,7 +232,7 @@ enum JournalScanner {
           case .lap: break
           case nil: recordValid = false
           }
-        case .pressure, .steps:
+        case .pressure, .steps, .power, .cadence:
           break
         }
         valid = recordValid && t >= batchT[Int(type.rawValue)]

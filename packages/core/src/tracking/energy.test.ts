@@ -3,7 +3,8 @@ import type { EpochMs, FieldValues, SportKey } from "@obnixe/schema";
 import { estimateEnergy, keytelKcalPerMinute, metEntryFor, metTable, minettiGradeBound, minettiRunningCost, minettiWalkingCost } from "./energy.ts";
 import type { EnergyActivity, EnergyBody, EnergyPath } from "./energy.ts";
 import { heartRateColumns } from "./testing/fixes.ts";
-import type { HeartRateColumns } from "./types.ts";
+import { toSampleColumns } from "./types.ts";
+import type { HeartRateColumns, PowerColumns, PowerSample } from "./types.ts";
 
 const startedAt = Date.UTC(2026, 5, 1, 7) as EpochMs;
 const body: EnergyBody = { massGrams: 70_000, birthYear: 1986, sex: "male" };
@@ -23,6 +24,12 @@ function constantHeartRate(bpm: number, fromMs: number, toMs: number): HeartRate
   return heartRateColumns(readings);
 }
 
+function constantPower(watts: number, fromMs: number, toMs: number): PowerColumns {
+  const samples: PowerSample[] = [];
+  for (let t = fromMs; t < toMs; t += 1000) samples.push({ type: "power", t, watts, cadence: 90 });
+  return toSampleColumns(samples).power;
+}
+
 function activity(sport: SportKey, durationMs: number, overrides: Partial<EnergyActivity> = {}): EnergyActivity {
   return {
     sport,
@@ -34,6 +41,7 @@ function activity(sport: SportKey, durationMs: number, overrides: Partial<Energy
     path: null,
     heartRate: null,
     descents: null,
+    power: null,
     ...overrides,
   };
 }
@@ -117,6 +125,25 @@ describe("estimateEnergy", () => {
   it("picks the cycling MET from the mean moving speed (CAL-002)", () => {
     const ride = estimateEnergy(activity("bike", 2 * 60 * minute, { values: { kind: "road" }, distanceMm: 50_000_000, path: steadyPath(50_000, 7200) }), body);
     expect(ride).toEqual({ kcal: 10 * 70 * 2, method: "met", met: metTable.bike14To16Mph });
+  });
+
+  it("turns the work of a power meter into kcal at 24 % gross efficiency, before the heart rate, stops at rest (SPT-008)", () => {
+    const ride = activity("bike", 70 * minute, {
+      values: { kind: "road" },
+      moving: [{ startMs: 0, endMs: 60 * minute }],
+      power: constantPower(200, 0, 60 * minute),
+      heartRate: constantHeartRate(140, 0, 70 * minute),
+    });
+    const kilojoules = (200 * 3600) / 1000;
+    expect(estimateEnergy(ride, body)).toEqual({ kcal: Math.round((kilojoules * 1000) / (4184 * 0.24) + (70 * 10) / 60), method: "power", met: null });
+  });
+
+  it("needs power over 80 % of the moving time, extends it to the rest, and is for rides only (SPT-008)", () => {
+    const ride = (power: PowerColumns): EnergyActivity => activity("bike", 60 * minute, { values: { kind: "road" }, power, distanceMm: 30_000_000, path: steadyPath(30_000, 3600) });
+    expect(estimateEnergy(ride(constantPower(200, 0, 47 * minute)), body)?.method).toBe("met");
+    expect(estimateEnergy(ride(constantPower(200, 0, 50 * minute)), body)?.kcal).toBe(estimateEnergy(ride(constantPower(200, 0, 60 * minute)), body)?.kcal);
+    const run = estimateEnergy(flatTenK({ power: constantPower(250, 0, 50 * minute) }), body);
+    expect(run?.method).toBe("mechanical");
   });
 
   it("counts the alpine MET over the descents only, at rest on the lifts (CAL-002)", () => {

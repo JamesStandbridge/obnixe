@@ -210,7 +210,7 @@ export const bikeProfile: RecordingProfile = {
   cadence: "none",
   metrics: [
     "elapsed", "moving", "distance", "speed_avg", "speed_now", "speed_max",
-    "ascent", "descent", "altitude", "altitude_min", "altitude_max", "grade_now", "vam", "vertical_speed",
+    "ascent", "descent", "altitude", "altitude_min", "altitude_max", "grade_now", "vam", "vertical_speed", "cadence",
     "heart_rate", "heart_rate_avg", "heart_rate_max", "heart_rate_zone", "energy", "gps_quality", "clock",
     "route_remaining", "route_ascent_remaining", "route_progress",
   ],

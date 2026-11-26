@@ -1,10 +1,12 @@
 package app.obnixe.tracker.journal
 
+import app.obnixe.tracker.CadenceSample
 import app.obnixe.tracker.Fix
 import app.obnixe.tracker.HeartRateContact
 import app.obnixe.tracker.HeartRateSample
 import app.obnixe.tracker.Mark
 import app.obnixe.tracker.MarkKind
+import app.obnixe.tracker.PowerSample
 import app.obnixe.tracker.PressureSample
 import app.obnixe.tracker.StepSample
 import java.io.File
@@ -199,6 +201,29 @@ class JournalWriterTest {
     assertEquals(402, buffer.getShort(at + 8).toInt())
     assertEquals(2, bytes[at + 17].toInt())
     assertEquals(0, buffer.getShort(at + 18).toInt())
+  }
+
+  @Test
+  fun `power and cadence records clamp their values and encode an absent crank cadence as 0xFFFF`() {
+    JournalWriter.create(path, header).use { writer ->
+      writer.append(PowerSample(100, 251, null))
+      writer.append(PowerSample(200, 70_000, 92))
+      writer.append(CadenceSample(150, 176))
+      writer.flush()
+    }
+    val bytes = path.readBytes()
+    val at = headerLength() + 8
+    val buffer = le(bytes)
+    assertEquals(6, bytes[at].toInt())
+    assertEquals(251, buffer.getShort(at + 5).toInt() and 0xFFFF)
+    assertEquals(0xFFFF, buffer.getShort(at + 7).toInt() and 0xFFFF)
+    assertEquals(0xFFFE, buffer.getShort(at + 14).toInt() and 0xFFFF)
+    assertEquals(92, buffer.getShort(at + 16).toInt())
+    assertEquals(7, bytes[at + 18].toInt())
+    assertEquals(150, buffer.getInt(at + 19))
+    assertEquals(176, buffer.getShort(at + 23).toInt())
+    assertEquals(at + 25 + 4, bytes.size)
+    assertEquals(1L, JournalScanner.scan(bytes).nextSequence)
   }
 
   @Test

@@ -82,6 +82,18 @@ data class HeartRateSample(
     mapOf("type" to "heart_rate", "t" to t.toDouble(), "bpm" to bpm, "contact" to contact.wire, "rrInterval" to rrInterval)
 }
 
+data class CadenceSample(override val t: Long, /** Pedal revolutions or steps per minute, as the sport's cadence. */ val perMinute: Int) : Sample {
+  override val recordType get() = RecordType.CADENCE
+
+  override fun toBridge(): Map<String, Any?> = mapOf("type" to "cadence", "t" to t.toDouble(), "perMinute" to perMinute)
+}
+
+data class PowerSample(override val t: Long, val watts: Int, /** Crank revolutions per minute from the power meter. */ val cadence: Int?) : Sample {
+  override val recordType get() = RecordType.POWER
+
+  override fun toBridge(): Map<String, Any?> = mapOf("type" to "power", "t" to t.toDouble(), "watts" to watts, "cadence" to cadence)
+}
+
 /** Code 4 (`extend`) belongs to guided workouts (V2) and has no member until then. */
 enum class MarkKind(val code: Int, val wire: String) {
   START(0, "start"),

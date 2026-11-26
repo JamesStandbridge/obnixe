@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
-import { withDevice } from "@/features/tracking/heartRateDevices";
+import { withDevice } from "@/features/tracking/sensorDevices";
 import { bluetoothGranted, requestBluetooth } from "@/features/tracking/permissions";
 import { tracker } from "../../../modules/obnixe-tracker";
-import type { HeartRateDevice } from "../../../modules/obnixe-tracker";
+import type { SensorDevice, SensorService } from "../../../modules/obnixe-tracker";
 
-export type HeartRateScanStatus = "idle" | "scanning" | "denied" | "unavailable" | "unsupported" | "failed";
+export type SensorScanStatus = "idle" | "scanning" | "denied" | "unavailable" | "unsupported" | "failed";
 
-export interface HeartRateScan {
-  readonly status: HeartRateScanStatus;
+export interface SensorScan {
+  readonly status: SensorScanStatus;
   /** Strongest signal first. */
-  readonly devices: readonly HeartRateDevice[];
+  readonly devices: readonly SensorDevice[];
   /** Whether a scan ran to its end. */
   readonly scanned: boolean;
   readonly scan: () => void;
@@ -20,22 +20,24 @@ function codeOf(error: unknown): string | null {
 }
 
 /**
- * `SPT-007`: lists the Heart Rate service advertisers while it scans. With `ask`, the Bluetooth permission is requested
- * (`PRV-006`, on the press of the pairing screen); without, a scan only runs once it was granted.
+ * `SPT-007`, `SPT-008`: lists the advertisers of `service` while it scans. With `ask`, the Bluetooth permission is
+ * requested (`PRV-006`, on the press of the pairing screen); without, a scan only runs once it was granted.
  */
-export function useHeartRateScan(timeoutMs: number, ask: boolean): HeartRateScan {
-  const [status, setStatus] = useState<HeartRateScanStatus>(tracker === null ? "unsupported" : "idle");
-  const [devices, setDevices] = useState<readonly HeartRateDevice[]>([]);
+export function useSensorScan(service: SensorService, timeoutMs: number, ask: boolean): SensorScan {
+  const [status, setStatus] = useState<SensorScanStatus>(tracker === null ? "unsupported" : "idle");
+  const [devices, setDevices] = useState<readonly SensorDevice[]>([]);
   const [scanned, setScanned] = useState(false);
 
   useEffect(() => {
     if (tracker === null) return undefined;
-    const subscription = tracker.addListener("onHeartRateDevice", (device) => setDevices((current) => withDevice(current, device)));
+    const subscription = tracker.addListener("onSensorDevice", (device: SensorDevice) => {
+      if (device.service === service) setDevices((current) => withDevice(current, device));
+    });
     return () => {
       subscription.remove();
       tracker?.stopScan();
     };
-  }, []);
+  }, [service]);
 
   const scan = useCallback(() => {
     if (tracker === null) return;
@@ -47,7 +49,7 @@ export function useHeartRateScan(timeoutMs: number, ask: boolean): HeartRateScan
       }
       setStatus("scanning");
       try {
-        await tracker?.scanHeartRate(timeoutMs);
+        await tracker?.scanSensors(service, timeoutMs);
         setStatus("idle");
         setScanned(true);
       } catch (error) {
@@ -56,7 +58,7 @@ export function useHeartRateScan(timeoutMs: number, ask: boolean): HeartRateScan
       }
     };
     void run();
-  }, [ask, timeoutMs]);
+  }, [ask, service, timeoutMs]);
 
   return { status, devices, scanned, scan };
 }

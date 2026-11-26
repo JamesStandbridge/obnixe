@@ -250,6 +250,7 @@ function collect(file: FitFile, global: number, fields: FieldValues, timestamp: 
         altitudeMm: altitude === null ? null : Math.round(altitude * 200 - 500_000),
         heartRate: fields.number(3),
         cadence: cadence === null ? null : cadence + (fraction ?? 0) / 128,
+        power: fields.number(7),
         speedMmS: fields.number(73) ?? fields.number(6),
         courseCentiDeg: obnixe(obnixeField.course),
         horizontalAccuracyDm: obnixe(obnixeField.horizontalAccuracy) ?? (accuracy === null || accuracy === 0 ? null : accuracy * 10),
@@ -289,6 +290,7 @@ function collect(file: FitFile, global: number, fields: FieldValues, timestamp: 
           energyKcal: fields.number(11),
           heartRateAvg: fields.number(16),
           heartRateMax: fields.number(17),
+          powerAvg: fields.number(20),
         },
         poolLengthMeters: poolLength === null ? null : ((poolLength / 100) * (fields.number(46) === displayMeasureStatute ? yardMeters : 1)),
         activeLengths: fields.number(47),
@@ -387,7 +389,7 @@ function poolSwim(session: FitSession | undefined, activeLengths: number): PoolS
 /**
  * Reads a FIT activity file (`IO-050`): header and file CRC, chained files, developer fields (skipped but the Obnixe ones),
  * compressed timestamps, either endianness. Takes positions, altitude (enhanced when present), GPS accuracy, pressure, heart
- * rate, cadence, timer events, laps, the first session's sport and totals, and the pool lengths of a lap swim. Refuses any
+ * rate, cadence, power, timer events, laps, the first session's sport and totals, and the pool lengths of a lap swim. Refuses any
  * other FIT file type.
  */
 export function readFit(bytes: Uint8Array): ImportedActivity {
@@ -428,6 +430,8 @@ export interface FitStretch {
   readonly energyKcal: number | null;
   readonly heartRateAvg: number | null;
   readonly heartRateMax: number | null;
+  readonly powerAvg: number | null;
+  readonly powerMax: number | null;
 }
 
 export interface FitLap extends FitStretch {
@@ -481,18 +485,18 @@ const layouts = {
   record: {
     local: 2,
     global: message.record,
-    fields: [timestamp, field(0, "sint32"), field(1, "sint32"), field(5, "uint32"), field(78, "uint32"), field(73, "uint32"), field(3, "uint8"), field(4, "uint8"), field(31, "uint8"), field(91, "uint32")],
+    fields: [timestamp, field(0, "sint32"), field(1, "sint32"), field(5, "uint32"), field(78, "uint32"), field(73, "uint32"), field(3, "uint8"), field(4, "uint8"), field(7, "uint16"), field(31, "uint8"), field(91, "uint32")],
     developer: [field(obnixeField.course, "uint16"), field(obnixeField.horizontalAccuracy, "uint16"), field(obnixeField.verticalAccuracy, "uint16"), field(obnixeField.speedAccuracy, "uint16")],
   },
   lap: {
     local: 3,
     global: message.lap,
-    fields: [timestamp, messageIndex, field(0, "enum"), field(1, "enum"), field(2, "uint32"), field(7, "uint32"), field(8, "uint32"), field(9, "uint32"), field(11, "uint16"), field(15, "uint8"), field(16, "uint8"), field(24, "enum"), field(25, "enum")],
+    fields: [timestamp, messageIndex, field(0, "enum"), field(1, "enum"), field(2, "uint32"), field(7, "uint32"), field(8, "uint32"), field(9, "uint32"), field(11, "uint16"), field(15, "uint8"), field(16, "uint8"), field(19, "uint16"), field(20, "uint16"), field(24, "enum"), field(25, "enum")],
   },
   session: {
     local: 4,
     global: message.session,
-    fields: [timestamp, messageIndex, field(0, "enum"), field(1, "enum"), field(2, "uint32"), field(5, "enum"), field(6, "enum"), field(7, "uint32"), field(8, "uint32"), field(9, "uint32"), field(11, "uint16"), field(16, "uint8"), field(17, "uint8"), field(25, "uint16"), field(26, "uint16"), field(28, "enum")],
+    fields: [timestamp, messageIndex, field(0, "enum"), field(1, "enum"), field(2, "uint32"), field(5, "enum"), field(6, "enum"), field(7, "uint32"), field(8, "uint32"), field(9, "uint32"), field(11, "uint16"), field(16, "uint8"), field(17, "uint8"), field(20, "uint16"), field(21, "uint16"), field(25, "uint16"), field(26, "uint16"), field(28, "enum")],
   },
   activity: { local: 5, global: message.activity, fields: [timestamp, field(0, "uint32"), field(1, "uint16"), field(2, "enum"), field(3, "enum"), field(4, "enum")] },
   developerDataId: { local: 6, global: message.developerDataId, fields: [field(1, "bytes"), field(3, "uint8")] },
@@ -660,6 +664,7 @@ function recordValues(point: ExportPoint, second: number): readonly FitValue[] {
     point.speedMmS,
     fitByte(point.heartRate),
     fitByte(point.cadence),
+    point.power,
     point.horizontalAccuracyDm === null ? null : fitByte(Math.max(1, Math.round(point.horizontalAccuracyDm / 10))),
     point.pressurePa,
     point.courseCentiDeg,
@@ -670,13 +675,13 @@ function recordValues(point: ExportPoint, second: number): readonly FitValue[] {
 }
 
 function stretchValues(stretch: FitStretch): readonly FitValue[] {
-  return [fitTime(stretch.startTime), stretch.endTime - stretch.startTime, stretch.timerMs, stretch.distanceMm / 10, stretch.energyKcal, fitByte(stretch.heartRateAvg), fitByte(stretch.heartRateMax)];
+  return [fitTime(stretch.startTime), stretch.endTime - stretch.startTime, stretch.timerMs, stretch.distanceMm / 10, stretch.energyKcal, fitByte(stretch.heartRateAvg), fitByte(stretch.heartRateMax), stretch.powerAvg, stretch.powerMax];
 }
 
 /**
  * A FIT activity file (`IO-003`): `file_id` of type activity, timer `event` start and stop around each pause, one `record` per
- * point (semicircles, `enhanced_altitude`, `distance`, `enhanced_speed`, heart rate, cadence, GPS accuracy and pressure, and
- * the course and fix accuracies as Obnixe developer fields), the `lap` messages, one `session` with the annex D sport and sub
+ * point (semicircles, `enhanced_altitude`, `distance`, `enhanced_speed`, heart rate, cadence, power, GPS accuracy and pressure,
+ * and the course and fix accuracies as Obnixe developer fields), the `lap` messages with their average and maximum power, one `session` with the annex D sport and sub
  * sport, and `activity`, with valid header and file CRCs. Points falling in the second of the previous one are left out.
  */
 export function writeFit(document: FitDocument): Uint8Array {

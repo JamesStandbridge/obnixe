@@ -1,10 +1,12 @@
 package app.obnixe.tracker.journal
 
+import app.obnixe.tracker.CadenceSample
 import app.obnixe.tracker.Fix
 import app.obnixe.tracker.HeartRateSample
 import app.obnixe.tracker.JournalRecord
 import app.obnixe.tracker.Mark
 import app.obnixe.tracker.MarkKind
+import app.obnixe.tracker.PowerSample
 import app.obnixe.tracker.PressureSample
 import app.obnixe.tracker.Sample
 import app.obnixe.tracker.StepSample
@@ -123,6 +125,11 @@ class JournalWriter private constructor(
         sink.u8(record.contact.code)
         sink.u16(record.rrInterval?.coerceIn(1, 0xFFFF) ?: 0)
       }
+      is PowerSample -> {
+        sink.u16(record.watts.coerceIn(0, JournalFormat.maxUInt16))
+        sink.u16(uint16(record.cadence))
+      }
+      is CadenceSample -> sink.u16(record.perMinute.coerceIn(0, JournalFormat.maxUInt16))
       is Mark -> sink.u8(record.kind.code)
     }
   }
@@ -248,7 +255,7 @@ internal object JournalScanner {
             batchStepCount = buffer.getInt(offset + 5).toLong() and JournalFormat.maxUInt32
             true
           }
-          RecordType.PRESSURE -> true
+          RecordType.PRESSURE, RecordType.POWER, RecordType.CADENCE -> true
         }
         batchT[type.code] = t
         offset += type.size

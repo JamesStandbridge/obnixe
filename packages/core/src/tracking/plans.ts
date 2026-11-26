@@ -21,6 +21,7 @@ import { estimateEnergy } from "./energy.ts";
 import type { EnergyEstimate } from "./energy.ts";
 import { resolveProfile } from "./profile.ts";
 import type { ResolvedProfile } from "./profile.ts";
+import { pairedSensorOf } from "./sensors.ts";
 import { importedSummary, sessionValuesFromRecording } from "./summary.ts";
 import type { LapBounds } from "./stages/derive.ts";
 import { trackingAlgorithmVersion } from "./version.ts";
@@ -43,9 +44,9 @@ export function recordingSettingsOf(db: ObnixeDatabase, profile: ResolvedProfile
   return stored ?? defaultRecordingSettings(profile);
 }
 
-/** Annex A defaults: every alert on, no sound, no span watched, no heart-rate source. */
+/** Annex A defaults: every alert on, no sound, no span watched, no Bluetooth source. */
 export function defaultRecordingSettings(profile: Pick<ResolvedProfile, "autoPauseDefault">): RecordingSettings {
-  return { autoPause: profile.autoPauseDefault, autoLap: null, readout: null, alerts: { disabled: [], sound: false, paceRange: null, heartRateRange: null }, heartRateDevice: null };
+  return { autoPause: profile.autoPauseDefault, autoLap: null, readout: null, alerts: { disabled: [], sound: false, paceRange: null, heartRateRange: null }, heartRateDevice: null, cadenceDevice: null, powerDevice: null };
 }
 
 /** Stores the sport's recording settings (`DAT-003`), adding its preference row, disabled, when the sport has none yet. */
@@ -166,7 +167,10 @@ export function recordingStartMutations(plan: RecordingStartPlan, started: Start
         steps: null,
         heartRateAvg: null,
         heartRateMax: null,
-        heartRateDevice: plan.settings.heartRateDevice?.name ?? null,
+        heartRateDevice: pairedSensorOf(plan.profile, plan.settings, "heart_rate")?.name ?? null,
+        cadenceDevice: pairedSensorOf(plan.profile, plan.settings, "cadence")?.name ?? null,
+        powerAvg: null,
+        powerDevice: pairedSensorOf(plan.profile, plan.settings, "power")?.name ?? null,
         energyKcal: null,
         energyMethod: null,
         importedEnergyKcal: null,
@@ -249,6 +253,7 @@ function energyOf(db: ObnixeDatabase, current: Session, track: Track, processed:
       path: { distance: processed.series.distance, grade: processed.series.grade },
       heartRate: track.samples.heartRate.length > 0 ? track.samples.heartRate : null,
       descents: processed.descents.map((descent) => ({ startMs: descent.startMs, endMs: descent.endMs })),
+      power: track.samples.power.length > 0 ? track.samples.power : null,
     },
     { massGrams: weighed.grams, birthYear: physiology.birthYear, sex: physiology.sex },
   );

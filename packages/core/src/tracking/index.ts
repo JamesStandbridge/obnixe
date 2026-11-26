@@ -40,6 +40,7 @@ export * from "./segmentBoards.ts";
 export * from "./segmentRows.ts";
 export * from "./segments.ts";
 export * from "./shareImage.ts";
+export * from "./sensors.ts";
 export * from "./simplify.ts";
 export * from "./stages/altitude.ts";
 export * from "./stages/derive.ts";

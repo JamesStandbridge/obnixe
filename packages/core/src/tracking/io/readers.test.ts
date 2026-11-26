@@ -101,6 +101,7 @@ describe("FIT reader (IO-050)", () => {
       expect(point?.heartRate).toBe(record.heartRate);
       expect(point?.altitudeMm).toBeCloseTo(Number(record.enhancedAltitude) * 1000, -1);
       expect(point?.cadence).toBe(Number(record.cadence) + Number(record.fractionalCadence));
+      expect(point?.power).toBe(record.power ?? null);
     });
     const session = messages.sessionMesgs?.[0];
     expect(activity.totals).toEqual({
@@ -110,6 +111,7 @@ describe("FIT reader (IO-050)", () => {
       energyKcal: session?.totalCalories,
       heartRateAvg: session?.avgHeartRate,
       heartRateMax: session?.maxHeartRate,
+      powerAvg: session?.avgPower ?? null,
     });
     expect(activity.device).toBe("Garmin Venu 3S");
     expect(activity.externalId).toBe(`fit:1:4261:3456789012:${String(messages.fileIdMesgs?.[0]?.timeCreated)}`);
@@ -124,6 +126,18 @@ describe("FIT reader (IO-050)", () => {
       { startMs: 0, endMs: 451_000 },
       { startMs: 451_000, endMs: 618_000 },
     ]);
+  });
+
+  it("reads the native power and crank cadence of a road ride, zeros included", () => {
+    const bytes = read("power-ride.fit");
+    const activity = readFit(bytes);
+    const { messages } = new Decoder(Stream.fromByteArray(Array.from(bytes))).read({ convertDateTimesToDates: false });
+    const records = messages.recordMesgs ?? [];
+    expect(activity.sport).toEqual({ sport: "bike", values: { kind: "road" } });
+    expect(activity.points.map((point) => point.power)).toEqual(records.map((record) => record.power));
+    expect(activity.points.map((point) => point.cadence)).toEqual(records.map((record) => record.cadence));
+    expect(activity.points[420]).toMatchObject({ power: 0, cadence: 0 });
+    expect(activity.totals?.powerAvg).toBe(messages.sessionMesgs?.[0]?.avgPower);
   });
 
   it("turns a pool swim into lengths, pool length and distance", () => {

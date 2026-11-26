@@ -96,6 +96,7 @@ function recordingJson({ row, profile, laps, efforts, standings }: RecordingPart
     heartRateAvg: row.heartRateAvg,
     heartRateMax: row.heartRateMax,
     heartRateSource: row.heartRateSource,
+    powerAvg: row.powerAvg,
     energyKcal: row.energyKcal,
     energyMethod: row.energyMethod,
     importedEnergyKcal: row.importedEnergyKcal,

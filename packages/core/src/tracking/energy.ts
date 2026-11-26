@@ -1,5 +1,6 @@
 import type { BiologicalSex, EnergyMethod, EpochMs, FieldValues, SportKey } from "@obnixe/schema";
-import type { HeartRateColumns } from "./types.ts";
+import { forEachSensorSpan, powerReadings } from "./sensors.ts";
+import type { HeartRateColumns, PowerColumns } from "./types.ts";
 import { ageAt, forEachHeartRateSpan, SpanOverlap } from "./zones.ts";
 import type { TimeSpan } from "./zones.ts";
 
@@ -7,6 +8,10 @@ import type { TimeSpan } from "./zones.ts";
 export const minettiGradeBound = 0.45;
 /** Share of the moving time a heart rate must cover for the `heart_rate` method (`CAL-002`). */
 export const heartRateEnergyCoverage = 0.8;
+/** Share of the moving time a power meter must cover for the `power` method (`CAL-002`). */
+export const powerEnergyCoverage = 0.8;
+/** Gross cycling efficiency of the `power` method: mechanical work over metabolic energy, resting metabolism included. */
+export const grossCyclingEfficiency = 0.24;
 /** Under this rate the Keytel equations do not hold and the resting rate is used instead. */
 export const keytelMinimumBpm = 90;
 
@@ -256,6 +261,7 @@ export interface EnergyActivity {
   readonly heartRate: HeartRateColumns | null;
   /** Detected descents (`runs`), sorted; `null` without a track. Downhill skiing counts its MET over their moving time only. */
   readonly descents: readonly TimeSpan[] | null;
+  readonly power: PowerColumns | null;
 }
 
 export interface EnergyBody {
@@ -308,6 +314,25 @@ function heartRateKcal(activity: EnergyActivity, heartRate: HeartRateColumns, se
   return coveredKcal + (coveredMovingKcal / coveredMovingMs) * uncoveredMovingMs + restingKcal(massKg, Math.max(uncoveredStoppedMs, 0));
 }
 
+/**
+ * Mechanical work over the moving time a reading holds, the uncovered moving time at the mean covered power, over the gross
+ * efficiency; stops at rest. `null` when the meter covers less than `powerEnergyCoverage` of the moving time.
+ */
+function powerKcal(activity: EnergyActivity, power: PowerColumns, massKg: number, movingMs: number): number | null {
+  const overlap = new SpanOverlap(activity.moving);
+  let coveredMovingMs = 0;
+  let joules = 0;
+  forEachSensorSpan(powerReadings(power), activity.elapsed, (startMs, endMs, watts) => {
+    const moving = overlap.of(startMs, endMs);
+    coveredMovingMs += moving;
+    joules += (watts * moving) / 1000;
+  });
+  if (coveredMovingMs <= 0 || coveredMovingMs < powerEnergyCoverage * movingMs) return null;
+  const work = joules * (movingMs / coveredMovingMs);
+  const elapsedMs = activity.elapsed.endMs - activity.elapsed.startMs;
+  return work / (joulesPerKcal * grossCyclingEfficiency) + restingKcal(massKg, Math.max(elapsedMs - movingMs, 0));
+}
+
 /** Minetti cost integrated over the counted distance with the carried mass, plus 1 MET over the elapsed time. */
 function mechanicalKcal(path: EnergyPath, cost: (grade: number) => number, carriedKg: number, massKg: number, elapsedMs: number): number {
   let joulesPerKg = 0;
@@ -347,7 +372,8 @@ function footCost(sport: SportKey): ((grade: number) => number) | null {
 }
 
 /**
- * Gross energy estimate by the first applicable method (`CAL-001`, `CAL-002`): `heart_rate` (Keytel) when a heart rate covers
+ * Gross energy estimate by the first applicable method (`CAL-001`, `CAL-002`): `power` for a bike ride whose power meter covers
+ * 80 % of the moving time (`SPT-008`), `heart_rate` (Keytel) when a heart rate covers
  * 80 % of the moving time and the birth year and sex are known, `mechanical` (Minetti) for foot sports with a track, otherwise
  * `met`. `null` for sports never recorded.
  */
@@ -355,6 +381,10 @@ export function estimateEnergy(activity: EnergyActivity, body: EnergyBody): Ener
   const massKg = body.massGrams / 1000;
   const elapsedMs = activity.elapsed.endMs - activity.elapsed.startMs;
   const movingMs = totalMs(activity.moving);
+  if (activity.sport === "bike" && activity.power !== null && movingMs > 0) {
+    const kcal = powerKcal(activity, activity.power, massKg, movingMs);
+    if (kcal !== null) return { kcal: Math.round(kcal), method: "power", met: null };
+  }
   if (activity.heartRate !== null && body.birthYear !== null && body.sex !== null && movingMs > 0) {
     const kcal = heartRateKcal(activity, activity.heartRate, body.sex, massKg, ageAt(body.birthYear, activity.startedAt), movingMs);
     if (kcal !== null) return { kcal: Math.round(kcal), method: "heart_rate", met: null };

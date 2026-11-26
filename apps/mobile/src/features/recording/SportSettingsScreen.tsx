@@ -3,7 +3,7 @@ import { StyleSheet, View } from "react-native";
 import { router } from "expo-router";
 import { useLiveQuery } from "drizzle-orm/expo-sqlite";
 import { eq } from "drizzle-orm";
-import { defaultRecordingSettings, heartRateZoneKeys, maxHeartRateOf, recordingSettingsMutation, resolveProfile } from "@obnixe/core";
+import { defaultRecordingSettings, heartRateZoneKeys, maxHeartRateOf, pairedSensorOf, recordingSettingsMutation, resolveProfile, sensorRolesOf } from "@obnixe/core";
 import type { HeartRateZone, ResolvedProfile } from "@obnixe/core";
 import { recordingAlerts, sportPreference, sports } from "@obnixe/schema";
 import type { HeartRateRange, PaceRange, Readout, RecordingSettings, SportKey } from "@obnixe/schema";
@@ -15,6 +15,7 @@ import { heartRateSpanBpm } from "@/features/recording/alerts";
 import { paceUnit } from "@/features/recording/metrics";
 import { liveReadout, storedReadout } from "@/features/recording/readout";
 import { ReadoutEditor } from "@/features/recording/ReadoutEditor";
+import { sensorTextsOf } from "@/features/recording/sensorTexts";
 import {
   alertLabel,
   autoLapChoiceOf,
@@ -53,7 +54,7 @@ function useSportSettings(sport: SportKey, profile: ResolvedProfile): RecordingS
   return data[0]?.settings ?? defaultRecordingSettings(profile);
 }
 
-/** `DAT-003`, `REC-030`, `REC-075`, `SPT-005`: live screen, automatic pause and laps, alerts and heart-rate source of one sport. */
+/** `DAT-003`, `REC-030`, `REC-075`, `SPT-005`: live screen, automatic pause and laps, alerts and Bluetooth sources of one sport. */
 export function SportSettingsScreen({ sport }: SportSettingsScreenProps) {
   const profile = useMemo(() => resolveProfile(sport, {}), [sport]);
   if (profile === null) {
@@ -82,7 +83,8 @@ function RecordingSettingsForm({ profile }: RecordingSettingsFormProps) {
   const readout = liveReadout(profile, current);
   const { paceRange, heartRateRange } = current.alerts;
   const heartRate = profile.metrics.includes("heart_rate");
-  const alerts = heartRate ? recordingAlerts : recordingAlerts.filter((alert) => alert !== "sensor");
+  const sensorRoles = sensorRolesOf(profile);
+  const alerts = sensorRoles.length > 0 ? recordingAlerts : recordingAlerts.filter((alert) => alert !== "sensor");
 
   const save = (summary: string, next: RecordingSettings): void => {
     write(`${summary} : ${label.toLowerCase()}`, [recordingSettingsMutation(db(), sport, next)]);
@@ -105,16 +107,21 @@ function RecordingSettingsForm({ profile }: RecordingSettingsFormProps) {
 
         <Section title="Pendant la sortie">
           <SwitchRow title="Pause automatique" detail="Quand tu t'arrêtes" value={current.autoPause} onChange={(value) => save("Pause automatique", { ...current, autoPause: value })} />
-          <Row title="Tours automatiques" detail={autoLapLabel(current.autoLap)} trailing={<Chevron />} onPress={() => setSheet("auto_lap")} last={!heartRate} />
-          {heartRate ? (
-            <Row
-              title="Capteur cardiaque"
-              detail={current.heartRateDevice === null ? "Aucun · montre en diffusion ou ceinture" : current.heartRateDevice.name}
-              trailing={<Chevron />}
-              onPress={() => router.push({ pathname: "/settings/heart-rate/[sport]", params: { sport } })}
-              last
-            />
-          ) : null}
+          <Row title="Tours automatiques" detail={autoLapLabel(current.autoLap)} trailing={<Chevron />} onPress={() => setSheet("auto_lap")} last={sensorRoles.length === 0} />
+          {sensorRoles.map((role, index) => {
+            const device = pairedSensorOf(profile, current, role);
+            const texts = sensorTextsOf(role, profile);
+            return (
+              <Row
+                key={role}
+                title={texts.title}
+                detail={device === null ? texts.none : device.name}
+                trailing={<Chevron />}
+                onPress={() => router.push({ pathname: "/settings/sensor/[role]/[sport]", params: { role, sport } })}
+                last={index === sensorRoles.length - 1}
+              />
+            );
+          })}
         </Section>
 
         <Section title="Alertes">

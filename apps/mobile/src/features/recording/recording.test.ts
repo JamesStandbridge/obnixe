@@ -4,7 +4,7 @@ import type { RecordAnnouncement, RecordingAlertEvent, ResolvedProfile } from "@
 import type { EpochMs, FieldValues, Id, RecordingSettings, SportKey } from "@obnixe/schema";
 import { alertNotice, alertPulses, beepWave, heartRateSpanBpm, rejoinText, vibrationPattern } from "@/features/recording/alerts";
 import { elevationShape } from "@/features/recording/elevation";
-import { lapFigures, metricText, summaryFigures } from "@/features/recording/metrics";
+import { cadenceUnit, lapFigures, metricText, summaryFigures } from "@/features/recording/metrics";
 import { maxHeartRateDetail, maxHeartRateFrom, zoneLines } from "@/features/recording/physiology";
 import { liveReadout, storedReadout, withMetric, withSecondaryAdded, withSecondaryRemoved } from "@/features/recording/readout";
 import { effortLabel, recordLines } from "@/features/recording/records";
@@ -25,7 +25,8 @@ import {
 } from "@/features/recording/settings";
 import { slotTarget, targetProgress } from "@/features/recording/target";
 import { batteryGuide, batteryVendorOf } from "@/features/tracking/battery";
-import { signalStrengthOf, withDevice } from "@/features/tracking/heartRateDevices";
+import { sensorTextsOf } from "@/features/recording/sensorTexts";
+import { bluetoothSensorsOf, isSensorRole, sensorRoleOfIssue, sensorServiceOf, signalStrengthOf, withDevice } from "@/features/tracking/sensorDevices";
 
 function profileOf(sport: SportKey, values: FieldValues = {}): ResolvedProfile {
   const profile = resolveProfile(sport, values);
@@ -111,7 +112,7 @@ describe("live readout", () => {
 
   it("leaves out the metrics the profile does not compute", () => {
     const bike = profileOf("bike", { kind: "road" });
-    expect(liveReadout(bike, { readout: { main: "cadence", secondary: ["distance", "steps", "moving", "speed_avg"] }, heartRateDevice: null })).toEqual({
+    expect(liveReadout(bike, { readout: { main: "gap_now", secondary: ["distance", "steps", "moving", "speed_avg"] }, heartRateDevice: null })).toEqual({
       main: bike.readout.main,
       secondary: ["distance", "moving", "speed_avg"],
     });
@@ -205,7 +206,9 @@ describe("recording alerts", () => {
     expect(notice({ kind: "heart_rate_range", range: { lowest: 2, highest: 3 }, status: "above", repeat: 0 })).toEqual({ title: "Cardio trop haut", detail: "Cible Z2 – Z3", tone: "warn" });
     expect(notice({ kind: "goal", goal: { kind: "distance", meters: 10_000 } }).detail).toBe("Objectif 10 km atteint");
     expect(notice({ kind: "gps", change: "lost" }).title).toBe("Signal GPS perdu");
-    expect(notice({ kind: "sensor", change: "back" }).title).toBe("Capteur cardiaque reconnecté");
+    expect(notice({ kind: "sensor", sensor: "heart_rate", change: "back" })).toEqual({ title: "Capteur cardiaque reconnecté", detail: "La fréquence cardiaque reprend", tone: "mark" });
+    expect(notice({ kind: "sensor", sensor: "power", change: "lost" }, bike)).toEqual({ title: "Capteur de puissance perdu", detail: "Reconnexion en cours", tone: "warn" });
+    expect(notice({ kind: "sensor", sensor: "cadence", change: "back" }, bike).detail).toBe("La cadence reprend");
     expect(notice({ kind: "battery", level: "critical" }).tone).toBe("stop");
   });
 
@@ -315,21 +318,56 @@ describe("recording settings", () => {
   });
 
   it("sums up what departs from the defaults (DAT-003)", () => {
-    expect(settingsSummary(base)).toBe("pause auto");
+    expect(settingsSummary(run, base)).toBe("pause auto");
     const changed: RecordingSettings = { ...withAlert(withAlert(base, "gps", false), "battery", false), autoPause: false, autoLap: { trigger: "distance", meters: 1000 }, heartRateDevice: { id: "C4:7D", name: "Venu 3S" } };
-    expect(settingsSummary(changed)).toBe("sans pause auto · tours tous les 1 km · 2 alertes coupées · Venu 3S");
+    expect(settingsSummary(run, changed)).toBe("sans pause auto · tours tous les 1 km · 2 alertes coupées · Venu 3S");
+    const stryd = { id: "D0:5F", name: "Stryd" };
+    const paired: RecordingSettings = { ...changed, cadenceDevice: stryd, powerDevice: stryd };
+    expect(settingsSummary(run, paired)).toBe("sans pause auto · tours tous les 1 km · 2 alertes coupées · Venu 3S · Stryd");
+    expect(settingsSummary(profileOf("swim"), paired)).toBe("sans pause auto · tours tous les 1 km · 2 alertes coupées");
     expect(isSportKey("run")).toBe(true);
     expect(isSportKey("chess")).toBe(false);
   });
 });
 
-describe("heart-rate sources", () => {
+describe("Bluetooth sources", () => {
   it("lists each source once, strongest first, keeping a name an advertisement left out (SPT-007)", () => {
-    const venu = { id: "C4:7D", name: "Venu 3S", rssi: -78 };
-    const strap = { id: "E1:02", name: "HRM-Pro", rssi: -60 };
-    const listed = withDevice(withDevice(withDevice([], venu), strap), { id: "C4:7D", name: "", rssi: -52 });
-    expect(listed).toEqual([{ id: "C4:7D", name: "Venu 3S", rssi: -52 }, strap]);
+    const venu = { service: "heart_rate", id: "C4:7D", name: "Venu 3S", rssi: -78 } as const;
+    const strap = { service: "heart_rate", id: "E1:02", name: "HRM-Pro", rssi: -60 } as const;
+    const listed = withDevice(withDevice(withDevice([], venu), strap), { service: "heart_rate", id: "C4:7D", name: "", rssi: -52 });
+    expect(listed).toEqual([{ service: "heart_rate", id: "C4:7D", name: "Venu 3S", rssi: -52 }, strap]);
     expect([signalStrengthOf(-52), signalStrengthOf(-78), signalStrengthOf(-90)]).toEqual(["strong", "medium", "weak"]);
+  });
+
+  it("reads a footpod on foot and a crank sensor on the bike, and connects only what the profile pairs (SPT-008)", () => {
+    const run = profileOf("run");
+    const bike = profileOf("bike", { kind: "road" });
+    expect([sensorServiceOf("cadence", run), sensorServiceOf("cadence", bike), sensorServiceOf("power", run), sensorServiceOf("heart_rate", bike)]).toEqual([
+      "running_speed_cadence",
+      "cycling_speed_cadence",
+      "cycling_power",
+      "heart_rate",
+    ]);
+    const settings: RecordingSettings = { ...defaultRecordingSettings(bike), heartRateDevice: { id: "C4:7D", name: "Venu 3S" }, cadenceDevice: { id: "F2:10", name: "Cadence" }, powerDevice: { id: "A9:33", name: "Assioma" } };
+    expect(bluetoothSensorsOf(bike, settings)).toEqual([
+      { service: "heart_rate", id: "C4:7D" },
+      { service: "cycling_speed_cadence", id: "F2:10" },
+      { service: "cycling_power", id: "A9:33" },
+    ]);
+    expect(bluetoothSensorsOf(profileOf("paddle"), settings)).toEqual([{ service: "heart_rate", id: "C4:7D" }]);
+    expect(bluetoothSensorsOf(profileOf("swim"), settings)).toEqual([]);
+    expect([sensorRoleOfIssue("power_lost"), sensorRoleOfIssue("cadence_lost"), sensorRoleOfIssue("storage_low")]).toEqual(["power", "cadence", null]);
+    expect([isSensorRole("power"), isSensorRole("speed"), isSensorRole(undefined)]).toEqual([true, false, false]);
+  });
+
+  it("names each source and its unit in the sport's words (SPT-008)", () => {
+    const run = profileOf("run");
+    const bike = profileOf("bike", { kind: "road" });
+    expect([sensorTextsOf("cadence", run).none, sensorTextsOf("cadence", bike).none, sensorTextsOf("power", bike).none]).toEqual(["Aucun · footpod, sinon le téléphone", "Aucun · capteur de pédalier", "Aucun · pédales, manivelle ou moyeu"]);
+    expect([cadenceUnit(run), cadenceUnit(bike)]).toEqual(["pas/min", "tr/min"]);
+    expect(metricText("cadence", { cadence: 88 }, bike, noon, "Europe/Paris")).toEqual({ value: "88", unit: "tr/min" });
+    expect(alertLabel("sensor", bike).title).toBe("Capteurs Bluetooth");
+    expect(alertLabel("sensor", profileOf("alpine_ski")).title).toBe("Capteur cardiaque");
   });
 });
 

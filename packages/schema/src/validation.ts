@@ -58,6 +58,8 @@ export const rowSchemas = {
     device: label,
     externalId: label.nullable().optional(),
     heartRateDevice: label.nullable().optional(),
+    cadenceDevice: label.nullable().optional(),
+    powerDevice: label.nullable().optional(),
     weather: recordingWeatherSchema.nullable().optional(),
     workout: workoutPlanSchema.nullable().optional(),
     bbox: boundingBoxE7Schema.nullable().optional(),

@@ -14,11 +14,13 @@ import {
   lastWorkoutOf,
   newGear,
   openSession,
+  pairedSensorOf,
   primaryChoice,
   recentSpeedOf,
   recordingSettingsMutation,
   recordingSettingsOf,
   resolveProfile,
+  sensorRolesOf,
   signalLevelAccuracy,
   workoutEstimate,
 } from "@obnixe/core";
@@ -35,7 +37,7 @@ import { formatKilometers, gearLabel } from "@/features/activity/presentation";
 import { writeGearWear } from "@/features/activity/gearWear";
 import type { GeoPoint } from "@/features/maps/tiles";
 import { signalWord, SignalBars } from "@/features/recording/LiveParts";
-import { HeartRateCard } from "@/features/recording/HeartRateParts";
+import { SensorCard } from "@/features/recording/SensorParts";
 import { QuickIntervalsSheet } from "@/features/recording/QuickIntervalsSheet";
 import { defaultGear, hasLiveRecording, lastRecordedSport, recordableSports, slotStartOf } from "@/features/recording/queries";
 import { liveReadout, storedReadout } from "@/features/recording/readout";
@@ -474,7 +476,10 @@ function Preparation({ sport: requested, kind: requestedKind, slotId, variantId,
         ) : (
           <>
             <SignalCard signal={signal} />
-            {profile.metrics.includes("heart_rate") ? <HeartRateCard sport={sport} device={settings?.heartRateDevice ?? null} /> : null}
+            {sensorRolesOf(profile).map((role) => {
+              const device = settings === null ? null : pairedSensorOf(profile, settings, role);
+              return role === "heart_rate" || device !== null ? <SensorCard key={role} role={role} profile={profile} device={device} /> : null;
+            })}
             {firstRecording ? <BatteryHint /> : null}
 
             <View style={styles.options}>

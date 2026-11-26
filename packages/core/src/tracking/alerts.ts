@@ -3,6 +3,7 @@ import type { LiveLap, LiveSnapshot } from "./live.ts";
 import type { LiveSegmentEvent } from "./liveSegments.ts";
 import type { RecorderAlert, RecorderPhase } from "./recorder.ts";
 import type { RouteRejoin } from "./route.ts";
+import type { SensorRole } from "./sensors.ts";
 import type { WorkoutStepRun } from "./workout.ts";
 import type { HeartRateZoneBounds } from "./zones.ts";
 
@@ -37,7 +38,7 @@ export type RecordingAlertEvent =
   | LiveSegmentEvent
   | ({ readonly kind: "route" } & RouteAlertStatus)
   | { readonly kind: "gps"; readonly change: SignalChange }
-  | { readonly kind: "sensor"; readonly change: SignalChange }
+  | { readonly kind: "sensor"; readonly sensor: SensorRole; readonly change: SignalChange }
   | { readonly kind: "battery"; readonly level: BatteryAlertLevel }
   /** `WKT-006`: the step that just started, null once the last one is done. */
   | { readonly kind: "workout_step"; readonly step: WorkoutStepRun | null }
@@ -168,8 +169,8 @@ export class AlertMonitor {
   private goalReached = false;
   private hadFix = false;
   private gpsLost = false;
-  private sensorLost = false;
   private routeAlerted: { firedAt: number; count: number } | null = null;
+  private readonly sensorsLost = new Set<SensorRole>();
   private readonly batteryAlerted = new Set<BatteryAlertLevel>();
 
   constructor(options: AlertMonitorOptions) {
@@ -204,11 +205,12 @@ export class AlertMonitor {
     return this.emit(events);
   }
 
-  /** `heart_rate_lost` from the tracker, then the first reading after it. */
-  heartRateSource(connected: boolean): readonly RecordingAlertEvent[] {
-    if (connected === !this.sensorLost) return [];
-    this.sensorLost = !connected;
-    return this.emit([{ kind: "sensor", change: connected ? "back" : "lost" }]);
+  /** A lost Bluetooth source reported by the tracker, then the first reading after it. */
+  sensorSource(sensor: SensorRole, connected: boolean): readonly RecordingAlertEvent[] {
+    if (connected === !this.sensorsLost.has(sensor)) return [];
+    if (connected) this.sensorsLost.delete(sensor);
+    else this.sensorsLost.add(sensor);
+    return this.emit([{ kind: "sensor", sensor, change: connected ? "back" : "lost" }]);
   }
 
   /** `SEG-004`: the segment entries and passes of the live track. */

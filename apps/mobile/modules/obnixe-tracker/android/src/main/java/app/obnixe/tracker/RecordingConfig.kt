@@ -1,6 +1,7 @@
 package app.obnixe.tracker
 
 import android.content.Context
+import app.obnixe.tracker.bluetooth.SensorService
 import expo.modules.kotlin.types.Enumerable
 import org.json.JSONArray
 import org.json.JSONException
@@ -29,14 +30,26 @@ data class TrackerNotificationContent(
 
 data class ReplaySource(val gpxPath: String, val speed: Double)
 
+/** A paired source: the service it streams and its Bluetooth address. */
+data class BluetoothSensor(val service: SensorService, val address: String) {
+  companion object {
+    /** The form `BluetoothAdapter.checkBluetoothAddress` accepts: six upper-case hex pairs. */
+    private val addressPattern = Regex("[0-9A-F]{2}(:[0-9A-F]{2}){5}")
+
+    /** Valid addresses and at most one source per role; one device may serve several roles. */
+    fun isValidSelection(sensors: List<BluetoothSensor>): Boolean =
+      sensors.all { addressPattern.matches(it.address) } && sensors.distinctBy { it.service.role }.size == sensors.size
+  }
+}
+
 data class RecordingConfig(
   val sessionId: String,
   val journalPath: String,
   val power: TrackerPower,
   val barometer: Boolean,
   val pedometer: Boolean,
-  /** Bluetooth address of the heart rate source. */
-  val heartRateDevice: String?,
+  /** At most one source per role; a device serving two roles appears once per service. */
+  val bluetooth: List<BluetoothSensor>,
   /** Batch interval while the screen is on. */
   val batchIntervalMs: Long,
   /** Batch interval while the screen is off; location updates are batched by the provider up to it. */
@@ -64,7 +77,7 @@ object RecordingStore {
       .put("power", config.power.value)
       .put("barometer", config.barometer)
       .put("pedometer", config.pedometer)
-      .put("heartRateDevice", config.heartRateDevice ?: JSONObject.NULL)
+      .put("bluetooth", JSONArray(config.bluetooth.map { JSONObject().put("service", it.service.value).put("address", it.address) }))
       .put("batchIntervalMs", config.batchIntervalMs)
       .put("backgroundBatchIntervalMs", config.backgroundBatchIntervalMs)
       .put("title", config.notification.title)
@@ -85,7 +98,12 @@ object RecordingStore {
         power = TrackerPower.entries.firstOrNull { it.value == json.getString("power") } ?: TrackerPower.NORMAL,
         barometer = json.getBoolean("barometer"),
         pedometer = json.getBoolean("pedometer"),
-        heartRateDevice = json.optNullableString("heartRateDevice"),
+        bluetooth = json.getJSONArray("bluetooth").let { sensors ->
+          List(sensors.length()) { index ->
+            val sensor = sensors.getJSONObject(index)
+            BluetoothSensor(SensorService.of(sensor.getString("service")) ?: throw JSONException("Unknown sensor service"), sensor.getString("address"))
+          }
+        },
         batchIntervalMs = json.getLong("batchIntervalMs"),
         backgroundBatchIntervalMs = json.getLong("backgroundBatchIntervalMs"),
         notification = TrackerNotificationContent(
@@ -122,8 +140,6 @@ object RecordingStore {
   }
 
   private fun store(context: Context) = context.getSharedPreferences(preferences, Context.MODE_PRIVATE)
-
-  private fun JSONObject.optNullableString(name: String): String? = if (isNull(name)) null else getString(name)
 
   private fun JSONObject.optNullableLong(name: String): Long? = if (isNull(name)) null else getLong(name)
 }

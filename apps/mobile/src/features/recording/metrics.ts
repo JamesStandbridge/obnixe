@@ -87,6 +87,11 @@ export function paceUnit(profile: Pick<ResolvedProfile, "pacePerMeters">): strin
   return profile.pacePerMeters === 100 ? "/100 m" : "/km";
 }
 
+/** Steps on foot, pedal revolutions on the bike (`SPT-008`). */
+export function cadenceUnit(profile: Pick<ResolvedProfile, "cadence">): string {
+  return profile.cadence === "steps" ? "pas/min" : "tr/min";
+}
+
 export function formatDistance(meters: number): MetricText {
   if (meters < 1000) return { value: formatInteger(Math.floor(meters)), unit: "m" };
   return { value: formatNumber(Math.floor(meters / 10) / 100, 2, 2), unit: "km" };
@@ -112,7 +117,7 @@ export function paceOf(movingMs: number, distanceMeters: number, pacePerMeters: 
  * `SPT-006`: one live value in French units, from the units of `LiveMetrics`. `clock` reads `now` in the device time zone;
  * `energy` has no live value.
  */
-export function metricText(key: MetricKey, metrics: LiveMetrics, profile: Pick<ResolvedProfile, "pacePerMeters">, now: EpochMs, timeZone: string): MetricText {
+export function metricText(key: MetricKey, metrics: LiveMetrics, profile: Pick<ResolvedProfile, "pacePerMeters" | "cadence">, now: EpochMs, timeZone: string): MetricText {
   const value = metrics[key];
   switch (key) {
     case "elapsed":
@@ -143,7 +148,7 @@ export function metricText(key: MetricKey, metrics: LiveMetrics, profile: Pick<R
     case "vertical_speed":
       return { value: value === undefined ? missing : formatSigned(value * 3600, 0), unit: "m/h" };
     case "cadence":
-      return { value: value === undefined ? missing : formatInteger(value), unit: "pas/min" };
+      return { value: value === undefined ? missing : formatInteger(value), unit: cadenceUnit(profile) };
     case "steps":
       return { value: value === undefined ? missing : formatInteger(value), unit: "" };
     case "heart_rate":
@@ -198,7 +203,7 @@ export interface SummaryFigures {
 }
 
 /** `REC-050`: the figures of the stop summary. */
-export function summaryFigures(summary: Pick<RecordingSummary, "elapsedMs" | "movingMs" | "distanceMm" | "ascentMm" | "heartRateAvg" | "cadenceAvg">, profile: Pick<ResolvedProfile, "primary" | "pacePerMeters">): SummaryFigures {
+export function summaryFigures(summary: Pick<RecordingSummary, "elapsedMs" | "movingMs" | "distanceMm" | "ascentMm" | "heartRateAvg" | "cadenceAvg">, profile: Pick<ResolvedProfile, "primary" | "pacePerMeters" | "cadence">): SummaryFigures {
   const meters = summary.distanceMm / 1000;
   const pace = paceOf(summary.movingMs, meters, profile.pacePerMeters);
   const rate: StatValue =
@@ -208,7 +213,7 @@ export function summaryFigures(summary: Pick<RecordingSummary, "elapsedMs" | "mo
   const measured: StatValue[] = [
     ...(summary.ascentMm === null ? [] : [{ label: "D+", value: formatInteger(summary.ascentMm / 1000), unit: "m" }]),
     ...(summary.heartRateAvg === null ? [] : [{ label: "FC moy.", value: formatInteger(summary.heartRateAvg), unit: "bpm" }]),
-    ...(summary.cadenceAvg === null ? [] : [{ label: "Cadence", value: formatInteger(summary.cadenceAvg), unit: "pas/min" }]),
+    ...(summary.cadenceAvg === null ? [] : [{ label: "Cadence", value: formatInteger(summary.cadenceAvg), unit: cadenceUnit(profile) }]),
   ];
   return {
     distance: formatDistance(meters),

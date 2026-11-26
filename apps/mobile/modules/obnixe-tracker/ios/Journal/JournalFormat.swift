@@ -27,6 +27,8 @@ enum RecordType: UInt8, CaseIterable {
   case steps = 3
   case heartRate = 4
   case mark = 5
+  case power = 6
+  case cadence = 7
 
   var size: Int {
     switch self {
@@ -35,6 +37,8 @@ enum RecordType: UInt8, CaseIterable {
     case .steps: return 9
     case .heartRate: return 10
     case .mark: return 6
+    case .power: return 9
+    case .cadence: return 7
     }
   }
 

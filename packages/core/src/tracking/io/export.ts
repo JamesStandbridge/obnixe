@@ -9,6 +9,8 @@ import { ellipsoidDistance } from "../geo.ts";
 import { maskTrack } from "../privacy.ts";
 import type { PrivacyMask } from "../privacyZones.ts";
 import { orthometricAltitude } from "../stages/altitude.ts";
+import { cadenceReadings, cadenceStepsPerCycle, powerReadings, sensorMaxBetween, sensorReader } from "../sensors.ts";
+import type { SensorReadings } from "../sensors.ts";
 import { bridgeMaximumMs, intervalCodes, PauseLedger } from "../stages/derive.ts";
 import type { PressureColumns, StepColumns } from "../types.ts";
 import { heartRateReader } from "../zones.ts";
@@ -70,6 +72,8 @@ interface ExportStretch extends TimeSpan {
   readonly distanceMm: number;
   readonly heartRateAvg: number | null;
   readonly heartRateMax: number | null;
+  readonly powerAvg: number | null;
+  readonly powerMax: number | null;
 }
 
 interface ExportLap extends ExportStretch {
@@ -157,9 +161,26 @@ function cadenceReader(steps: StepColumns): (t: number) => number | null {
   };
 }
 
+/** The sensor cadence in cycles per minute (`FilePoint.cadence`), otherwise the pedometer strides. */
+function exportCadenceReader(input: ActivityExportInput): (t: number) => number | null {
+  const readings = cadenceReadings(input.track.samples);
+  if (readings === null) return cadenceReader(input.track.samples.steps);
+  const read = sensorReader(readings);
+  const stepsPerCycle = cadenceStepsPerCycle(sportOf(input.sport).recording?.cadence ?? "none");
+  return (t) => {
+    const value = read(t);
+    return value === null ? null : Math.min(Math.round(value / stepsPerCycle), maxGpxCadence);
+  };
+}
+
+function powerOf(input: ActivityExportInput): SensorReadings | null {
+  return input.track.samples.power.length === 0 ? null : powerReadings(input.track.samples.power);
+}
+
 function exportedLaps(input: ActivityExportInput, window: TimeSpan, pauses: readonly TimeSpan[], distanceMm: number): readonly ExportLap[] {
   const { processed } = input;
-  if (processed === null) return [{ ...window, timerMs: timerMsOf(window, pauses), distanceMm, heartRateAvg: null, heartRateMax: null, trigger: "manual" }];
+  const power = powerOf(input);
+  if (processed === null) return [{ ...window, timerMs: timerMsOf(window, pauses), distanceMm, heartRateAvg: null, heartRateMax: null, powerAvg: null, powerMax: null, trigger: "manual" }];
   return processed.laps.map((lap) => ({
     startMs: lap.startMs,
     endMs: lap.endMs,
@@ -167,6 +188,8 @@ function exportedLaps(input: ActivityExportInput, window: TimeSpan, pauses: read
     distanceMm: lap.distanceMm,
     heartRateAvg: lap.heartRateAvg,
     heartRateMax: lap.heartRateMax,
+    powerAvg: lap.powerAvg,
+    powerMax: power === null ? null : sensorMaxBetween(power, lap.startMs, lap.endMs),
     trigger: lap.bounds.trigger,
   }));
 }
@@ -193,7 +216,9 @@ function exportedActivity(input: ActivityExportInput): ExportedActivity {
   };
   const hidden = mask === null ? new Uint8Array(exported.length) : maskTrack(positions, mask.zones, mask).hidden;
   const heartRateAt = heartRateReader(track.samples.heartRate);
-  const cadenceAt = cadenceReader(track.samples.steps);
+  const cadenceAt = exportCadenceReader(input);
+  const power = powerOf(input);
+  const powerAt = power === null ? (): number | null => null : sensorReader(power);
   const pressureAt = pressureReader(track.samples.pressure);
   const parts: ExportPoint[][] = [];
   let current: ExportPoint[] | null = null;
@@ -216,6 +241,7 @@ function exportedActivity(input: ActivityExportInput): ExportedActivity {
       time: track.startedAt + fix.t,
       heartRate: heartRateAt(fix.t),
       cadence: cadenceAt(fix.t),
+      power: powerAt(fix.t),
       speedMmS: fix.speedCmS === null ? null : fix.speedCmS * 10,
       courseCentiDeg: fix.speedCmS === null ? null : fix.bearingCentiDeg,
       horizontalAccuracyDm: fix.horizontalAccuracyDm,
@@ -232,6 +258,8 @@ function exportedActivity(input: ActivityExportInput): ExportedActivity {
     distanceMm,
     heartRateAvg: processed?.summary.heartRateAvg ?? null,
     heartRateMax: processed?.summary.heartRateMax ?? null,
+    powerAvg: processed?.summary.powerAvg ?? null,
+    powerMax: power === null || processed === null ? null : sensorMaxBetween(power, window.startMs, window.endMs + 1),
   };
   return { window, pauses, parts, laps: exportedLaps(input, window, pauses, distanceMm), totals };
 }
@@ -307,6 +335,8 @@ function fitStretch(input: ActivityExportInput, stretch: ExportStretch, totals: 
     energyKcal: lapEnergy(input, stretch, totals),
     heartRateAvg: stretch.heartRateAvg,
     heartRateMax: stretch.heartRateMax,
+    powerAvg: stretch.powerAvg,
+    powerMax: stretch.powerMax,
   };
 }
 

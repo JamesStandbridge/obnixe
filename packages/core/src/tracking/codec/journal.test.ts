@@ -100,6 +100,31 @@ describe("raw journal .ojr", () => {
     expect(readJournal(built.bytes).samples).toEqual([{ ...fix, speedAccuracyCmS: 0xfffe }, ...heartRates]);
   });
 
+  it("restores the power with and without crank cadence and the cadence records, clamped to u16", () => {
+    const sensors: JournalRecord[] = [
+      { type: "power", t: 20, watts: 245, cadence: 91 },
+      { type: "power", t: 21, watts: 0, cadence: null },
+      { type: "power", t: 22, watts: 70_000, cadence: 0 },
+      { type: "cadence", t: 23, perMinute: 172 },
+      { type: "cadence", t: 24, perMinute: 70_000 },
+    ];
+    expect(readJournal(buildJournal(sensors, 16).bytes).samples).toEqual([
+      ...sensors.slice(0, 2),
+      { type: "power", t: 22, watts: 0xfffe, cadence: 0 },
+      sensors[3],
+      { type: "cadence", t: 24, perMinute: 0xfffe },
+    ]);
+  });
+
+  it("pins the byte layout of the power and cadence records", () => {
+    const batch = encodeJournalBatch(0, [
+      { type: "power", t: 300, watts: 251, cadence: null },
+      { type: "cadence", t: 301, perMinute: 88 },
+    ]);
+    expect(batch.length).toBe(8 + 9 + 7 + 4);
+    expect(Array.from(batch.subarray(8, 24))).toEqual([6, 0x2c, 0x01, 0, 0, 0xfb, 0, 0xff, 0xff, 7, 0x2d, 0x01, 0, 0, 88, 0]);
+  });
+
   it("pins the byte layout shared with the native writers", () => {
     const headerBytes = encodeJournalHeader(header);
     const device = new TextEncoder().encode(header.device);

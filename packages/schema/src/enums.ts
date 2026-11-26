@@ -106,7 +106,7 @@ export type ImportFormat = (typeof importFormats)[number];
 export const elevationSources = ["barometer", "gnss", "file", "none"] as const;
 export type ElevationSource = (typeof elevationSources)[number];
 
-export const cadenceSources = ["pedometer", "file", "none"] as const;
+export const cadenceSources = ["pedometer", "sensor", "file", "none"] as const;
 export type CadenceSource = (typeof cadenceSources)[number];
 
 export const sensorSources = ["sensor", "file", "none"] as const;
@@ -115,7 +115,7 @@ export type SensorSource = (typeof sensorSources)[number];
 export const lapTriggers = ["manual", "distance", "duration", "workout", "import"] as const;
 export type LapTrigger = (typeof lapTriggers)[number];
 
-export const energyMethods = ["heart_rate", "mechanical", "met"] as const;
+export const energyMethods = ["power", "heart_rate", "mechanical", "met"] as const;
 export type EnergyMethod = (typeof energyMethods)[number];
 
 export const segmentFamilies = ["foot", "bike", "snow", "water"] as const;

@@ -31,6 +31,7 @@ export const backupSchemaMigrations: Readonly<Record<number, string>> = {
   4: "0008_routes",
   5: "0009_guided_workouts",
   6: "0010_gear_wear",
+  7: "0011_ble_sensors_power",
 };
 
 const statementBreakpoint = "--> statement-breakpoint";

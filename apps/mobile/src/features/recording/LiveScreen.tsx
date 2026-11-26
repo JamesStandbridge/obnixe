@@ -19,8 +19,10 @@ import { lapFigures, metricCaptions, metricText } from "@/features/recording/met
 import type { MetricText } from "@/features/recording/metrics";
 import { sessionTargetOf } from "@/features/recording/queries";
 import { liveReadout } from "@/features/recording/readout";
+import { sensorTextsOf } from "@/features/recording/sensorTexts";
 import { targetLabel, targetProgress } from "@/features/recording/target";
 import { openSystemSettings } from "@/features/tracking/permissions";
+import { sensorRoleOfIssue } from "@/features/tracking/sensorDevices";
 import { recorder } from "@/features/tracking/recorder";
 import type { LiveAlert, RecordingView } from "@/features/tracking/recorderHost";
 import { useNow } from "@/features/training/useLiveLoad";
@@ -164,7 +166,7 @@ export function LiveScreen({ recording }: LiveScreenProps) {
         {phase === "auto_paused" ? <Banner key="auto" tone="warn" title="Pause auto" detail="Le chronomètre reprend dès que tu bouges" /> : null}
         {pausedFor === null ? null : <Banner key="paused" tone="warn" title="En pause" detail={`Depuis ${formatLongClock(pausedFor / 1000)}`} />}
         {recording.issues.map((issue) => (
-          <IssueBanner key={issue} issue={issue} />
+          <IssueBanner key={issue} issue={issue} profile={profile} />
         ))}
         {recording.saverOffered ? (
           <Banner
@@ -331,7 +333,7 @@ export function LiveScreen({ recording }: LiveScreenProps) {
 
 const painLevels = ["discomfort", "stop"] as const;
 
-/** Alerts a lasting banner already tells: the automatic pause and the lost heart-rate source. */
+/** Alerts a lasting banner already tells: the automatic pause and a lost Bluetooth source. */
 function hasStateBanner(event: RecordingAlertEvent): boolean {
   return event.kind === "auto_pause" || (event.kind === "sensor" && event.change === "lost");
 }
@@ -440,7 +442,12 @@ function Banner({ tone, title, detail, actions = [] }: BannerProps) {
   );
 }
 
-function IssueBanner({ issue }: { readonly issue: TrackerIssueKind }) {
+interface IssueBannerProps {
+  readonly issue: TrackerIssueKind;
+  readonly profile: Pick<ResolvedProfile, "cadence">;
+}
+
+function IssueBanner({ issue, profile }: IssueBannerProps) {
   switch (issue) {
     case "permission_lost":
       return <Banner tone="stop" title="Position refusée" detail="La trace est suspendue jusqu'à la nouvelle autorisation" actions={[{ label: "Réglages", run: openSystemSettings }]} />;
@@ -451,7 +458,11 @@ function IssueBanner({ issue }: { readonly issue: TrackerIssueKind }) {
     case "storage_full":
       return <Banner tone="stop" title="Stockage plein" detail="L'enregistrement s'arrête" />;
     case "heart_rate_lost":
-      return <Banner tone="warn" title="Capteur cardiaque perdu" detail="Reconnexion en cours" />;
+    case "cadence_lost":
+    case "power_lost": {
+      const role = sensorRoleOfIssue(issue);
+      return role === null ? null : <Banner tone="warn" title={`${sensorTextsOf(role, profile).title} perdu`} detail="Reconnexion en cours" />;
+    }
     default: {
       const unreachable: never = issue;
       return unreachable;

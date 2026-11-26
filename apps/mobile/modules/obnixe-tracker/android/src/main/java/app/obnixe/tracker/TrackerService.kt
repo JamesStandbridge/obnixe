@@ -13,7 +13,7 @@ import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 
 /**
- * Foreground service of type `location`, plus `connectedDevice` while a heart rate source is used, that keeps the
+ * Foreground service of type `location`, plus `connectedDevice` while a Bluetooth source is used, that keeps the
  * recording alive in the background. Started while the app is visible; restarted by the system after its process is
  * killed (`START_STICKY`), in which case it resumes the kept recording. Notification actions reach it directly.
  */
@@ -85,7 +85,7 @@ class TrackerService : Service() {
 
   private fun foregroundTypes(): Int {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return 0
-    val heartRate = TrackerHub.usesHeartRate(this) && TrackerPermissions.isGranted(this, TrackerPermission.BLUETOOTH)
-    return ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION or if (heartRate) ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE else 0
+    val bluetooth = TrackerHub.usesBluetooth(this) && TrackerPermissions.isGranted(this, TrackerPermission.BLUETOOTH)
+    return ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION or if (bluetooth) ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE else 0
   }
 }

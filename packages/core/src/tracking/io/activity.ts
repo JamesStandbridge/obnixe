@@ -25,6 +25,8 @@ export interface FilePoint {
   readonly heartRate: number | null;
   /** Cycles per minute: strides on foot, pedal revolutions on a bike. */
   readonly cadence: number | null;
+  /** Watts. */
+  readonly power: number | null;
   readonly speedMmS: number | null;
   readonly courseCentiDeg: number | null;
   /** Fix accuracies and barometric pressure, carried only by an Obnixe export so that importing it again gives the same results (`IO-001`). */
@@ -42,7 +44,10 @@ export interface ExportPoint {
   readonly altitudeMm: number | null;
   readonly time: number;
   readonly heartRate: number | null;
+  /** Cycles per minute: strides on foot, pedal revolutions on a bike. */
   readonly cadence: number | null;
+  /** Watts. */
+  readonly power: number | null;
   readonly speedMmS: number | null;
   readonly courseCentiDeg: number | null;
   readonly horizontalAccuracyDm: number | null;
@@ -66,6 +71,7 @@ export interface FileTotals {
   readonly energyKcal: number | null;
   readonly heartRateAvg: number | null;
   readonly heartRateMax: number | null;
+  readonly powerAvg: number | null;
 }
 
 /** A pool swim from FIT `session` and `length` messages (`IO-050`). */
@@ -118,6 +124,8 @@ export interface ImportedActivity {
 }
 
 const maxTrackMs = 4_294_967_295;
+/** Largest power or cadence the journal and the track store (annex C). */
+const maxSensorValue = 0xfffe;
 
 function timerMarks(timer: readonly FileTimerEvent[], startedAt: number): TrackerMark[] {
   const marks: TrackerMark[] = [];
@@ -194,9 +202,9 @@ export function assembleActivity(file: FileActivity): ImportedActivity {
 }
 
 /**
- * The samples of an import (`IO-011`): a fix per positioned point with the file accuracies, a pressure and a heart-rate sample per reading,
- * and, when the sport counts steps, the cumulative steps of the file cadence, two per stride, held across the spans the
- * processing bridges.
+ * The samples of an import (`IO-011`): a fix per positioned point with the file accuracies, a pressure, heart-rate and power sample
+ * per reading, and the file cadence: when the sport counts steps, the cumulative steps, two per stride, held across the spans
+ * the processing bridges; otherwise a cadence sample per reading, in pedal revolutions per minute (`SPT-008`).
  */
 export function importedTrack(activity: ImportedActivity, countsSteps: boolean): Track {
   const samples: Sample[] = [];
@@ -224,6 +232,8 @@ export function importedTrack(activity: ImportedActivity, countsSteps: boolean):
     }
     if (point.pressurePa !== null) samples.push({ type: "pressure", t: point.t, pascals: point.pressurePa });
     if (point.heartRate !== null && isHeartRateReading(point.heartRate)) samples.push({ type: "heart_rate", t: point.t, bpm: point.heartRate, contact: "contact", rrInterval: null });
+    if (point.power !== null) samples.push({ type: "power", t: point.t, watts: Math.min(Math.round(point.power), maxSensorValue), cadence: null });
+    if (!countsSteps && point.cadence !== null) samples.push({ type: "cadence", t: point.t, perMinute: Math.min(Math.round(point.cadence), maxSensorValue) });
     if (hasCadence) {
       const span = previous === null ? 0 : point.t - previous.t;
       if (previous !== null && previous.cadence !== null && span <= bridgeMaximumMs) steps += (2 * previous.cadence * span) / 60_000;

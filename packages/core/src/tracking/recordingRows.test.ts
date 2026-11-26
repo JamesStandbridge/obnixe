@@ -137,7 +137,7 @@ describe("recording rows", () => {
 });
 
 describe("sport preference recording settings", () => {
-  const settings: RecordingSettings = { autoPause: false, autoLap: { trigger: "distance", meters: 1000 }, readout: { main: "distance", secondary: ["moving", "ascent", "vam"] }, alerts: { disabled: ["split"], sound: false, paceRange: { kind: "pace", fastestSecondsPerKm: 300, slowestSecondsPerKm: 360 }, heartRateRange: { lowest: 2, highest: 3 } }, heartRateDevice: { id: "C4:7D:2A:10:9E:01", name: "Venu 3S" } };
+  const settings: RecordingSettings = { autoPause: false, autoLap: { trigger: "distance", meters: 1000 }, readout: { main: "distance", secondary: ["moving", "ascent", "vam"] }, alerts: { disabled: ["split"], sound: false, paceRange: { kind: "pace", fastestSecondsPerKm: 300, slowestSecondsPerKm: 360 }, heartRateRange: { lowest: 2, highest: 3 } }, heartRateDevice: { id: "C4:7D:2A:10:9E:01", name: "Venu 3S" }, cadenceDevice: null, powerDevice: null };
 
   it("accepts settings whose readout uses metrics of the profile", () => {
     make.write([{ kind: "insert", table: "sport_preference", row: { sport: "trail", enabled: true, position: 0, recordingSettings: settings } }]);

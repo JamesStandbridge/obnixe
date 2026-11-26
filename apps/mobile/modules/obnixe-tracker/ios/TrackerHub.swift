@@ -21,7 +21,7 @@ final class TrackerHub: RecordingListener {
   private var recording: Recording?
   private var preparation: LocationSource?
   private var lastStopped: StoppedRecording?
-  private var scanner: HeartRateScanner?
+  private var scanner: SensorScanner?
   private var foreground = true
   private var bound = false
   private let statusLock = NSLock()
@@ -149,12 +149,12 @@ final class TrackerHub: RecordingListener {
     }
   }
 
-  func scanHeartRate(timeoutMs: Int, promise: Promise) {
+  func scanSensors(service: SensorService, timeoutMs: Int, promise: Promise) {
     confined {
       guard TrackerPermissions.isGranted(.bluetooth) else { return promise.reject(TrackerException.bluetoothPermission()) }
-      let scanner = self.scanner ?? HeartRateScanner(queue: self.queue) { device in self.module?.emitHeartRateDevice(device) }
+      let scanner = self.scanner ?? SensorScanner(queue: self.queue) { device in self.module?.emitSensorDevice(device) }
       self.scanner = scanner
-      scanner.start(timeoutMs: timeoutMs) { end in
+      scanner.start(service: service, timeoutMs: timeoutMs) { end in
         switch end {
         case .finished: promise.resolve()
         case .unavailable: promise.reject(TrackerException.bluetoothUnavailable())

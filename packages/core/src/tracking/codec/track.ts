@@ -3,7 +3,7 @@ import { bytesToHex } from "@noble/hashes/utils.js";
 import { deflateSync, inflateSync } from "fflate";
 import type { EpochMs, Id } from "@obnixe/schema";
 import { absentValue, toSampleColumns } from "../types.ts";
-import type { FixColumns, HeartRateColumns, PressureColumns, SampleColumns, StepColumns, TrackerMark } from "../types.ts";
+import type { CadenceColumns, FixColumns, HeartRateColumns, PowerColumns, PressureColumns, SampleColumns, StepColumns, TrackerMark } from "../types.ts";
 import { crc32 } from "./crc32.ts";
 import { markByCode, markCodes } from "./marks.ts";
 import { ByteReader, ByteWriter } from "./varint.ts";
@@ -74,12 +74,12 @@ const crcLength = 4;
 const ellipsoidAltitudeFlag = 1;
 const simulatedFlag = 2;
 
-const streamKinds = { fix: 1, pressure: 2, steps: 3, heart_rate: 4, marks: 5 } as const;
+const streamKinds = { fix: 1, pressure: 2, steps: 3, heart_rate: 4, marks: 5, power: 6, cadence: 7 } as const;
 type StreamKind = keyof typeof streamKinds;
-const streamOrder: readonly StreamKind[] = ["fix", "pressure", "steps", "heart_rate", "marks"];
+const streamOrder: readonly StreamKind[] = ["fix", "pressure", "steps", "heart_rate", "marks", "power", "cadence"];
 
 /** Smallest encoding of one entry of each stream, in bytes: one byte per column. */
-const minimumEntryBytes: Readonly<Record<StreamKind, number>> = { fix: 5, pressure: 2, steps: 2, heart_rate: 3, marks: 2 };
+const minimumEntryBytes: Readonly<Record<StreamKind, number>> = { fix: 5, pressure: 2, steps: 2, heart_rate: 3, marks: 2, power: 3, cadence: 2 };
 
 type OptionalFixColumn = "altitudeEllipsoidMm" | "altitudeMslMm" | "horizontalAccuracyDm" | "verticalAccuracyDm" | "speedCmS" | "speedAccuracyCmS" | "bearingCentiDeg" | "bearingAccuracyCentiDeg";
 
@@ -183,6 +183,25 @@ function writeHeartRate(writer: ByteWriter, heartRate: HeartRateColumns): void {
   }
 }
 
+/** Power cadence is stored plus one, so that zero stands for an absent value. */
+function writePower(writer: ByteWriter, power: PowerColumns): void {
+  writeTimes(writer, power.t, power.length, "power");
+  writeDeltas(writer, power.watts, power.length);
+  let previous = 0;
+  for (let index = 0; index < power.length; index += 1) {
+    const cadence = power.cadence[index] ?? absentValue;
+    if (cadence !== absentValue && (cadence < 0 || cadence >= uint16Max)) throw encodeFailure(`power ${index} has a cadence of ${cadence}`);
+    const value = cadence === absentValue ? 0 : cadence + 1;
+    writer.varInt(value - previous);
+    previous = value;
+  }
+}
+
+function writeCadence(writer: ByteWriter, cadence: CadenceColumns): void {
+  writeTimes(writer, cadence.t, cadence.length, "cadence");
+  writeDeltas(writer, cadence.perMinute, cadence.length);
+}
+
 function writeMarks(writer: ByteWriter, marks: readonly TrackerMark[]): void {
   let previous = 0;
   for (const [index, mark] of marks.entries()) {
@@ -205,6 +224,10 @@ function streamLength(track: Track, kind: StreamKind): number {
       return track.samples.heartRate.length;
     case "marks":
       return track.marks.length;
+    case "power":
+      return track.samples.power.length;
+    case "cadence":
+      return track.samples.cadence.length;
     default: {
       const unreachable: never = kind;
       throw new Error(`Unhandled stream ${String(unreachable)}`);
@@ -224,6 +247,10 @@ function writeStream(writer: ByteWriter, track: Track, kind: StreamKind): void {
       return writeHeartRate(writer, track.samples.heartRate);
     case "marks":
       return writeMarks(writer, track.marks);
+    case "power":
+      return writePower(writer, track.samples.power);
+    case "cadence":
+      return writeCadence(writer, track.samples.cadence);
     default: {
       const unreachable: never = kind;
       throw new Error(`Unhandled stream ${String(unreachable)}`);
@@ -373,6 +400,23 @@ function readHeartRate(reader: ByteReader, count: number): HeartRateColumns {
   return { length: count, t, bpm, rrInterval };
 }
 
+function readPower(reader: ByteReader, count: number): PowerColumns {
+  const t = readTimes(reader, count);
+  const watts = new Uint16Array(count);
+  readDeltas(reader, watts, count, 0, uint16Max, "power");
+  const cadence = new Int32Array(count);
+  readDeltas(reader, cadence, count, 0, uint16Max, "power cadence");
+  for (let index = 0; index < count; index += 1) cadence[index] = cadence[index] === 0 ? absentValue : (cadence[index] ?? 1) - 1;
+  return { length: count, t, watts, cadence };
+}
+
+function readCadence(reader: ByteReader, count: number): CadenceColumns {
+  const t = readTimes(reader, count);
+  const perMinute = new Uint16Array(count);
+  readDeltas(reader, perMinute, count, 0, uint16Max, "cadence");
+  return { length: count, t, perMinute };
+}
+
 function readMarks(reader: ByteReader, count: number): TrackerMark[] {
   const t = readTimes(reader, count);
   const marks: TrackerMark[] = [];
@@ -431,7 +475,7 @@ export function decodeTrack(bytes: Uint8Array): Track {
     entries.push({ kind, count, byteLength });
   }
   const payload = inflate(bytes.subarray(payloadStart, crcOffset), totalLength);
-  let { fixes, pressure, steps, heartRate } = toSampleColumns([]);
+  let { fixes, pressure, steps, heartRate, cadence, power } = toSampleColumns([]);
   let marks: TrackerMark[] = [];
   let fixFlags = 0;
   let offset = 0;
@@ -456,6 +500,12 @@ export function decodeTrack(bytes: Uint8Array): Track {
       case "marks":
         marks = readMarks(reader, entry.count);
         break;
+      case "power":
+        power = readPower(reader, entry.count);
+        break;
+      case "cadence":
+        cadence = readCadence(reader, entry.count);
+        break;
       default: {
         const unreachable: never = entry.kind;
         throw new Error(`Unhandled stream ${String(unreachable)}`);
@@ -465,5 +515,5 @@ export function decodeTrack(bytes: Uint8Array): Track {
     offset += entry.byteLength;
   }
   if (fixFlags !== flags) throw new TrackDecodeError("flags do not match the fixes");
-  return { startedAt: startedAt as EpochMs, samples: { fixes, pressure, steps, heartRate }, marks };
+  return { startedAt: startedAt as EpochMs, samples: { fixes, pressure, steps, heartRate, cadence, power }, marks };
 }

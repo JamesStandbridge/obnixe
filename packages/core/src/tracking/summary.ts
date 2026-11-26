@@ -1,7 +1,9 @@
-import type { BoundingBoxE7, CadenceSource, ElevationSource, FieldValue, FieldValues, RecordingProfile, SensorSource } from "@obnixe/schema";
+import type { BoundingBoxE7, CadenceSource, ElevationSource, FieldValue, FieldValues, RecordingProfile, SensorSource, SportKey } from "@obnixe/schema";
+import { sportOf } from "../activity/catalog.ts";
 import { BoundingBoxBuilder } from "./geo.ts";
+import { sensorAverage } from "./sensors.ts";
 import { heartRateMaxBetween, isCountedCode, maxWindowSpeed } from "./stages/derive.ts";
-import type { TrackSeries } from "./stages/derive.ts";
+import type { SensorSeries, TrackSeries } from "./stages/derive.ts";
 import type { FixColumns, SampleColumns } from "./types.ts";
 import { trackingAlgorithmVersion } from "./version.ts";
 import type { TimeSpan } from "./zones.ts";
@@ -24,12 +26,14 @@ export interface RecordingSummary {
   readonly altitudeMinMm: number | null;
   readonly altitudeMaxMm: number | null;
   readonly speedMaxMmS: number | null;
-  /** Steps per minute of moving time. */
+  /** Steps per minute of moving time, or the mean of the Bluetooth cadence while pedaling or striding when it covers half of it. */
   readonly cadenceAvg: number | null;
   readonly steps: number | null;
   /** Weighted by moving time, when the heart rate covers half of it. */
   readonly heartRateAvg: number | null;
   readonly heartRateMax: number | null;
+  /** Watts weighted by moving time, when the power meter covers half of it (`SPT-008`). */
+  readonly powerAvg: number | null;
   readonly goodFixPermille: number;
   readonly bbox: BoundingBoxE7 | null;
   /** Fixes recorded in the window, before the gate. */
@@ -83,6 +87,14 @@ export function accuracyShares(series: TrackSeries, fixes: FixColumns): Accuracy
 
 const last = (column: Float64Array | null): number => (column === null ? 0 : (column[column.length - 1] ?? 0));
 
+const sensorMean = (sensor: SensorSeries | null, movingMs: number): number | null =>
+  sensor === null ? null : sensorAverage(last(sensor.integral), last(sensor.averagedMs), last(sensor.coveredMs), movingMs);
+
+function cadenceSourceOf(series: TrackSeries): CadenceSource {
+  if (series.cadence !== null) return "sensor";
+  return series.steps === null ? "none" : "pedometer";
+}
+
 function stepsIn(samples: SampleColumns, window: TimeSpan): number | null {
   const { t, count, length } = samples.steps;
   let first = -1;
@@ -132,16 +144,17 @@ export function summarizeRecording(input: SummaryInput): RecordingSummary {
     altitudeMinMm: altitudeMin <= altitudeMax ? Math.round(altitudeMin * 1000) : null,
     altitudeMaxMm: altitudeMin <= altitudeMax ? Math.round(altitudeMax * 1000) : null,
     speedMaxMmS: speedMax === null ? null : Math.round(speedMax * 1000),
-    cadenceAvg: series.steps === null || movingMs <= 0 ? null : Math.round((last(series.steps) * 60_000) / movingMs),
+    cadenceAvg: series.cadence !== null ? sensorMean(series.cadence, movingMs) : series.steps === null || movingMs <= 0 ? null : Math.round((last(series.steps) * 60_000) / movingMs),
     steps: series.steps === null ? null : stepsIn(samples, window),
     heartRateAvg: coveredMs > 0 && coveredMs >= heartRateAverageCoverage * movingMs ? Math.round((last(series.heartBeats) * 60_000) / coveredMs) : null,
     heartRateMax: hasHeartRate ? heartRateMaxBetween(samples.heartRate, window.startMs, window.endMs + 1) : null,
+    powerAvg: sensorMean(series.power, movingMs),
     goodFixPermille: accuracyShares(series, samples.fixes).goodPermille,
     bbox: bbox.build(),
     pointCount: fixesIn(samples.fixes, window),
     simulated: input.simulated,
     elevationSource,
-    cadenceSource: series.steps === null ? "none" : "pedometer",
+    cadenceSource: cadenceSourceOf(series),
     heartRateSource: hasHeartRate ? "sensor" : "none",
   };
 }
@@ -150,7 +163,7 @@ const fileElevation = (source: ElevationSource): ElevationSource => (source === 
 const fileCadence = (source: CadenceSource): CadenceSource => (source === "none" ? "none" : "file");
 const fileSensor = (source: SensorSource): SensorSource => (source === "none" ? "none" : "file");
 
-/** The summary of an imported track: its altitude, steps and heart rate all come from the file. */
+/** The summary of an imported track: its altitude, cadence and heart rate all come from the file. */
 export function importedSummary(summary: RecordingSummary): RecordingSummary {
   return { ...summary, elevationSource: fileElevation(summary.elevationSource), cadenceSource: fileCadence(summary.cadenceSource), heartRateSource: fileSensor(summary.heartRateSource) };
 }
@@ -160,21 +173,23 @@ export interface SessionValuesUpdate {
   readonly pausedSeconds: number;
 }
 
-type RecordingValues = Pick<RecordingSummary, "elapsedMs" | "movingMs" | "distanceMm" | "ascentMm" | "heartRateAvg">;
+type RecordingValues = Pick<RecordingSummary, "elapsedMs" | "movingMs" | "distanceMm" | "ascentMm" | "heartRateAvg" | "powerAvg">;
 
 /** The session values a recording measures: never edited by hand (`SUM-004`, `INT-042`). */
-export const recordedValueKeys = ["distance", "elevation_gain", "heart_rate_avg"] as const;
+export const recordedValueKeys = ["distance", "elevation_gain", "heart_rate_avg", "power_avg"] as const;
 
 /**
  * The session values derived from the `recording` row (`SPT-003`), at the stop and after any trim or recomputation:
- * the profile's `recordedValues`, `distance`, `elevation_gain` when the profile shows the ascent, `heart_rate_avg`, and
- * `paused_seconds = elapsed - moving`.
+ * the profile's `recordedValues`, `distance`, `elevation_gain` when the profile shows the ascent, `heart_rate_avg`, `power_avg`
+ * for the sports that have the field (`SPT-008`), and `paused_seconds = elapsed - moving`.
  */
-export function sessionValuesFromRecording(values: FieldValues, recording: RecordingValues, profile: Pick<RecordingProfile, "metrics" | "recordedValues">): SessionValuesUpdate {
+export function sessionValuesFromRecording(values: FieldValues, recording: RecordingValues, profile: Pick<RecordingProfile, "metrics" | "recordedValues"> & { readonly sport: SportKey }): SessionValuesUpdate {
   const derived: Record<string, FieldValue> = { ...values, ...profile.recordedValues, distance: Math.round(recording.distanceMm / 1000) };
   if (profile.metrics.includes("ascent") && recording.ascentMm !== null) derived.elevation_gain = Math.round(recording.ascentMm / 1000);
   else delete derived.elevation_gain;
   if (recording.heartRateAvg === null) delete derived.heart_rate_avg;
   else derived.heart_rate_avg = recording.heartRateAvg;
+  if (recording.powerAvg === null || !sportOf(profile.sport).sessionFields.some((field) => field.key === "power_avg")) delete derived.power_avg;
+  else derived.power_avg = recording.powerAvg;
   return { values: derived, pausedSeconds: Math.round((recording.elapsedMs - recording.movingMs) / 1000) };
 }

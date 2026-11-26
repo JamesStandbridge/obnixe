@@ -69,6 +69,8 @@ function seriesOf(steps: readonly Step[]): TrackSeries {
     steps: null,
     heartBeats: null,
     heartRateMs: null,
+    cadence: null,
+    power: null,
   };
 }
 

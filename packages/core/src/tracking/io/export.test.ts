@@ -190,6 +190,27 @@ describe("FIT export (IO-003)", () => {
     }
   });
 
+  it("writes the power and crank cadence of the records and the average and maximum power of laps and session (SPT-008)", () => {
+    const computation = computed("power-ride.fit");
+    const processed = computation.processed;
+    if (processed === null) throw new Error("No processed track");
+    const messages = decodedFit(exportFit(inputOf(computation)));
+    const records = messages.recordMesgs ?? [];
+    const powers = records.map((record) => Number(record.power));
+    expect(records).toHaveLength(processed.series.length);
+    for (const record of records) {
+      const source = computation.activity.points.find((candidate) => candidate.t === Number(record.timestamp) * 1000 + 631_065_600_000 - computation.activity.startedAt);
+      expect(record.power).toBe(source?.power);
+      expect(record.cadence).toBe(source?.cadence);
+    }
+    expect(messages.sessionMesgs?.[0]).toMatchObject({ sport: "cycling", subSport: "road", avgPower: processed.summary.powerAvg, maxPower: Math.max(...powers) });
+    const laps = messages.lapMesgs ?? [];
+    expect(laps).toHaveLength(processed.laps.length);
+    expect(laps.every((lap) => typeof lap.avgPower === "number" && Number(lap.maxPower) <= Math.max(...powers))).toBe(true);
+    const back = readFit(exportFit(inputOf(computation)));
+    expect(back.totals?.powerAvg).toBe(processed.summary.powerAvg);
+  });
+
   it("exports every fix of a sport without a profile, with its pauses and the swim sub sport", () => {
     const activity = activityOf("multi-track.gpx");
     const swim = computeImport(activity, { sport: "swim", values: { water: "open_water" } });
@@ -266,6 +287,21 @@ describe("TCX export (IO-003)", () => {
       expect(point.latitudeE7).toBe(source?.latitudeE7);
       expect(point.longitudeE7).toBe(source?.longitudeE7);
       expect(point.heartRate).toBe(source?.heartRate);
+    }
+  });
+
+  it("writes the crank cadence and the watts of a ride, which read back", () => {
+    const computation = computed("power-ride.fit");
+    const tcx = exportTcx(inputOf(computation));
+    expect(tcx).toContain('<Activity Sport="Biking">');
+    expect(tcx).toMatch(/<Cadence>\d+<\/Cadence>/);
+    expect(tcx).toMatch(/<ns3:TPX><ns3:Speed>[\d.]+<\/ns3:Speed><ns3:Watts>\d+<\/ns3:Watts><\/ns3:TPX>/);
+    expect(tcx).not.toContain("RunCadence");
+    const back = readTcx(encoder.encode(tcx));
+    for (const point of back.points) {
+      const source = computation.activity.points.find((candidate) => candidate.t === point.t);
+      expect(point.power).toBe(source?.power);
+      expect(point.cadence).toBe(source?.cadence);
     }
   });
 

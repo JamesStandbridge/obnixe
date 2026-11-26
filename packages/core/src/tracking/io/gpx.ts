@@ -124,7 +124,7 @@ class GpxReader implements XmlHandler {
     }
     if (this.segmentPending) this.segmentStarts.push(this.points.length);
     this.segmentPending = false;
-    this.points.push({ ...point, time: point.time });
+    this.points.push({ ...point, time: point.time, power: null });
   }
 
   private parent(depth: number): string | undefined {

@@ -20,6 +20,7 @@ import { maskTrack } from "../privacy.ts";
 import type { TrackPositions } from "../privacy.ts";
 import { activePrivacyMask } from "../privacyZones.ts";
 import { resolveProfile } from "../profile.ts";
+import { cadenceReadings, powerReadings, sensorMeanOver } from "../sensors.ts";
 import { previewPolyline } from "../simplify.ts";
 import { heartRateMaxBetween, PauseLedger } from "../stages/derive.ts";
 import type { LapBounds } from "../stages/derive.ts";
@@ -120,7 +121,7 @@ function heartRateAverage(track: Track, window: TimeSpan): number | null {
 
 /** The summary of an import measured without the engine: the file totals, completed from its samples. */
 function totalsSummary(activity: ImportedActivity, track: Track, elapsed: TimeSpan, pauses: readonly TimeSpan[]): RecordingSummary {
-  const { fixes, steps, heartRate } = track.samples;
+  const { fixes, steps, heartRate, power } = track.samples;
   const totals = activity.totals;
   const elapsedMs = elapsed.endMs - elapsed.startMs;
   const pausedMs = pauses.reduce((total, span) => total + span.endMs - span.startMs, 0);
@@ -128,6 +129,8 @@ function totalsSummary(activity: ImportedActivity, track: Track, elapsed: TimeSp
   const stepCount = steps.length === 0 ? null : (steps.count[steps.length - 1] ?? 0);
   const heartRateAvg = reading(totals?.heartRateAvg ?? null) ?? heartRateAverage(track, elapsed);
   const heartRateMax = reading(totals?.heartRateMax ?? null);
+  const cadence = cadenceReadings(track.samples);
+  const cadenceAvg = cadence === null ? null : sensorMeanOver(cadence, elapsed, "positive");
   const bbox = new BoundingBoxBuilder();
   for (let index = 0; index < fixes.length; index += 1) bbox.include((fixes.latitudeE7[index] ?? 0) / 1e7, (fixes.longitudeE7[index] ?? 0) / 1e7);
   return {
@@ -140,16 +143,17 @@ function totalsSummary(activity: ImportedActivity, track: Track, elapsed: TimeSp
     altitudeMinMm: null,
     altitudeMaxMm: null,
     speedMaxMmS: null,
-    cadenceAvg: stepCount === null || movingMs <= 0 ? null : Math.round((stepCount * 60_000) / movingMs),
+    cadenceAvg: cadence !== null ? cadenceAvg : stepCount === null || movingMs <= 0 ? null : Math.round((stepCount * 60_000) / movingMs),
     steps: stepCount,
     heartRateAvg,
     heartRateMax: heartRateMax ?? (heartRate.length === 0 ? null : heartRateMaxBetween(heartRate, elapsed.startMs, elapsed.endMs + 1)),
+    powerAvg: totals?.powerAvg ?? (power.length === 0 ? null : sensorMeanOver(powerReadings(power), elapsed, "every")),
     goodFixPermille: fixes.length === 0 ? 0 : 1000,
     bbox: bbox.build(),
     pointCount: fixes.length,
     simulated: false,
     elevationSource: "none",
-    cadenceSource: stepCount === null ? "none" : "file",
+    cadenceSource: stepCount === null && cadence === null ? "none" : "file",
     heartRateSource: heartRate.length === 0 && heartRateAvg === null ? "none" : "file",
   };
 }
@@ -157,6 +161,7 @@ function totalsSummary(activity: ImportedActivity, track: Track, elapsed: TimeSp
 function totalsValues(values: FieldValues, summary: RecordingSummary): FieldValues {
   const derived: Record<string, FieldValue> = { ...values, distance: Math.round(summary.distanceMm / 1000) };
   if (summary.heartRateAvg !== null) derived.heart_rate_avg = summary.heartRateAvg;
+  if (summary.powerAvg !== null) derived.power_avg = summary.powerAvg;
   return derived;
 }
 
@@ -282,6 +287,7 @@ function energyOf(db: ObnixeDatabase, computation: ImportComputation): EnergyEst
       path: processed === null ? null : { distance: processed.series.distance, grade: processed.series.grade },
       heartRate: track.samples.heartRate.length === 0 ? null : track.samples.heartRate,
       descents: processed === null ? null : processed.descents.map((descent) => ({ startMs: descent.startMs, endMs: descent.endMs })),
+      power: track.samples.power.length === 0 ? null : track.samples.power,
     },
     { massGrams: weighed.grams, birthYear, sex },
   );
@@ -400,6 +406,9 @@ export function planImport(db: ObnixeDatabase, env: Environment, draft: ImportDr
         heartRateAvg: summary.heartRateAvg,
         heartRateMax: summary.heartRateMax,
         heartRateDevice: summary.heartRateSource === "none" ? null : device,
+        cadenceDevice: null,
+        powerAvg: summary.powerAvg,
+        powerDevice: summary.powerAvg === null ? null : device,
         energyKcal: energy?.kcal ?? null,
         energyMethod: energy?.method ?? null,
         importedEnergyKcal: activity.totals?.energyKcal ?? null,

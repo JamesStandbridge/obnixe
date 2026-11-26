@@ -3,11 +3,12 @@ import Database from "better-sqlite3";
 import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 import { gear, programSlot, session, settings, sportPreference } from "@obnixe/schema";
-import type { EpochMs, Id } from "@obnixe/schema";
+import type { EpochMs, Id, RecordingSettings } from "@obnixe/schema";
 import { readSettings } from "../../settings.ts";
 import type { SettingsValues } from "../../settings.ts";
 import { createTestContext, testUpgrader } from "../../testing.ts";
 import type { TestContext } from "../../testing.ts";
+import { fixtures as rowFixtures } from "../testFixtures.ts";
 import { parsePackedSnapshot } from "./container.ts";
 import { openSnapshot } from "./envelope.ts";
 import { mergeSnapshot } from "./merge.ts";
@@ -193,5 +194,30 @@ describe("v5 backup", () => {
     const opened = parsePackedSnapshot({ ...current, schemaVersion: 5, tables: { ...current.tables, gear: gearV5 } }, testUpgrader);
     expect(opened.schemaVersion).toBe(backupSchemaVersion);
     expect(opened.tables.gear).toEqual([expect.objectContaining({ id: gearId, initialMeters: 120_000, wearMeters: null })]);
+  });
+});
+
+describe("v6 backup", () => {
+  it("gives the recording settings no cadence or power sensor and the recordings no power", () => {
+    const source = createTestContext();
+    const make = rowFixtures(source);
+    const recordingSettings: RecordingSettings = {
+      autoPause: true,
+      autoLap: null,
+      readout: null,
+      alerts: { disabled: [], sound: false, paceRange: null, heartRateRange: null },
+      heartRateDevice: { id: "C4:7D:2A:10:9E:01", name: "HRM-Pro" },
+      cadenceDevice: null,
+      powerDevice: null,
+    };
+    make.write([{ kind: "insert", table: "sport_preference", row: { sport: "bike", enabled: true, position: 0, recordingSettings } }]);
+    const current = buildSnapshot(source.db, source.env.now());
+    const tables = current.tables as unknown as Record<string, Record<string, unknown>[]>;
+    const preferencesV6 = (tables.sport_preference ?? []).map((row) => {
+      const { cadenceDevice: _cadence, powerDevice: _power, ...settingsV6 } = row.recordingSettings as RecordingSettings;
+      return { ...row, recordingSettings: settingsV6 };
+    });
+    const opened = parsePackedSnapshot({ ...current, schemaVersion: 6, tables: { ...tables, sport_preference: preferencesV6 } }, testUpgrader);
+    expect(opened.tables.sport_preference.find((row) => row.sport === "bike")?.recordingSettings).toEqual(recordingSettings);
   });
 });

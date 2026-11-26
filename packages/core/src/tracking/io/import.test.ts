@@ -77,6 +77,20 @@ describe("computeImport (IO-011, IO-050)", () => {
     expect(treadmill.values).toEqual({ distance: 1750, heart_rate_avg: 146 });
   });
 
+  it("averages the power of a ride over its moving time and its crank cadence without the coasting zeros (SPT-008)", () => {
+    const ride = computed("power-ride.fit");
+    const samples = ride.track.samples;
+    expect(samples.steps.length).toBe(0);
+    expect(samples.power.length).toBe(600);
+    expect(samples.cadence.length).toBe(600);
+    expect(ride.summary).toMatchObject({ cadenceSource: "file", heartRateSource: "file" });
+    expect(ride.summary.cadenceAvg).toBeGreaterThanOrEqual(86);
+    expect(ride.summary.cadenceAvg).toBeLessThanOrEqual(90);
+    expect(ride.summary.powerAvg).toBeGreaterThan(190);
+    expect(ride.summary.powerAvg).toBeLessThan(215);
+    expect(ride.values.power_avg).toBe(ride.summary.powerAvg);
+  });
+
   it("cuts a GPX at its track boundaries and keeps one lap for the whole activity", () => {
     const walk = computed("multi-track.gpx");
     expect(walk.summary.elapsedMs).toBe(834_000);
@@ -127,6 +141,18 @@ describe("planImport (IO-010)", () => {
       [1, "import", 451_000, 618_000],
     ]);
     expect(context.db.select({ author: changeset.author }).from(changeset).all().at(-1)).toEqual({ author: "import" });
+  });
+
+  it("estimates the energy of a ride from its power and keeps the power meter as its device (SPT-008)", () => {
+    make.write([{ kind: "insert", table: "weigh_in", row: make.weighIn("2026-10-24", 70_000) }]);
+    updateSettings(context.db, { birthYear: 1990, sex: "female" }, context.env.now());
+    const computation = computed("power-ride.fit");
+    const plan = importFile(computation);
+    const stored = context.db.select().from(recording).where(eq(recording.id, plan.recordingId)).get();
+    expect(stored).toMatchObject({ energyMethod: "power", powerAvg: computation.summary.powerAvg, powerDevice: "Garmin Venu 3S", cadenceSource: "file", importedEnergyKcal: 160 });
+    const kilojoules = ((computation.summary.powerAvg ?? 0) * computation.summary.movingMs) / 1_000_000;
+    expect(stored?.energyKcal).toBeGreaterThan(kilojoules / (4.184 * 0.24) - 5);
+    expect(stored?.energyKcal).toBeLessThan(kilojoules / (4.184 * 0.24) + 25);
   });
 
   it("makes positioned files without accuracies count in records, and pool swims not (PR-002, PR-003)", () => {

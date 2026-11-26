@@ -1,33 +1,38 @@
 import CoreBluetooth
 
-protocol HeartRateLinkListener: AnyObject {
-  func heartRateLink(_ link: HeartRateLink, didMeasure measurement: HeartRateMeasurement)
+protocol SensorLinkListener: AnyObject {
+  /// `receivedAtNs` is the monotonic instant the notification reached the phone.
+  func sensorLink(_ link: SensorLink, service: SensorService, didNotify value: [UInt8], receivedAtNs: Int64)
 
-  func heartRateLinkDidLose(_ link: HeartRateLink)
+  func sensorLinkDidLose(_ link: SensorLink)
 }
 
 /**
- Keeps a link to one Heart Rate source and streams its measurements (`SPT-007`). Core Bluetooth connection requests
- never expire, so after a loss the link asks again and the system reconnects once the source is back, in the
- background too (`bluetooth-central`). A source this phone no longer knows is looked for by a Heart Rate scan. Callers
- hold the Bluetooth permission; every callback runs on `queue`.
+ Keeps a link to one Bluetooth source and streams the measurements of `services` (`SPT-007`, `SPT-008`), so a power
+ meter that also serves cadence holds a single connection. Core Bluetooth connection requests never expire, so after a
+ loss the link asks again and the system reconnects once the source is back, in the background too
+ (`bluetooth-central`). A source this phone no longer knows is looked for by a scan of its services. Callers hold the
+ Bluetooth permission; every callback runs on `queue`.
  */
-final class HeartRateLink: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
+final class SensorLink: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
   private enum State {
     case connecting
     case streaming
     case lost
   }
 
+  let services: Set<SensorService>
   private let identifier: UUID
   private let queue: DispatchQueue
-  private weak var listener: HeartRateLinkListener?
+  private weak var listener: SensorLinkListener?
   private var central: CBCentralManager?
   private var peripheral: CBPeripheral?
   private var state = State.connecting
+  private var unsubscribed: Set<CBUUID> = []
 
-  init(identifier: UUID, queue: DispatchQueue, listener: HeartRateLinkListener) {
+  init(identifier: UUID, services: Set<SensorService>, queue: DispatchQueue, listener: SensorLinkListener) {
     self.identifier = identifier
+    self.services = services
     self.queue = queue
     self.listener = listener
   }
@@ -54,14 +59,14 @@ final class HeartRateLink: NSObject, CBCentralManagerDelegate, CBPeripheralDeleg
     if let peripheral {
       central.connect(peripheral)
     } else if !central.isScanning {
-      central.scanForPeripherals(withServices: [HeartRateGatt.service])
+      central.scanForPeripherals(withServices: services.map(\.uuid))
     }
   }
 
   private func onFailure() {
     guard state != .lost else { return }
     state = .lost
-    listener?.heartRateLinkDidLose(self)
+    listener?.sensorLinkDidLose(self)
   }
 
   private func drop(_ peripheral: CBPeripheral) {
@@ -90,7 +95,8 @@ final class HeartRateLink: NSObject, CBCentralManagerDelegate, CBPeripheralDeleg
   }
 
   func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
-    peripheral.discoverServices([HeartRateGatt.service])
+    unsubscribed = Set(services.map(\.measurement))
+    peripheral.discoverServices(services.map(\.uuid))
   }
 
   func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
@@ -103,23 +109,30 @@ final class HeartRateLink: NSObject, CBCentralManagerDelegate, CBPeripheralDeleg
     connect()
   }
 
+  /// A source missing one of the measurements is dropped, so its loss gets reported.
   func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
-    guard let service = peripheral.services?.first(where: { $0.uuid == HeartRateGatt.service }) else { return drop(peripheral) }
-    peripheral.discoverCharacteristics([HeartRateGatt.measurement], for: service)
+    for service in services {
+      guard let discovered = peripheral.services?.first(where: { $0.uuid == service.uuid }) else { return drop(peripheral) }
+      peripheral.discoverCharacteristics([service.measurement], for: discovered)
+    }
   }
 
   func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
-    guard let measurement = service.characteristics?.first(where: { $0.uuid == HeartRateGatt.measurement }) else { return drop(peripheral) }
+    guard let sensor = services.first(where: { $0.uuid == service.uuid }), let measurement = service.characteristics?.first(where: { $0.uuid == sensor.measurement }) else {
+      return drop(peripheral)
+    }
     peripheral.setNotifyValue(true, for: measurement)
   }
 
   func peripheral(_ peripheral: CBPeripheral, didUpdateNotificationStateFor characteristic: CBCharacteristic, error: Error?) {
     guard error == nil, characteristic.isNotifying else { return drop(peripheral) }
-    state = .streaming
+    unsubscribed.remove(characteristic.uuid)
+    if unsubscribed.isEmpty { state = .streaming }
   }
 
   func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
-    guard characteristic.uuid == HeartRateGatt.measurement, let value = characteristic.value, let measurement = HeartRateMeasurement([UInt8](value)) else { return }
-    listener?.heartRateLink(self, didMeasure: measurement)
+    let receivedAtNs = TrackerClock.monotonicNs()
+    guard let service = services.first(where: { $0.measurement == characteristic.uuid }), let value = characteristic.value else { return }
+    listener?.sensorLink(self, service: service, didNotify: [UInt8](value), receivedAtNs: receivedAtNs)
   }
 }

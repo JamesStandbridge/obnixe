@@ -71,6 +71,7 @@ function stretchJson(stretch: StretchSummary, profile: ResolvedProfile): Record<
     cadenceAvg: stretch.cadenceAvg,
     heartRateAvg: stretch.heartRateAvg,
     heartRateMax: stretch.heartRateMax,
+    powerAvg: stretch.powerAvg,
   };
 }
 
