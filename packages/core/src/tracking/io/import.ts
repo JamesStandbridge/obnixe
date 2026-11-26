@@ -1,6 +1,6 @@
 import { and, between, eq, isNull } from "drizzle-orm";
 import { recording, session } from "@obnixe/schema";
-import type { CadenceSource, ElevationSource, EpochMs, FieldValue, FieldValues, Id, SensorSource } from "@obnixe/schema";
+import type { EpochMs, FieldValue, FieldValues, Id } from "@obnixe/schema";
 import { sportOf } from "../../activity/catalog.ts";
 import { weighInBefore } from "../../body/weight.ts";
 import { importActor } from "../../data/backup/merge.ts";
@@ -23,7 +23,7 @@ import { resolveProfile } from "../profile.ts";
 import { previewPolyline } from "../simplify.ts";
 import { heartRateMaxBetween, PauseLedger } from "../stages/derive.ts";
 import type { LapBounds } from "../stages/derive.ts";
-import { sessionValuesFromRecording } from "../summary.ts";
+import { importedSummary, sessionValuesFromRecording } from "../summary.ts";
 import type { RecordingSummary } from "../summary.ts";
 import { trackingAlgorithmVersion } from "../version.ts";
 import { forEachHeartRateSpan, isHeartRateReading } from "../zones.ts";
@@ -98,10 +98,6 @@ export class ReplacedSessionNotFoundError extends Error {
 export function fileDevice(activity: ImportedActivity): string {
   return activity.device ?? formatDevices[activity.format];
 }
-
-const fileElevation = (source: ElevationSource): ElevationSource => (source === "none" ? "none" : "file");
-const fileCadence = (source: CadenceSource): CadenceSource => (source === "none" ? "none" : "file");
-const fileSensor = (source: SensorSource): SensorSource => (source === "none" ? "none" : "file");
 
 function fileLaps(activity: ImportedActivity, elapsed: TimeSpan): readonly LapBounds[] {
   const spans = activity.laps.length > 0 ? activity.laps : [elapsed];
@@ -188,12 +184,7 @@ export function computeImport(activity: ImportedActivity, sport: SportGuess): Im
   const laps = fileLaps(activity, window);
   if (profile !== null && track.samples.fixes.length > 1) {
     const processed = processTrack(track, profile, { laps: { kind: "given", laps }, trim });
-    const summary: RecordingSummary = {
-      ...processed.summary,
-      elevationSource: fileElevation(processed.summary.elevationSource),
-      cadenceSource: fileCadence(processed.summary.cadenceSource),
-      heartRateSource: fileSensor(processed.summary.heartRateSource),
-    };
+    const summary = importedSummary(processed.summary);
     const update = sessionValuesFromRecording(sport.values, summary, profile);
     return {
       activity,

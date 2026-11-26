@@ -15,17 +15,22 @@ import { processTrack } from "./batch.ts";
 import type { ProcessedTrack } from "./batch.ts";
 import { encodeTrack, trackDigest } from "./codec/track.ts";
 import type { Track } from "./codec/track.ts";
-import { activePrivacyMask } from "./privacyZones.ts";
+import { activePrivacyMask, detailPrivacyMask } from "./privacyZones.ts";
 import { countsInRecords, maskKey, recordZoneProposal, staleDerivationCount, staleDerivations, storeDerivation, zoneProposalFor } from "./derived.ts";
+import { analyzeRecording, heartRateZoneReport } from "./analysis.ts";
 import {
+  NotMeasuredError,
   NotRecordableError,
+  measuredRecordingOf,
   planInterruption,
   planRecompute,
   planRecordingDiscard,
   planRecordingResume,
   planRecordingSave,
   planRecordingStart,
+  planSportChange,
   planTrim,
+  profileOfSession,
   recordingStartMutations,
   retrimmedLaps,
 } from "./plans.ts";
@@ -33,7 +38,7 @@ import type { RecordingStartPlan } from "./plans.ts";
 import { journalDisposition, openLiveRecording, referencedTrackFiles, trackRebuildMutations } from "./reconcile.ts";
 import { coreScenarios } from "./testing/scenarios.ts";
 import { profileOf, recordedLaps, untrimmed } from "./testing/run.ts";
-import { toSampleColumns } from "./types.ts";
+import { absentValue, toSampleColumns } from "./types.ts";
 import type { TrackerMark } from "./types.ts";
 
 let context: TestContext;
@@ -219,6 +224,61 @@ describe("retouches", () => {
     expect(recordingOf(plan.sessionId)?.distanceMm).toBe(before?.distanceMm);
     const recomputed = planRecompute(context.db, context.env, plan.sessionId, track);
     expect(recomputed.processed.summary.distanceMm).toBe(before?.distanceMm);
+  });
+
+  it("measures only completed recordings with a track", () => {
+    const plan = start();
+    expect(() => measuredRecordingOf(context.db, plan.sessionId)).toThrow(NotMeasuredError);
+    save(plan);
+    expect(measuredRecordingOf(context.db, plan.sessionId).recording.id).toBe(plan.recordingId);
+  });
+
+  it("changes the sport with its profile, detaching the gear of the old one (SUM-004)", () => {
+    const shoes = { id: context.env.newId(), sport: "run" as const, name: "Pegasus", initialMeters: 0, retiredAt: null, createdAt: context.env.now(), updatedAt: context.env.now() };
+    make.write([{ kind: "insert", table: "gear", row: shoes }]);
+    const plan = start();
+    save(plan);
+    make.write([{ kind: "update", table: "session", key: plan.sessionId, patch: { gearId: shoes.id, values: { ...sessionOf(plan.sessionId)?.values, kind: "easy" } } }]);
+    const changed = planSportChange(context.db, context.env, plan.sessionId, track, { sport: "trail", values: { kind: "training" } });
+    make.write(changed.mutations);
+    const row = sessionOf(plan.sessionId);
+    expect(row).toMatchObject({ sport: "trail", gearId: null });
+    expect(row?.values).toMatchObject({ kind: "training", distance: Math.round(changed.processed.summary.distanceMm / 1000) });
+    expect(() => planSportChange(context.db, context.env, plan.sessionId, track, { sport: "bike", values: { kind: "indoor" } })).toThrow(NotRecordableError);
+  });
+
+  it("keeps the file as the source of an imported track measured again", () => {
+    const plan = start();
+    save(plan);
+    context.db.update(recording).set({ source: "import", importFormat: "gpx" }).where(eq(recording.sessionId, plan.sessionId)).run();
+    const recomputed = planRecompute(context.db, context.env, plan.sessionId, track);
+    make.write(recomputed.mutations);
+    const row = recordingOf(plan.sessionId);
+    expect(row?.source).toBe("import");
+    expect([row?.elevationSource, row?.heartRateSource, row?.cadenceSource].every((source) => source === "file" || source === "none")).toBe(true);
+  });
+});
+
+describe("activity analysis", () => {
+  it("reads the stored trim and laps, and the zones of the maximum heart rate (SUM-001, CAL-004)", () => {
+    const plan = start();
+    save(plan);
+    const saved = measuredRecordingOf(context.db, plan.sessionId);
+    const analysis = analyzeRecording(context.db, saved, profileOfSession(saved.session), track);
+    expect(analysis.summary.distanceMm).toBe(saved.recording.distanceMm);
+    expect(analysis.laps).toHaveLength(2);
+    const heartRate = { length: 2, t: Uint32Array.of(0, processed.elapsed.endMs), bpm: Uint16Array.of(150, 150), rrInterval: Int32Array.of(absentValue, absentValue) };
+    expect(heartRateZoneReport(context.db, startedAt, heartRate, analysis.moving)).toBeNull();
+    context.db.update(settings).set({ maxHeartRate: 190 }).run();
+    const report = heartRateZoneReport(context.db, startedAt, heartRate, analysis.moving);
+    expect(report).toMatchObject({ maxHeartRate: 190, source: "settings" });
+    expect(report?.time.byZone[3]).toBeGreaterThan(0);
+  });
+
+  it("shows the full track in the app unless the owner masks it there too (PRV-010, Q-18)", () => {
+    expect(detailPrivacyMask(context.db)).toBeNull();
+    context.db.update(settings).set({ maskInApp: true, hideTrackEndsMeters: 200 }).run();
+    expect(detailPrivacyMask(context.db)).toEqual({ zones: [], hideEndsMeters: 200 });
   });
 });
 

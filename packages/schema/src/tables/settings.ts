@@ -26,6 +26,7 @@ export const settings = sqliteTable(
     mapCacheMegabytes: integer("map_cache_megabytes").notNull().default(200),
     exportPrivacy: integer("export_privacy", { mode: "boolean" }).notNull().default(true),
     hideTrackEndsMeters: integer("hide_track_ends_meters").notNull().default(0),
+    maskInApp: integer("mask_in_app", { mode: "boolean" }).notNull().default(false),
     birthYear: integer("birth_year"),
     sex: text("sex", { enum: biologicalSexes }),
     maxHeartRate: integer("max_heart_rate"),

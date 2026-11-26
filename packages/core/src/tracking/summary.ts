@@ -146,6 +146,15 @@ export function summarizeRecording(input: SummaryInput): RecordingSummary {
   };
 }
 
+const fileElevation = (source: ElevationSource): ElevationSource => (source === "none" ? "none" : "file");
+const fileCadence = (source: CadenceSource): CadenceSource => (source === "none" ? "none" : "file");
+const fileSensor = (source: SensorSource): SensorSource => (source === "none" ? "none" : "file");
+
+/** The summary of an imported track: its altitude, steps and heart rate all come from the file. */
+export function importedSummary(summary: RecordingSummary): RecordingSummary {
+  return { ...summary, elevationSource: fileElevation(summary.elevationSource), cadenceSource: fileCadence(summary.cadenceSource), heartRateSource: fileSensor(summary.heartRateSource) };
+}
+
 export interface SessionValuesUpdate {
   readonly values: FieldValues;
   readonly pausedSeconds: number;

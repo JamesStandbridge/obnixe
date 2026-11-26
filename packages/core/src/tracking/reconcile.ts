@@ -3,14 +3,14 @@ import { recording, session } from "@obnixe/schema";
 import type { Id, Recording } from "@obnixe/schema";
 import type { ObnixeDatabase } from "../database.ts";
 import type { Mutation } from "../writer.ts";
-import type { LiveRecording, StoredTrack } from "./plans.ts";
+import type { SessionRecording, StoredTrack } from "./plans.ts";
 
 /** What the launch reconciliation (annex C, `REC-082`) does with the raw journal of `sessionId`. */
 export type JournalDisposition =
   /** No live recording of that session survives: an aborted start or a discard whose undo expired. */
   | { readonly kind: "orphan" }
   /** `in_progress` or `interrupted`: recovered by the recorder. */
-  | { readonly kind: "open"; readonly live: LiveRecording }
+  | { readonly kind: "open"; readonly live: SessionRecording }
   /** Saved: the journal goes once the track file is verified, or after it is rebuilt from the journal. */
   | { readonly kind: "saved"; readonly recording: Recording };
 
@@ -21,7 +21,7 @@ export function journalDisposition(db: ObnixeDatabase, sessionId: Id): JournalDi
 }
 
 /** The open session that carries a live recording, if any; trashed sessions never are. */
-export function openLiveRecording(db: ObnixeDatabase): LiveRecording | null {
+export function openLiveRecording(db: ObnixeDatabase): SessionRecording | null {
   return (
     db
       .select({ session, recording })

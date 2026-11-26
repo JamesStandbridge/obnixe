@@ -1,6 +1,6 @@
 import { and, asc, eq, gte, inArray, isNotNull, isNull, lte, ne } from "drizzle-orm";
-import { agentConnection, change, changeset, exercise, painReport, programSlot, programVariant, session, sessionItem, strengthEntry, strengthSet } from "@obnixe/schema";
-import type { Effort, EpochMs, Exercise, FieldValues, Id, LocalDate, PainLevel, ReviewStatus, Session, SportKey, StrengthSet, ZoneKey } from "@obnixe/schema";
+import { agentConnection, change, changeset, exercise, painReport, programSlot, programVariant, recording, session, sessionItem, strengthEntry, strengthSet } from "@obnixe/schema";
+import type { Effort, EpochMs, Exercise, FieldValues, Id, LocalDate, PainLevel, Recording, ReviewStatus, Session, SportKey, StrengthSet, ZoneKey } from "@obnixe/schema";
 import type { ObnixeDatabase } from "../database.ts";
 import { setVolumeGrams, totalLoadGrams } from "../training/load.ts";
 
@@ -29,7 +29,11 @@ export interface SessionSummary {
   readonly strength: StrengthDigest | null;
   readonly pains: readonly ReportedZonePain[];
   readonly addedBy: string | null;
+  readonly recording: RecordingDigest | null;
 }
+
+/** What the lists show of a recorded or imported activity (`SUM-010`, `MAP-023`): its masked preview and measured totals. */
+export type RecordingDigest = Pick<Recording, "source" | "previewPolyline" | "distanceMm" | "movingMs" | "ascentMm" | "energyKcal">;
 
 export interface StrengthDigestExercise extends Pick<Exercise, "equipment" | "loadMode" | "baseGrams"> {
   readonly name: string;
@@ -88,10 +92,23 @@ export function completedSessions(db: ObnixeDatabase, range: SessionRange = {}):
   if (range.from !== undefined) conditions.push(gte(session.localDate, range.from));
   if (range.to !== undefined) conditions.push(lte(session.localDate, range.to));
   const rows = db
-    .select({ session, slotName: programSlot.name, variantName: programVariant.name })
+    .select({
+      session,
+      slotName: programSlot.name,
+      variantName: programVariant.name,
+      recording: {
+        source: recording.source,
+        previewPolyline: recording.previewPolyline,
+        distanceMm: recording.distanceMm,
+        movingMs: recording.movingMs,
+        ascentMm: recording.ascentMm,
+        energyKcal: recording.energyKcal,
+      },
+    })
     .from(session)
     .leftJoin(programSlot, eq(session.slotId, programSlot.id))
     .leftJoin(programVariant, eq(session.variantId, programVariant.id))
+    .leftJoin(recording, eq(recording.sessionId, session.id))
     .where(and(...conditions))
     .orderBy(asc(session.startedAt))
     .all();
@@ -145,7 +162,7 @@ export function completedSessions(db: ObnixeDatabase, range: SessionRange = {}):
         .all(),
     ).map((row) => [row.rowId, row.client]),
   );
-  return rows.map(({ session: row, slotName, variantName }) => ({
+  return rows.map(({ session: row, slotName, variantName, recording: measured }) => ({
     id: row.id,
     sport: row.sport,
     title: row.title,
@@ -163,6 +180,7 @@ export function completedSessions(db: ObnixeDatabase, range: SessionRange = {}):
     strength: strengthDigest(strengthSets.get(row.id) ?? []),
     pains: mergeZonePains((pains.get(row.id) ?? []).map((pain) => ({ zone: pain.zone, level: pain.level as ReportedPainLevel }))),
     addedBy: authors.get(row.id) ?? null,
+    recording: measured,
   }));
 }
 

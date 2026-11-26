@@ -8,6 +8,7 @@ import { readSettings } from "../../settings.ts";
 import type { SettingsValues } from "../../settings.ts";
 import { createTestContext, testUpgrader } from "../../testing.ts";
 import type { TestContext } from "../../testing.ts";
+import { parsePackedSnapshot } from "./container.ts";
 import { openSnapshot } from "./envelope.ts";
 import { mergeSnapshot } from "./merge.ts";
 import { replaceWithSnapshot } from "./replace.ts";
@@ -87,6 +88,7 @@ describe("v1 database migrated in place", () => {
       mapCacheMegabytes: 200,
       exportPrivacy: true,
       hideTrackEndsMeters: 0,
+      maskInApp: false,
       birthYear: null,
       sex: null,
       maxHeartRate: null,
@@ -147,5 +149,32 @@ describe("v1 backup", () => {
     const local = device({ agentCanReadLocation: false, theme: "sunlight" });
     replaceWithSnapshot(local.db, local.env, opened);
     expect(readSettings(local.db)).toMatchObject({ agentCanReadLocation: false, theme: opened.settings.theme });
+  });
+});
+
+describe("v2 backup", () => {
+  it("gives the in-app mask its default", () => {
+    const source = createTestContext();
+    source.db
+      .insert(settings)
+      .values({
+        singleton: 1,
+        theme: "dark",
+        massUnit: "kg",
+        agentCanReadBody: false,
+        agentCanWrite: false,
+        agentCanReadPhotos: false,
+        reminderWeekdays: 0,
+        reminderMinutes: 1110,
+        hideTrackEndsMeters: 300,
+        maskInApp: true,
+        updatedAt: source.env.now(),
+      })
+      .run();
+    const current = buildSnapshot(source.db, source.env.now());
+    const { maskInApp: _maskInApp, ...settingsV2 } = current.settings;
+    const opened = parsePackedSnapshot({ ...current, schemaVersion: 2, settings: settingsV2 }, testUpgrader);
+    expect(opened.schemaVersion).toBe(backupSchemaVersion);
+    expect(opened.settings).toMatchObject({ hideTrackEndsMeters: 300, maskInApp: false });
   });
 });

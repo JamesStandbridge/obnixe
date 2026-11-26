@@ -1,8 +1,8 @@
-import { asc, eq } from "drizzle-orm";
-import { lap, recording, session, settings, sports } from "@obnixe/schema";
+import { eq } from "drizzle-orm";
+import { recording, session, sports } from "@obnixe/schema";
 import type { Recording, Session } from "@obnixe/schema";
 import type { ObnixeDatabase } from "../database.ts";
-import { processTrack } from "../tracking/batch.ts";
+import { analyzeRecording, heartRateZoneReport } from "../tracking/analysis.ts";
 import type { ProcessedTrack } from "../tracking/batch.ts";
 import { decodeTrack, TrackDecodeError } from "../tracking/codec/track.ts";
 import type { Track } from "../tracking/codec/track.ts";
@@ -14,7 +14,7 @@ import type { ResolvedProfile } from "../tracking/profile.ts";
 import { lttb } from "../tracking/simplify.ts";
 import { slowestPaceSecondsPerKm } from "../tracking/stages/derive.ts";
 import type { StretchSummary, TrackSeries } from "../tracking/stages/derive.ts";
-import { heartRateReader, heartRateZones, maxHeartRateOf, timeInZones } from "../tracking/zones.ts";
+import { heartRateReader } from "../tracking/zones.ts";
 import type { ToolInput } from "./contract.ts";
 import type { AgentEnvironment, Json, ToolResult } from "./environment.ts";
 import { ToolInputError } from "./environment.ts";
@@ -50,8 +50,7 @@ function loadActivity(db: ObnixeDatabase, env: AgentEnvironment, sessionId: stri
     if (error instanceof TrackDecodeError) throw new ToolInputError(`The track of session '${sessionId}' is damaged (${error.reason}); its summary is in get_history.`);
     throw error;
   }
-  const laps = db.select().from(lap).where(eq(lap.sessionId, owner.id)).orderBy(asc(lap.position)).all();
-  const processed = processTrack(track, profile, { laps: { kind: "given", laps }, trim: { startMs: row.trimStartMs, endMs: row.trimEndMs } });
+  const processed = analyzeRecording(db, { session: owner, recording: row }, profile, track);
   return { session: owner, recording: row, profile, track, processed };
 }
 
@@ -76,18 +75,15 @@ function stretchJson(stretch: StretchSummary, profile: ResolvedProfile): Record<
 }
 
 function heartRateZonesJson(db: ObnixeDatabase, loaded: LoadedActivity): Json {
-  const heartRate = loaded.track.samples.heartRate;
-  const physiology = db.select({ birthYear: settings.birthYear, sex: settings.sex, maxHeartRate: settings.maxHeartRate }).from(settings).get();
-  const maxHeartRate = physiology === undefined ? null : maxHeartRateOf(physiology, loaded.session.startedAt);
-  if (heartRate.length === 0 || physiology === undefined || maxHeartRate === null) return null;
-  const zones = heartRateZones(maxHeartRate);
-  const time = timeInZones(heartRate, zones, loaded.processed.moving);
+  const report = heartRateZoneReport(db, loaded.session.startedAt, loaded.track.samples.heartRate, loaded.processed.moving);
+  if (report === null) return null;
+  const { time } = report;
   return {
-    maxHeartRate,
-    maxHeartRateSource: physiology.maxHeartRate === null ? "birth_year" : "settings",
+    maxHeartRate: report.maxHeartRate,
+    maxHeartRateSource: report.source,
     coveredSeconds: seconds(time.coveredMs),
     belowZone1Seconds: seconds(time.belowMs),
-    zones: zones.map((bounds) => ({ zone: bounds.zone, minBpm: Math.round(bounds.minBpm), maxBpm: Math.round(bounds.maxBpm), seconds: seconds(time.byZone[bounds.zone]) })),
+    zones: report.zones.map((bounds) => ({ zone: bounds.zone, minBpm: Math.round(bounds.minBpm), maxBpm: Math.round(bounds.maxBpm), seconds: seconds(time.byZone[bounds.zone]) })),
   };
 }
 

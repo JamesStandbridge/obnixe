@@ -85,6 +85,11 @@ export function activePrivacyMask(db: ObnixeDatabase): PrivacyMask {
   return { zones, hideEndsMeters: readSettings(db).hideTrackEndsMeters };
 }
 
+/** The mask of the detail map: the full track for its owner, unless `settings.mask_in_app` asks otherwise (`PRV-010`, `Q-18`). */
+export function detailPrivacyMask(db: ObnixeDatabase): PrivacyMask | null {
+  return readSettings(db).maskInApp ? activePrivacyMask(db) : null;
+}
+
 /**
  * The mask of a file export (`PRV-011`): the active mask, or none when the user includes the full track. The box is unchecked
  * by default while `settings.export_privacy` is on.
