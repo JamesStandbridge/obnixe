@@ -5,6 +5,7 @@ export * from "./fields.ts";
 export * from "./ids.ts";
 export * from "./merge.ts";
 export * from "./names.ts";
+export * from "./recording.ts";
 export * from "./revert.ts";
 export * from "./schema.ts";
 export * from "./tables/index.ts";

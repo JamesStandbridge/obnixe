@@ -1,11 +1,13 @@
 import { sql } from "drizzle-orm";
 import { check, index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { id, sport, timestamp, tracked } from "../columns.ts";
+import type { RecordingSettings } from "../recording.ts";
 
 export const sportPreference = sqliteTable("sport_preference", {
   sport: sport("sport").primaryKey(),
   enabled: integer("enabled", { mode: "boolean" }).notNull(),
   position: integer("position").notNull(),
+  recordingSettings: text("recording_settings", { mode: "json" }).$type<RecordingSettings>(),
   ...tracked(),
 });
 

@@ -71,6 +71,10 @@ export const journaledTables = [
   "check_in",
   "pain_report",
   "zone_tracking",
+  "recording",
+  "lap",
+  "privacy_zone",
+  "segment",
 ] as const;
 export type JournaledTable = (typeof journaledTables)[number];
 
@@ -91,3 +95,36 @@ export type Theme = (typeof themes)[number];
 
 export const massUnits = ["kg", "lb"] as const;
 export type MassUnit = (typeof massUnits)[number];
+
+export const recordingSources = ["live", "import"] as const;
+export type RecordingSource = (typeof recordingSources)[number];
+
+export const importFormats = ["gpx", "tcx", "fit", "garmin_archive"] as const;
+export type ImportFormat = (typeof importFormats)[number];
+
+export const elevationSources = ["barometer", "gnss", "file", "none"] as const;
+export type ElevationSource = (typeof elevationSources)[number];
+
+export const cadenceSources = ["pedometer", "file", "none"] as const;
+export type CadenceSource = (typeof cadenceSources)[number];
+
+export const sensorSources = ["sensor", "file", "none"] as const;
+export type SensorSource = (typeof sensorSources)[number];
+
+export const lapTriggers = ["manual", "distance", "duration", "import"] as const;
+export type LapTrigger = (typeof lapTriggers)[number];
+
+export const energyMethods = ["heart_rate", "mechanical", "met"] as const;
+export type EnergyMethod = (typeof energyMethods)[number];
+
+export const segmentFamilies = ["foot", "bike"] as const;
+export type SegmentFamily = (typeof segmentFamilies)[number];
+
+export const biologicalSexes = ["female", "male"] as const;
+export type BiologicalSex = (typeof biologicalSexes)[number];
+
+export const mapStyles = ["obnixe_outdoor", "plan_ign"] as const;
+export type MapStyle = (typeof mapStyles)[number];
+
+export const recordingAlerts = ["lap", "split", "auto_pause"] as const;
+export type RecordingAlert = (typeof recordingAlerts)[number];

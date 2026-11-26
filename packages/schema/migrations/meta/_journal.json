@@ -15,6 +15,20 @@
       "when": 1795697653956,
       "tag": "0001_entry_planned_sets",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1795705867573,
+      "tag": "0002_gps_recording",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1795705922650,
+      "tag": "0003_trail_sport",
+      "breakpoints": true
     }
   ]
 }
