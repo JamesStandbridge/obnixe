@@ -139,7 +139,16 @@ export interface SensorModel {
   readonly barometer: { readonly driftMetersPerHour: number; readonly sigma: number } | null;
   /** Steps per minute while moving, `null` without pedometer. */
   readonly cadence: number | null;
+  readonly heartRate: HeartRateModel | null;
   readonly simulated: boolean;
+}
+
+/** A heart rate oscillating around `bpm`, one reading per truth sample; dropouts alternate between silence and lost contact (0). */
+export interface HeartRateModel {
+  readonly bpm: number;
+  readonly amplitude: number;
+  readonly periodMs: number;
+  readonly dropouts: readonly { readonly fromMs: number; readonly toMs: number }[];
 }
 
 export const clearSky: SensorModel = {
@@ -151,6 +160,7 @@ export const clearSky: SensorModel = {
   altitude: { sigma: 6, correlationMs: 2000, ellipsoidOnly: false, undulation: 50 },
   barometer: null,
   cadence: null,
+  heartRate: null,
   simulated: false,
 };
 
@@ -187,6 +197,12 @@ export function simulate(truth: Truth, sensors: SensorModel, seed: number): Simu
     if (sensors.barometer !== null) {
       const drifted = trueAltitude + (sensors.barometer.driftMetersPerHour * t) / 3_600_000 + sensors.barometer.sigma * random.gaussian();
       samples.push({ type: "pressure", t, pascals: Math.round(101_325 * (1 - drifted / 44_330.77) ** (1 / 0.190263)) });
+    }
+    if (sensors.heartRate !== null) {
+      const { bpm, amplitude, periodMs, dropouts } = sensors.heartRate;
+      const dropout = dropouts.findIndex((span) => t >= span.fromMs && t < span.toMs);
+      if (dropout < 0) samples.push({ type: "heart_rate", t, bpm: Math.round(bpm + amplitude * Math.sin((2 * Math.PI * t) / periodMs)), contact: "contact", rrInterval: null });
+      else if (dropout % 2 === 1) samples.push({ type: "heart_rate", t, bpm: 0, contact: "absent", rrInterval: null });
     }
     if (sensors.gaps.some((gap) => t >= gap.fromMs && t < gap.toMs)) continue;
     const sigma = accuracy.min + ((accuracy.max - accuracy.min) * (1 - Math.cos((2 * Math.PI * t) / accuracy.periodMs))) / 2;
@@ -289,3 +305,74 @@ export const stageScenarios = {
 
   simulatedFixes: (seed: number): Scenario => scenario("run", { ...grenoble, altitude: 214, legs: [move(1000, 3.3, 90)] }, { ...clearSky, simulated: true }, seed),
 } as const;
+
+/** Lane 1 of a 400 m track, measured 30 cm from the curb: two straights and two bends drawn as 10 degree chords. */
+export const trackStraightMeters = 84.39;
+export const trackBendRadius = 36.8;
+const bendChords = 18;
+export const stopAndGoStopsMs = [10_000, 20_000, 30_000, 45_000, 60_000, 90_000, 15_000, 25_000, 40_000, 50_000, 75_000, 35_000] as const;
+export const tunnelGap = { fromMs: 300_000, toMs: 390_000 } as const;
+export const heartRateDropouts = [
+  { fromMs: 60_000, toMs: 65_000 },
+  { fromMs: 300_000, toMs: 330_000 },
+  { fromMs: 900_000, toMs: 912_000 },
+  { fromMs: 1_500_000, toMs: 1_520_000 },
+] as const;
+
+function trackLap(speed: number): Leg[] {
+  const chord = 2 * trackBendRadius * Math.sin(Math.PI / (2 * bendChords));
+  const legs: Leg[] = [];
+  for (const start of [90, 270]) {
+    legs.push(move(trackStraightMeters, speed, start));
+    for (let step = 1; step <= bendChords; step += 1) legs.push(move(chord, speed, start - (step - 0.5) * (180 / bendChords)));
+  }
+  return legs;
+}
+
+/** The synthetic scenarios of the live tracker and the batch processing (`TST-002`, `TST-010`). */
+export const coreScenarios = {
+  steadyRun: (seed: number): Scenario => {
+    const legs = [20, 110, 200, 290].map((bearing) => move(2500, 1000 / 300, bearing));
+    return scenario("run", { ...grenoble, altitude: 214, legs }, { ...clearSky, accuracy: { min: 4, max: 4, periodMs: 120_000 } }, seed);
+  },
+
+  track400m: (seed: number): Scenario => scenario("run", { ...grenoble, altitude: 214, legs: Array.from({ length: 10 }, () => trackLap(5)).flat() }, clearSky, seed),
+
+  stopAndGo: (seed: number): Scenario => {
+    const legs: Leg[] = stopAndGoStopsMs.flatMap((durationMs, index) => [move(500, 3.3, (index % 4) * 90), stop(durationMs)]);
+    legs.push(move(500, 3.3, 0));
+    return scenario("run", { ...grenoble, altitude: 214, legs }, { ...clearSky, accuracy: { min: 4, max: 8, periodMs: 120_000 } }, seed);
+  },
+
+  tunnel90s: (seed: number): Scenario => scenario("bike", { ...grenoble, altitude: 214, legs: [move(6000, 30 / 3.6, 45)] }, { ...clearSky, gaps: [tunnelGap] }, seed),
+
+  forestCanopy: (seed: number): Scenario => {
+    const legs = Array.from({ length: 8 }, (_, index) => move(800, 2.8, index * 60, index % 2 === 0 ? 40 : -40));
+    return scenario("trail", { ...grenoble, altitude: 900, legs }, { ...clearSky, accuracy: { min: 20, max: 40, periodMs: 90_000 }, correlationMs: 30_000, speedSigma: 0.5, cadence: 165 }, seed);
+  },
+
+  longRide200km: (seed: number): Scenario => {
+    const legs = Array.from({ length: 20 }, (_, index) => move(10_000, 30 / 3.6, index % 2 === 0 ? 350 : 10));
+    return scenario("bike", { latitude: 43, longitude: 5, altitude: 120, legs }, clearSky, seed);
+  },
+
+  hrDropout: (seed: number): Scenario => {
+    const legs = [move(3000, 3.2, 0), stop(60_000), move(3000, 3.2, 180)];
+    return scenario("run", { ...grenoble, altitude: 214, legs }, { ...clearSky, heartRate: { bpm: 150, amplitude: 12, periodMs: 300_000, dropouts: heartRateDropouts } }, seed);
+  },
+} as const;
+
+/** A trail outing of whole hours at 1 Hz with every sensor, for the performance budgets (`PRF-010`, `PRF-020`, `PRF-021`). */
+export function mountainOuting(hours: number, seed: number): Scenario {
+  const legs: Leg[] = [];
+  for (let hour = 0; hour < hours; hour += 1) {
+    for (let quarter = 0; quarter < 4; quarter += 1) legs.push(move(2352, 2.8, (hour * 4 + quarter) * 70, quarter < 2 ? 150 : -150));
+    legs.push(stop(240_000));
+  }
+  return scenario(
+    "trail",
+    { ...grenoble, altitude: 900, legs },
+    { ...clearSky, barometer: { driftMetersPerHour: 3, sigma: 0.1 }, cadence: 165, heartRate: { bpm: 145, amplitude: 15, periodMs: 600_000, dropouts: [] } },
+    seed,
+  );
+}
