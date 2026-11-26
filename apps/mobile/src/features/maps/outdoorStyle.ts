@@ -91,7 +91,7 @@ export const outdoorPalettes: Readonly<Record<PaletteName, OutdoorPalette>> = {
     highlight: "rgba(206, 222, 234, 0.3)",
     accent: "rgba(3, 7, 10, 0.5)",
     contour: "#c4a77c",
-    relief: [0.32, 0.46, 0.32],
+    relief: [0.22, 0.32, 0.2],
   },
   sunlight: {
     land: "#f3f4ef",

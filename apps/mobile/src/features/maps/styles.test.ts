@@ -160,6 +160,15 @@ describe("map sources", () => {
       const source = relief === undefined || !("source" in relief) ? undefined : style.sources[relief.source];
       expect(source).toMatchObject({ type: "raster-dem", encoding: "terrarium" });
     }
+    const exaggeration = (variant: PaletteName): unknown => {
+      const relief = outdoorStyle(variant, "foot").layers.find((layer) => layer.type === "hillshade");
+      return relief?.type === "hillshade" ? relief.paint?.["hillshade-exaggeration"] : undefined;
+    };
+    const stops = (ramp: unknown): number[] => (Array.isArray(ramp) ? ramp.slice(3).filter((_, index) => index % 2 === 1) : []);
+    const dark = stops(exaggeration("dark"));
+    const sunlight = stops(exaggeration("sunlight"));
+    expect(dark).toHaveLength(3);
+    dark.forEach((value, index) => expect(value).toBeLessThan((sunlight[index] ?? 0) * 0.8));
     const darkRelief = outdoorStyle("dark", "foot").layers.find((layer) => layer.type === "hillshade");
     expect(JSON.stringify(darkRelief?.paint)).toMatch(/rgba\([^)]*, 0\.\d+\)/);
   });
