@@ -1,15 +1,25 @@
 import { eq } from "drizzle-orm";
-import { beforeEach, describe, expect, it } from "vitest";
-import { computeImport, decodeTrack, ImportError, readActivityFile, revert, trackFilePath } from "@obnixe/core";
+import { File, Paths } from "expo-file-system";
+import { shareAsync } from "expo-sharing";
+import { unzipSync } from "fflate";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { computeImport, decodeTrack, exportableSessions, ImportError, readActivityFile, revert, trackFilePath } from "@obnixe/core";
 import type { ImportComputation, ImportErrorReason } from "@obnixe/core";
 import { recording, session, settings } from "@obnixe/schema";
-import type { Id } from "@obnixe/schema";
-import { activityGpx } from "@/features/activityFiles/exportActivity";
+import type { Id, LocalDate } from "@obnixe/schema";
+import { activityFile } from "@/features/activityFiles/exportActivity";
+import { archivePeriods, periodStart, writeArchive } from "@/features/activityFiles/exportArchive";
+import { createStreamedFile } from "@/features/data/files";
+import type { StreamedFile } from "@/features/data/files";
 import { commitImport, decisionOf, defaultResolution, importErrorMessage, importSports, matchedSession, matchImport, previewPath, readActivity, resolutionsOf, sportChoice } from "@/features/activityFiles/importActivity";
 import type { ImportMatch } from "@/features/activityFiles/importActivity";
 import { openedFileRoute } from "@/features/activityFiles/openedFiles";
 import { readTrackFile } from "@/features/tracking/trackStore";
 import { db, environment } from "../../../test/mocks/database.ts";
+import { storedFiles } from "../../../test/mocks/expoFileSystem.ts";
+
+vi.mock("expo-sharing", () => ({ shareAsync: vi.fn(async () => undefined) }));
+vi.mock("expo-document-picker", () => ({ getDocumentAsync: vi.fn() }));
 
 const startedAt = Date.UTC(2026, 9, 1, 7);
 const home = { latitude: 45.1885, longitude: 5.7245 };
@@ -161,12 +171,92 @@ describe("exporting", () => {
   it("names the file and hides the ends unless the full track is included (IO-002, PRV-011)", async () => {
     const id = await imported(gpxOf({ seconds: 600 }));
     db().update(settings).set({ hideTrackEndsMeters: 200 }).run();
-    const masked = await activityGpx(id, false);
-    const full = await activityGpx(id, true);
-    expect(full.name).toBe("obnixe-2026-10-01-footing.gpx");
-    const pointCount = (text: string): number => text.split("<trkpt").length - 1;
-    expect(pointCount(full.text)).toBe(600);
-    expect(pointCount(masked.text)).toBeLessThan(600 - 100);
+    const masked = await activityFile(id, "gpx", false);
+    const full = await activityFile(id, "gpx", true);
+    expect(full).toMatchObject({ name: "obnixe-2026-10-01-footing.gpx", mimeType: "application/gpx+xml", startedAt });
+    const pointCount = (bytes: Uint8Array): number => new TextDecoder().decode(bytes).split("<trkpt").length - 1;
+    expect(pointCount(full.bytes)).toBe(600);
+    expect(pointCount(masked.bytes)).toBeLessThan(600 - 100);
+  });
+
+  it.each(["fit", "tcx"] as const)("exports %s files that import back with the same points and mask (IO-003)", async (format) => {
+    const id = await imported(gpxOf({ seconds: 600, heartRate: 150 }));
+    db().update(settings).set({ hideTrackEndsMeters: 200 }).run();
+    const full = await activityFile(id, format, true);
+    const masked = await activityFile(id, format, false);
+    expect(full.name).toBe(`obnixe-2026-10-01-footing.${format}`);
+    const back = readActivity(full.bytes);
+    if (back.kind !== "read") throw new Error(`Unreadable ${format}`);
+    expect(back.activity).toMatchObject({ format, startedAt, sport: { sport: "run" } });
+    expect(back.activity.points).toHaveLength(600);
+    expect(back.activity.points.every((point) => point.heartRate === 150)).toBe(true);
+    expect(readActivityFile(masked.bytes).points.length).toBeLessThan(600 - 100);
+  });
+});
+
+class MemoryFile implements StreamedFile {
+  chunks: Uint8Array[] = [];
+  shared = false;
+
+  async write(chunks: readonly Uint8Array[]): Promise<void> {
+    this.chunks.push(...chunks);
+  }
+
+  async share(): Promise<void> {
+    this.shared = true;
+  }
+
+  discard(): void {
+    this.chunks = [];
+  }
+
+  bytes(): Uint8Array {
+    const bytes = new Uint8Array(this.chunks.reduce((total, chunk) => total + chunk.length, 0));
+    let offset = 0;
+    for (const chunk of this.chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.length;
+    }
+    return bytes;
+  }
+}
+
+describe("exporting every activity (IO-005)", () => {
+  it("writes one masked file per readable track and skips the missing ones", async () => {
+    const first = await imported(gpxOf({ seconds: 600 }));
+    const second = await imported(gpxOf({ seconds: 300, offsetMs: 86_400_000 }));
+    const gone = await imported(gpxOf({ seconds: 300, offsetMs: 2 * 86_400_000 }));
+    const goneFile = db().select({ trackFile: recording.trackFile }).from(recording).where(eq(recording.sessionId, gone)).get()?.trackFile;
+    if (goneFile == null) throw new Error("No track");
+    storedFiles.delete(new File(Paths.document, goneFile).uri);
+    db().update(settings).set({ hideTrackEndsMeters: 200 }).run();
+    const rows = exportableSessions(db(), null);
+    expect(rows.map((row) => row.sessionId)).toEqual([first, second, gone]);
+    const file = new MemoryFile();
+    const progress: number[] = [];
+    expect(await writeArchive(rows, "fit", false, file, (done) => progress.push(done))).toEqual({ exported: 2, skipped: 1 });
+    expect(progress).toEqual([1, 2, 3]);
+    const entries = unzipSync(file.bytes());
+    expect(Object.keys(entries)).toEqual(["obnixe-2026-10-01-footing.fit", "obnixe-2026-10-02-footing.fit"]);
+    const firstBack = readActivityFile(entries["obnixe-2026-10-01-footing.fit"] ?? new Uint8Array());
+    expect(firstBack.startedAt).toBe(startedAt);
+    expect(firstBack.points.length).toBeLessThan(600 - 100);
+  });
+
+  it("starts the periods on the right local date", () => {
+    const today = "2026-11-27" as LocalDate;
+    expect(archivePeriods.map((period) => periodStart(period, today))).toEqual([null, "2026-01-01", "2025-11-28", "2026-10-29"]);
+  });
+
+  it("streams the archive into the export folder", async () => {
+    const file = createStreamedFile("obnixe-activites-2026-11-27.zip", "application/zip");
+    await file.write([new Uint8Array([1, 2]), new Uint8Array([3])]);
+    await file.write([new Uint8Array([4])]);
+    await file.share();
+    expect(storedFiles.get("file:///data/cache/exports/obnixe-activites-2026-11-27.zip")).toEqual(new Uint8Array([1, 2, 3, 4]));
+    expect(shareAsync).toHaveBeenCalledWith("file:///data/cache/exports/obnixe-activites-2026-11-27.zip", { mimeType: "application/zip", dialogTitle: "obnixe-activites-2026-11-27.zip" });
+    file.discard();
+    expect(storedFiles.has("file:///data/cache/exports/obnixe-activites-2026-11-27.zip")).toBe(false);
   });
 });
 

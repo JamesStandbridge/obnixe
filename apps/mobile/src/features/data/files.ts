@@ -150,6 +150,53 @@ export async function shareFile(shared: SharedFile): Promise<void> {
   await shareAsync(file.uri, { mimeType: shared.mimeType, dialogTitle: shared.name });
 }
 
+/** A file written chunk by chunk and then shared, so that a large export is never held in memory (`IO-005`). */
+export interface StreamedFile {
+  write(chunks: readonly Uint8Array[]): Promise<void>;
+  share(): Promise<void>;
+  discard(): void;
+}
+
+class ExportFile implements StreamedFile {
+  private readonly file: File;
+  private readonly handle: FileHandle;
+  private open = true;
+
+  constructor(
+    name: string,
+    private readonly mimeType: string,
+  ) {
+    this.file = new File(ensure(exportDirectory()), name);
+    if (this.file.exists) this.file.delete();
+    this.file.create();
+    this.handle = this.file.open(FileMode.Truncate);
+  }
+
+  async write(chunks: readonly Uint8Array[]): Promise<void> {
+    for (const chunk of chunks) await this.handle.writeBytes(chunk);
+  }
+
+  async share(): Promise<void> {
+    this.close();
+    await shareAsync(this.file.uri, { mimeType: this.mimeType, dialogTitle: this.file.name });
+  }
+
+  discard(): void {
+    this.close();
+    if (this.file.exists) this.file.delete();
+  }
+
+  private close(): void {
+    if (!this.open) return;
+    this.open = false;
+    this.handle.close();
+  }
+}
+
+export function createStreamedFile(name: string, mimeType: string): StreamedFile {
+  return new ExportFile(name, mimeType);
+}
+
 export async function readPhoto(file: string): Promise<Uint8Array | null> {
   const target = photoFile(file);
   return target.exists ? target.bytes() : null;
