@@ -9,6 +9,9 @@ const widgetSourceDirs = [path.join(__dirname, "widget"), path.join(__dirname, "
 /** Compiled into the app as well, where the system runs the Live Activity intent. */
 const appIntentSources = ["RecordingMarkIntent.swift", "MarkRequests.swift"];
 const appGroupKey = "ObnixeTrackerAppGroup";
+/** Read by the notification (Android) and the Live Activity (iOS) to open the live screen of this build. */
+const schemeKey = "ObnixeTrackerScheme";
+const schemeMetaData = "app.obnixe.tracker.SCHEME";
 const deploymentTarget = "16.4";
 
 /** PRV-004 and PRV-006 texts; PRV-003 for the temporary full accuracy purpose. */
@@ -34,8 +37,19 @@ function withAndroidTracker(config) {
     const permissions = (manifest["uses-permission"] ?? []).filter((permission) => permission.$["android:name"] !== backgroundLocation);
     permissions.push({ $: { "android:name": backgroundLocation, "tools:node": "remove" } });
     manifest["uses-permission"] = permissions;
+    const application = manifest.application?.[0];
+    if (!application) throw new Error("obnixe-tracker needs the application");
+    const metaData = (application["meta-data"] ?? []).filter((entry) => entry.$["android:name"] !== schemeMetaData);
+    metaData.push({ $: { "android:name": schemeMetaData, "android:value": appScheme(config) } });
+    application["meta-data"] = metaData;
     return config;
   });
+}
+
+function appScheme(config) {
+  const scheme = Array.isArray(config.scheme) ? config.scheme[0] : config.scheme;
+  if (!scheme) throw new Error("obnixe-tracker needs a scheme");
+  return scheme;
 }
 
 function bundleIdentifier(config) {
@@ -85,7 +99,7 @@ function withIosTracker(config) {
       const dir = path.join(config.modRequest.platformProjectRoot, widgetTarget);
       fs.mkdirSync(dir, { recursive: true });
       for (const source of widgetSources()) fs.copyFileSync(source, path.join(dir, path.basename(source)));
-      fs.writeFileSync(path.join(dir, "Info.plist"), widgetInfoPlist(appGroup(config)));
+      fs.writeFileSync(path.join(dir, "Info.plist"), widgetInfoPlist(config));
       fs.writeFileSync(path.join(dir, `${widgetTarget}.entitlements`), entitlementsPlist(appGroup(config)));
       return config;
     },
@@ -181,10 +195,10 @@ ${body}
 `;
 }
 
-function widgetInfoPlist(group) {
+function widgetInfoPlist(config) {
   const entries = {
     CFBundleDevelopmentRegion: "$(DEVELOPMENT_LANGUAGE)",
-    CFBundleDisplayName: "Obnixe",
+    CFBundleDisplayName: config.name,
     CFBundleExecutable: "$(EXECUTABLE_NAME)",
     CFBundleIdentifier: "$(PRODUCT_BUNDLE_IDENTIFIER)",
     CFBundleInfoDictionaryVersion: "6.0",
@@ -192,7 +206,8 @@ function widgetInfoPlist(group) {
     CFBundlePackageType: "$(PRODUCT_BUNDLE_PACKAGE_TYPE)",
     CFBundleShortVersionString: "$(MARKETING_VERSION)",
     CFBundleVersion: "$(CURRENT_PROJECT_VERSION)",
-    [appGroupKey]: group,
+    [appGroupKey]: appGroup(config),
+    [schemeKey]: appScheme(config),
   };
   const strings = Object.entries(entries).map(([key, value]) => `  <key>${key}</key>\n  <string>${value}</string>`);
   const extension = "  <key>NSExtension</key>\n  <dict>\n    <key>NSExtensionPointIdentifier</key>\n    <string>com.apple.widgetkit-extension</string>\n  </dict>";

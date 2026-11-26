@@ -2,14 +2,17 @@ package app.obnixe.tracker
 
 import android.app.Notification
 import android.content.Context
+import android.os.Bundle
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
@@ -22,6 +25,12 @@ class TrackerNotificationsTest {
       listOf(TrackerProgressSegment(100, false)),
     250,
   )
+
+  @Before
+  fun declareScheme() {
+    val info = checkNotNull(shadowOf(context.packageManager).getInternalMutablePackageInfo(context.packageName).applicationInfo)
+    info.metaData = Bundle().apply { putString("app.obnixe.tracker.SCHEME", "obnixe-dev") }
+  }
 
   private fun build(progress: TrackerNotificationProgress?, paused: Boolean): Notification =
     build(TrackerNotificationContent("Course · 1,20 km", "Étape 3/18 · Travail · reste 240 m", 1_000L, progress), paused)
@@ -77,5 +86,12 @@ class TrackerNotificationsTest {
     assertEquals(250, style.progress)
     assertTrue(style.isStyledByProgress)
     assertTrue(style.progressPoints.isEmpty())
+  }
+
+  @Test
+  fun `REC-071 the notification opens the live screen through the scheme of this build`() {
+    val open = shadowOf(build(null, paused = false).contentIntent).savedIntent
+    assertEquals("obnixe-dev://record/session", open.dataString)
+    assertEquals(context.packageName, open.`package`)
   }
 }

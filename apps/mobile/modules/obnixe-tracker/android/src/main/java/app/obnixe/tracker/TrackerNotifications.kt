@@ -6,7 +6,9 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import androidx.core.app.NotificationCompat
 
 /** What the recording notification shows; built by the service from the live recording or its kept configuration. */
@@ -20,13 +22,14 @@ data class NotificationState(val sessionId: String, val content: TrackerNotifica
 object TrackerNotifications {
   const val notificationId = 7432
   private const val channelId = "obnixe-tracker"
+  private const val schemeMetaData = "app.obnixe.tracker.SCHEME"
   private val workColor = 0xFFE5ED32.toInt()
   private val restColor = 0xFF828B94.toInt()
 
   fun build(context: Context, state: NotificationState): Notification {
     val manager = context.getSystemService(NotificationManager::class.java)
     manager.createNotificationChannel(NotificationChannel(channelId, "Enregistrement d'activité", NotificationManager.IMPORTANCE_LOW))
-    val open = Intent(Intent.ACTION_VIEW, Uri.parse("obnixe://record/${state.sessionId}")).setPackage(context.packageName)
+    val open = Intent(Intent.ACTION_VIEW, Uri.parse("${appScheme(context)}://record/${state.sessionId}")).setPackage(context.packageName)
     val content = state.content
     val builder = NotificationCompat.Builder(context, channelId)
       .setSmallIcon(R.drawable.obnixe_tracker_notification)
@@ -59,6 +62,18 @@ object TrackerNotifications {
     NotificationCompat.ProgressStyle()
       .setProgressSegments(fitProgressSegments(progress.segments).map { NotificationCompat.ProgressStyle.Segment(it.length).setColor(if (it.highlighted) workColor else restColor) })
       .setProgress(progress.value)
+
+  /** The deep link scheme of this build, which the config plugin writes into the manifest. */
+  private fun appScheme(context: Context): String {
+    val manager = context.packageManager
+    val info = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+      manager.getApplicationInfo(context.packageName, PackageManager.ApplicationInfoFlags.of(PackageManager.GET_META_DATA.toLong()))
+    } else {
+      @Suppress("DEPRECATION")
+      manager.getApplicationInfo(context.packageName, PackageManager.GET_META_DATA)
+    }
+    return checkNotNull(info.metaData?.getString(schemeMetaData)) { "$schemeMetaData missing from the manifest" }
+  }
 
   private fun action(context: Context, action: String, icon: Int, title: String): NotificationCompat.Action {
     val intent = Intent(context, TrackerService::class.java).setAction(action)

@@ -21,17 +21,24 @@ enum MarkRequests {
 
   struct UnavailableError: Error {}
 
-  static let notification = "app.obnixe.tracker.mark-request"
-
   /// Info.plist key holding the app group shared by the app and its widget extension.
   static let appGroupKey = "ObnixeTrackerAppGroup"
 
+  /// Darwin notifications reach every process on the device, so the name carries the app group of this build.
+  static var notification: String? {
+    appGroup.map { "\($0).mark-request" }
+  }
+
+  private static var appGroup: String? {
+    Bundle.main.object(forInfoDictionaryKey: appGroupKey) as? String
+  }
+
   static func post(_ kind: Kind, sessionId: String) throws {
-    guard let directory = directory(of: sessionId) else { throw UnavailableError() }
+    guard let directory = directory(of: sessionId), let darwinName = notification else { throw UnavailableError() }
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     let name = "\(clock_gettime_nsec_np(CLOCK_MONOTONIC))-\(kind.rawValue)"
     guard FileManager.default.createFile(atPath: directory.appendingPathComponent(name).path, contents: nil) else { throw UnavailableError() }
-    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(), CFNotificationName(notification as CFString), nil, nil, true)
+    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(), CFNotificationName(darwinName as CFString), nil, nil, true)
   }
 
   /// The pending requests of the session, oldest first, removed from the app group.
@@ -54,7 +61,7 @@ enum MarkRequests {
 
   private static func directory(of sessionId: String) -> URL? {
     guard UUID(uuidString: sessionId) != nil,
-      let group = Bundle.main.object(forInfoDictionaryKey: appGroupKey) as? String,
+      let group = appGroup,
       let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group)
     else { return nil }
     return container.appendingPathComponent("obnixe-tracker/marks/\(sessionId)", isDirectory: true)

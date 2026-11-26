@@ -40,14 +40,16 @@ final class TrackerHub: RecordingListener {
       let center = NotificationCenter.default
       center.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: nil) { _ in self.setForeground(false) }
       center.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: nil) { _ in self.setForeground(true) }
-      CFNotificationCenterAddObserver(
-        CFNotificationCenterGetDarwinNotifyCenter(),
-        Unmanaged.passUnretained(self).toOpaque(),
-        { _, _, _, _, _ in TrackerHub.shared.takeMarkRequests() },
-        MarkRequests.notification as CFString,
-        nil,
-        .deliverImmediately
-      )
+      if let notification = MarkRequests.notification {
+        CFNotificationCenterAddObserver(
+          CFNotificationCenterGetDarwinNotifyCenter(),
+          Unmanaged.passUnretained(self).toOpaque(),
+          { _, _, _, _, _ in TrackerHub.shared.takeMarkRequests() },
+          notification as CFString,
+          nil,
+          .deliverImmediately
+        )
+      }
       DispatchQueue.main.async {
         let foreground = UIApplication.shared.applicationState != .background
         self.setForeground(foreground)
