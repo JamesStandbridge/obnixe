@@ -24,10 +24,10 @@ class TrackerNotificationsTest {
   )
 
   private fun build(progress: TrackerNotificationProgress?, paused: Boolean): Notification =
-    TrackerNotifications.build(
-      context,
-      NotificationState("session", TrackerNotificationContent("Course · 1,20 km", "Étape 3/18 · Travail · reste 240 m", 1_000L, progress), paused, 61_000L),
-    )
+    build(TrackerNotificationContent("Course · 1,20 km", "Étape 3/18 · Travail · reste 240 m", 1_000L, progress), paused)
+
+  private fun build(content: TrackerNotificationContent, paused: Boolean): Notification =
+    TrackerNotifications.build(context, NotificationState("session", content, paused, 61_000L))
 
   /** The Android 16 QPR1 rule of `Notification.hasPromotableCharacteristics`, read from the built notification. */
   private fun assertPromotable(notification: Notification) {
@@ -47,6 +47,17 @@ class TrackerNotificationsTest {
   fun `REC-074 the free recording notification asks for promotion and keeps every promotable characteristic`() {
     assertPromotable(build(null, paused = false))
     assertPromotable(build(null, paused = true))
+  }
+
+  @Test
+  fun `REC-074 the stopwatch notification without location keeps every promotable characteristic and its chip`() {
+    val running = build(TrackerNotificationContent("Course · chronomètre", "", 1_000L, null), paused = false)
+    assertPromotable(running)
+    assertTrue(running.extras.getBoolean(Notification.EXTRA_SHOW_CHRONOMETER))
+    assertEquals(1_000L, running.`when`)
+    val paused = build(TrackerNotificationContent("Course · chronomètre", "En pause", null, null), paused = true)
+    assertPromotable(paused)
+    assertEquals("Pause", paused.shortCriticalText)
   }
 
   @Test
