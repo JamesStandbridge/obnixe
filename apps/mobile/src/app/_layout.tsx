@@ -17,6 +17,7 @@ import { StatusBar } from "expo-status-bar";
 import { DatabaseGate } from "@/data/DatabaseGate";
 import { useAppLaunch } from "@/features/data/launch";
 import { MapCacheHost } from "@/features/maps/MapCacheHost";
+import { RecordingRedirect } from "@/features/recording/RecordingRedirect";
 import { RemoteAccessHost } from "@/features/remote/RemoteAccessHost";
 import { RecordingLaunch } from "@/features/tracking/RecordingLaunch";
 import { configureRestAlerts } from "@/features/training/workout/restAlert";
@@ -51,6 +52,7 @@ function Navigator() {
         </Stack>
         <RemoteAccessHost />
         <MapCacheHost />
+        {firstLaunch ? null : <RecordingRedirect />}
       </SnackbarHost>
       <BrandIntro />
     </>

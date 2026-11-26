@@ -29,6 +29,7 @@ import {
 import type {
   Fix,
   HeartRateZoneBounds,
+  LiveLap,
   LiveSignal,
   LiveSnapshot,
   Mutation,
@@ -117,6 +118,8 @@ export interface RecordingView {
   /** `PRF-041`: the chronometer animates from this instant without React renders; null while frozen. */
   readonly timerBaseAt: EpochMs | null;
   readonly live: LiveSnapshot;
+  /** Finished laps, oldest first; the current one is `live.lap`. */
+  readonly laps: readonly LiveLap[];
   readonly issues: readonly TrackerIssueKind[];
   readonly power: TrackerPower;
   readonly saverOffered: boolean;
@@ -921,6 +924,7 @@ export class RecorderHost {
         clock: recorderClock(active.state, t),
         timerBaseAt: timerBaseOf(active.state, active.startedAt),
         live: zone === null ? snapshot : { ...snapshot, metrics: { ...snapshot.metrics, heart_rate_zone: zone } },
+        laps: active.live.laps,
         issues: [...active.issues],
         power: active.power,
         saverOffered: active.saverOffer === "offered",

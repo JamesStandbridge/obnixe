@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { ZodError } from "zod";
+import { sportPreference } from "@obnixe/schema";
 import type { EpochMs, Id, RecordingSettings, SportKey } from "@obnixe/schema";
 import { fixtures } from "../data/testFixtures.ts";
 import type { Fixtures } from "../data/testFixtures.ts";
@@ -7,6 +8,8 @@ import { createTestContext } from "../testing.ts";
 import type { TestContext } from "../testing.ts";
 import { DependentRowsError, LapOutsideRecordingError, UnrecordableSportError } from "../writer.ts";
 import type { NewRow } from "../writer.ts";
+import { recordingSettingsMutation, recordingSettingsOf } from "./plans.ts";
+import { resolveProfile } from "./profile.ts";
 
 let context: TestContext;
 let make: Fixtures;
@@ -148,5 +151,18 @@ describe("sport preference recording settings", () => {
   it("refuses unknown auto lap distances and duplicated metrics", () => {
     expect(() => make.write([{ kind: "insert", table: "sport_preference", row: { sport: "trail", enabled: true, position: 0, recordingSettings: { ...settings, autoLap: { trigger: "distance", meters: 1500 as 1000 } } } }])).toThrow(ZodError);
     expect(() => make.write([{ kind: "insert", table: "sport_preference", row: { sport: "trail", enabled: true, position: 0, recordingSettings: { ...settings, readout: { main: "distance", secondary: ["distance", "moving", "ascent"] } } } }])).toThrow(ZodError);
+  });
+
+  it("stores the settings on the sport's preference, adding a disabled one when it has none", () => {
+    make.write([{ kind: "insert", table: "sport_preference", row: { sport: "run", enabled: true, position: 0 } }]);
+    const trail = resolveProfile("trail", {});
+    if (trail === null) throw new Error("trail records");
+    make.write([recordingSettingsMutation(context.db, "trail", settings)]);
+    make.write([recordingSettingsMutation(context.db, "trail", { ...settings, autoPause: true })]);
+    expect(recordingSettingsOf(context.db, trail)).toEqual({ ...settings, autoPause: true });
+    expect(context.db.select().from(sportPreference).all().map((row) => ({ sport: row.sport, enabled: row.enabled, position: row.position }))).toEqual([
+      { sport: "run", enabled: true, position: 0 },
+      { sport: "trail", enabled: false, position: 1 },
+    ]);
   });
 });
