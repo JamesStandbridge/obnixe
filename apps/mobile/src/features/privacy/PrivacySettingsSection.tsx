@@ -18,10 +18,11 @@ interface PrivacySettingsSectionProps {
   readonly hideTrackEndsMeters: number;
   readonly exportPrivacy: boolean;
   readonly maskInApp: boolean;
+  readonly weatherEnabled: boolean;
 }
 
-/** Zones, hidden track ends, the export default and the in-app mask of `PRV-010` to `PRV-012` and `Q-18`. */
-export function PrivacySettingsSection({ hideTrackEndsMeters, exportPrivacy, maskInApp }: PrivacySettingsSectionProps) {
+/** Zones, hidden track ends, the export default and the in-app mask of `PRV-010` to `PRV-012` and `Q-18`, and the weather requests of `WTH-003`. */
+export function PrivacySettingsSection({ hideTrackEndsMeters, exportPrivacy, maskInApp, weatherEnabled }: PrivacySettingsSectionProps) {
   const zones = usePrivacyZones();
   const [endsOpen, setEndsOpen] = useState(false);
 
@@ -43,6 +44,12 @@ export function PrivacySettingsSection({ hideTrackEndsMeters, exportPrivacy, mas
       />
       <SwitchRow title="Masquer aussi dans l'app" detail="zones et extrémités retirées de la carte des activités" value={maskInApp} onChange={(value) => updateSettings({ maskInApp: value })} />
       <SwitchRow title="Appliquer les zones à l'export" detail="choix proposé à chaque export" value={exportPrivacy} onChange={(value) => updateSettings({ exportPrivacy: value })} />
+      <SwitchRow
+        title="Météo des activités"
+        detail="départ arrondi à 11 km envoyé à Open-Meteo après l'activité"
+        value={weatherEnabled}
+        onChange={(value) => updateSettings({ weatherEnabled: value })}
+      />
       <Sheet open={endsOpen} title="Début et fin de trace" context="Masqués dans les exports, les aperçus et pour l'agent, sur cette distance" onClose={() => setEndsOpen(false)}>
         <Choices
           items={hideEndsChoices.map((value) => ({ value, label: hideEndsLabel(Number(value)), selected: Number(value) === hideTrackEndsMeters }))}

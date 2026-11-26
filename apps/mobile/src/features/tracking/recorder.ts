@@ -1,13 +1,16 @@
 import { useSyncExternalStore } from "react";
-import { Platform, Vibration } from "react-native";
+import { AppState, Platform, Vibration } from "react-native";
 import { addBatteryLevelListener, getBatteryLevelAsync } from "expo-battery";
 import { ImpactFeedbackStyle, impactAsync } from "expo-haptics";
+import { addNetworkStateListener, getNetworkStateAsync } from "expo-network";
+import type { NetworkState } from "expo-network";
 // The package index loads the push topic module, which Expo Go on Android does not ship, so local notification APIs are imported from their own files.
 import { AndroidImportance } from "expo-notifications/build/NotificationChannelManager.types";
 import { dismissNotificationAsync } from "expo-notifications/build/dismissNotificationAsync";
 import { scheduleNotificationAsync } from "expo-notifications/build/scheduleNotificationAsync";
 import { setNotificationChannelAsync } from "expo-notifications/build/setNotificationChannelAsync";
 import type { Id } from "@obnixe/schema";
+import { environment } from "@/data/database";
 import { undo, write } from "@/data/write";
 import { alertPulses, vibrationPattern } from "@/features/recording/alerts";
 import { playAlertSound } from "@/features/tracking/alertSound";
@@ -15,6 +18,7 @@ import { DerivedRebuild } from "@/features/tracking/derivedRebuild";
 import type { DerivedRebuildState } from "@/features/tracking/derivedRebuild";
 import { RecorderHost } from "@/features/tracking/recorderHost";
 import type { RecorderFeedback, RecorderView, RecorderWriter } from "@/features/tracking/recorderHost";
+import { WeatherQueue, timedFetch } from "@/features/tracking/weatherQueue";
 import { tracker } from "../../../modules/obnixe-tracker";
 
 const pauseChannelId = "recording-pause";
@@ -58,6 +62,33 @@ export const recordingAvailable = tracker !== null;
 export const recorder = new RecorderHost({ tracker, writer, feedback });
 
 export const derivedRebuild = new DerivedRebuild(writer, report);
+
+function reachable(state: NetworkState): boolean {
+  return state.isConnected === true && state.isInternetReachable !== false;
+}
+
+export const weatherQueue = new WeatherQueue({
+  writer,
+  transport: timedFetch,
+  online: async () => reachable(await getNetworkStateAsync()),
+  recording: () => recorder.getView().kind !== "idle",
+  now: environment.now,
+  report,
+});
+
+/** Runs the deferred weather requests again when the app returns to the foreground or the phone reconnects (`WTH-003`). */
+export function watchWeather(): () => void {
+  const foreground = AppState.addEventListener("change", (state) => {
+    if (state === "active") void weatherQueue.request();
+  });
+  const network = addNetworkStateListener((state) => {
+    if (reachable(state)) void weatherQueue.request();
+  });
+  return () => {
+    foreground.remove();
+    network.remove();
+  };
+}
 
 export function useRecorderView(): RecorderView {
   return useSyncExternalStore(recorder.subscribe, recorder.getView);

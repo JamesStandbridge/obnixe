@@ -38,5 +38,6 @@ export * from "./summary.ts";
 export * from "./types.ts";
 export * from "./version.ts";
 export * from "./weather.ts";
+export * from "./weatherQueue.ts";
 export * from "./zoneProposal.ts";
 export * from "./zones.ts";

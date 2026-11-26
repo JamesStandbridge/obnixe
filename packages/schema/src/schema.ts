@@ -60,6 +60,7 @@ export type PrivacyZone = InferSelectModel<typeof tables.privacyZone>;
 export type BestEffort = InferSelectModel<typeof tables.bestEffort>;
 export type RecordingDerivation = InferSelectModel<typeof tables.recordingDerivation>;
 export type ZoneProposalRow = InferSelectModel<typeof tables.zoneProposal>;
+export type WeatherFetch = InferSelectModel<typeof tables.weatherFetch>;
 export type Segment = InferSelectModel<typeof tables.segment>;
 export type SegmentEffort = InferSelectModel<typeof tables.segmentEffort>;
 export type AgentConnection = InferSelectModel<typeof tables.agentConnection>;

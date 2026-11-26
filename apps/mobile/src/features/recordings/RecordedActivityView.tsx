@@ -2,8 +2,8 @@ import { useState } from "react";
 import type { ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
 import { router } from "expo-router";
-import { detailPrivacyMask, maskKey, measuredRecordingOf, NotMeasuredError, sessionEffortRanks, trackingAlgorithmVersion } from "@obnixe/core";
-import type { EffortRank, PrivacyMask, SessionRecording } from "@obnixe/core";
+import { activityWeather, detailPrivacyMask, maskKey, measuredRecordingOf, NotMeasuredError, sessionEffortRanks, trackingAlgorithmVersion } from "@obnixe/core";
+import type { ActivityWeather, EffortRank, PrivacyMask, SessionRecording } from "@obnixe/core";
 import { gear } from "@obnixe/schema";
 import type { BestEffortKey, Gear, Id, MetricKey } from "@obnixe/schema";
 import { eq } from "drizzle-orm";
@@ -12,7 +12,7 @@ import { gearLabel } from "@/features/activity/presentation";
 import { ActivityCharts } from "@/features/recordings/ActivityCharts";
 import { ActivityMap } from "@/features/recordings/ActivityMap";
 import { summaryFigures } from "@/features/recordings/format";
-import { EffortsSection, EnergySection, LapsSection, QualitySection, SplitsSection, ZonesSection } from "@/features/recordings/RecordingSections";
+import { EffortsSection, EnergySection, LapsSection, QualitySection, SplitsSection, WeatherSection, ZonesSection } from "@/features/recordings/RecordingSections";
 import type { RecordedActivity, RecordedActivityState, TrackUnavailable } from "@/features/recordings/useRecordedActivity";
 import { LinkButton } from "@/ui/Button";
 import { Row, Section } from "@/ui/Layout";
@@ -31,6 +31,7 @@ export interface RecordedData {
   readonly revision: string;
   readonly ranks: ReadonlyMap<BestEffortKey, EffortRank>;
   readonly gear: Gear | null;
+  readonly weather: ActivityWeather;
 }
 
 export function loadRecorded(sessionId: Id): RecordedData | null {
@@ -49,12 +50,13 @@ export function loadRecorded(sessionId: Id): RecordedData | null {
     revision: `${saved.session.updatedAt}|${saved.recording.updatedAt}|${mask === null ? "" : maskKey(mask)}`,
     ranks: sessionEffortRanks(db(), sessionId),
     gear: gearId === null ? null : (db().select().from(gear).where(eq(gear.id, gearId)).get() ?? null),
+    weather: activityWeather(db(), sessionId),
   };
 }
 
 /**
- * The parts of `SUM-001` after the summary, in order. `segments` (PR 13) and `weather` (PR 15) are drawn by their own sections
- * once they exist; guided steps (`WKT-007`) belong to guided sessions.
+ * The parts of `SUM-001` after the summary, in order. `segments` (PR 13) is drawn by its own section once it exists; guided
+ * steps (`WKT-007`) belong to guided sessions.
  */
 type LeadingSection = "map" | "summary" | "charts" | "splits" | "laps" | "efforts" | "segments" | "zones" | "energy" | "weather" | "gear";
 
@@ -197,8 +199,9 @@ function ActivityBody({ activity, recorded, rebuilding, onRecompute, onGear }: A
             <Row title={gearLabel(session.sport)} detail={recorded.gear?.name ?? "Aucun"} trailing={<LinkButton label="Changer" onPress={onGear} style={styles.rowLink} />} last />
           </Section>
         );
-      case "segments":
       case "weather":
+        return <WeatherSection key={section} weather={recorded.weather} session={session} />;
+      case "segments":
         return null;
       default: {
         const unreachable: never = section;
