@@ -36,7 +36,7 @@ export function journalUri(sessionId: Id): string {
   return new File(ensure(journals()), `${sessionId}${journalExtension}`).uri;
 }
 
-export async function readJournal(sessionId: Id): Promise<Uint8Array | null> {
+export async function readJournalFile(sessionId: Id): Promise<Uint8Array | null> {
   const file = new File(journals(), `${sessionId}${journalExtension}`);
   return file.exists ? file.bytes() : null;
 }

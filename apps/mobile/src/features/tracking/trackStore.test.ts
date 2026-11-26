@@ -7,7 +7,7 @@ import {
   deleteTrack,
   journalSessionIds,
   journalUri,
-  readJournal,
+  readJournalFile,
   readTrack,
   readTrackFile,
   storedTrackFiles,
@@ -64,10 +64,10 @@ describe("track store", () => {
   it("keeps one raw journal per session", async () => {
     const uri = journalUri(sessionId);
     expect(uri).toBe(`${Paths.document.uri}/recordings/${sessionId}.ojr`);
-    expect(await readJournal(sessionId)).toBeNull();
+    expect(await readJournalFile(sessionId)).toBeNull();
     storedFiles.set(uri, new Uint8Array([4, 2]));
     expect(await journalSessionIds()).toEqual([sessionId]);
-    expect(await readJournal(sessionId)).toEqual(new Uint8Array([4, 2]));
+    expect(await readJournalFile(sessionId)).toEqual(new Uint8Array([4, 2]));
     await deleteJournal(sessionId);
     expect(await journalSessionIds()).toEqual([]);
   });

@@ -67,7 +67,7 @@ export function journalUri(_sessionId: Id): string {
   throw new Error("The web build does not record");
 }
 
-export async function readJournal(_sessionId: Id): Promise<Uint8Array | null> {
+export async function readJournalFile(_sessionId: Id): Promise<Uint8Array | null> {
   return null;
 }
 
