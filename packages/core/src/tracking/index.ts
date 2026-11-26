@@ -3,6 +3,7 @@ export * from "./codec/polyline.ts";
 export * from "./codec/track.ts";
 export * from "./energy.ts";
 export * from "./geo.ts";
+export * from "./privacy.ts";
 export * from "./profile.ts";
 export * from "./recorder.ts";
 export * from "./stages/altitude.ts";
