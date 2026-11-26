@@ -105,12 +105,14 @@ enum ControlMark: String, Enumerable {
   case pause
   case resume
   case lap
+  case extend
 
   var kind: MarkKind {
     switch self {
     case .pause: return .pause
     case .resume: return .resume
     case .lap: return .lap
+    case .extend: return .extend
     }
   }
 }

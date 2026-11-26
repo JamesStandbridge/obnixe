@@ -4,7 +4,7 @@ import type { RecordAnnouncement, RecordingAlertEvent, ResolvedProfile } from "@
 import type { EpochMs, FieldValues, Id, RecordingSettings, SportKey } from "@obnixe/schema";
 import { alertNotice, alertPulses, beepWave, heartRateSpanBpm, rejoinText, vibrationPattern } from "@/features/recording/alerts";
 import { elevationShape } from "@/features/recording/elevation";
-import { cadenceUnit, lapFigures, metricText, summaryFigures } from "@/features/recording/metrics";
+import { cadenceUnit, lapFigures, metricText, summaryFigures, workoutStepText } from "@/features/recording/metrics";
 import { maxHeartRateDetail, maxHeartRateFrom, zoneLines } from "@/features/recording/physiology";
 import { liveReadout, storedReadout, withMetric, withSecondaryAdded, withSecondaryRemoved } from "@/features/recording/readout";
 import { effortLabel, recordLines } from "@/features/recording/records";
@@ -52,6 +52,8 @@ describe("live metrics", () => {
     expect(text("ascent", 1245.4)).toEqual({ value: "1\u00a0245", unit: "m" });
     expect(text("gps_quality", 4.2)).toEqual({ value: "±4", unit: "m" });
     expect(text("heart_rate_zone", 3)).toEqual({ value: "Z3", unit: "" });
+    expect(text("power", 1240)).toEqual({ value: "1\u00a0240", unit: "W" });
+    expect(text("power_avg", 212)).toEqual({ value: "212", unit: "W" });
     expect(metricText("clock", {}, run, noon, "Europe/Paris").value).toBe("12:05");
   });
 
@@ -67,6 +69,7 @@ describe("live metrics", () => {
   it("shows a placeholder when a value is missing, such as the pace while still", () => {
     expect(metricText("pace_now", {}, run, noon, "Europe/Paris")).toEqual({ value: "–:––", unit: "/km" });
     expect(metricText("heart_rate", {}, run, noon, "Europe/Paris")).toEqual({ value: "–", unit: "bpm" });
+    expect(metricText("power", {}, run, noon, "Europe/Paris")).toEqual({ value: "–", unit: "W" });
   });
 
   it("sums up a lap with its pace or speed (REC-040)", () => {
@@ -80,7 +83,7 @@ describe("live metrics", () => {
   });
 
   it("sums up the activity with only the values that were measured (REC-050)", () => {
-    const base = { elapsedMs: 3_000_000, movingMs: 2_700_000, distanceMm: 10_000_000, ascentMm: null, heartRateAvg: null, cadenceAvg: null };
+    const base = { elapsedMs: 3_000_000, movingMs: 2_700_000, distanceMm: 10_000_000, ascentMm: null, heartRateAvg: null, cadenceAvg: null, powerAvg: null };
     expect(summaryFigures(base, run)).toEqual({
       distance: { value: "10,00", unit: "km" },
       moving: "45:00",
@@ -89,21 +92,22 @@ describe("live metrics", () => {
         { label: "Allure moy.", value: "4:30", unit: "/km" },
       ],
     });
-    expect(summaryFigures({ ...base, ascentMm: 120_400, heartRateAvg: 151.6 }, profileOf("bike", { kind: "road" })).stats.map((stat) => `${stat.label} ${stat.value}`)).toEqual([
+    expect(summaryFigures({ ...base, ascentMm: 120_400, heartRateAvg: 151.6, powerAvg: 212.4 }, profileOf("bike", { kind: "road" })).stats.map((stat) => `${stat.label} ${stat.value}`)).toEqual([
       "Temps total 50:00",
       "Vitesse moy. 13,3",
       "D+ 120",
       "FC moy. 152",
+      "Puiss. moy. 212",
     ]);
   });
 
   it("sums up a stopwatch recording by its time until a distance is typed, per 100 m in the pool (REC-060)", () => {
     const pool = stopwatchProfile("swim", { water: "pool", pool_length: 25 });
     if (pool === null) throw new Error("No pool profile");
-    const base = { elapsedMs: 3_000_000, movingMs: 2_400_000, distanceMm: 0, ascentMm: null, heartRateAvg: null, cadenceAvg: null };
+    const base = { elapsedMs: 3_000_000, movingMs: 2_400_000, distanceMm: 0, ascentMm: null, heartRateAvg: null, cadenceAvg: null, powerAvg: null };
     expect(summaryFigures(base, pool)).toEqual({ distance: null, moving: "40:00", stats: [{ label: "Temps total", value: "50:00", unit: "" }] });
     expect(summaryFigures({ ...base, distanceMm: 1_500_000 }, pool)).toMatchObject({ distance: { value: "1,50", unit: "km" }, stats: [{ label: "Temps total" }, { label: "Allure moy.", value: "2:40", unit: "/100 m" }] });
-    expect(liveReadout(pool, defaultRecordingSettings({ autoPauseDefault: false })).main).toBe("moving");
+    expect(liveReadout(pool, defaultRecordingSettings({ autoPauseDefault: false }), false).main).toBe("moving");
   });
 });
 
@@ -113,22 +117,28 @@ describe("live readout", () => {
   const venu = { id: "C4:7D:2A:10:9E:01", name: "Venu 3S" };
 
   it("uses annex A, the heart rate taking the last place when a source is memorized (SPT-005)", () => {
-    expect(liveReadout(run, none)).toEqual({ main: "pace_now", secondary: ["distance", "moving", "pace_avg", "cadence"] });
-    expect(liveReadout(run, { readout: null, heartRateDevice: venu })).toEqual({ main: "pace_now", secondary: ["distance", "moving", "pace_avg", "heart_rate"] });
+    expect(liveReadout(run, none, false)).toEqual({ main: "pace_now", secondary: ["distance", "moving", "pace_avg", "cadence"] });
+    expect(liveReadout(run, { readout: null, heartRateDevice: venu }, false)).toEqual({ main: "pace_now", secondary: ["distance", "moving", "pace_avg", "heart_rate"] });
     const chosen: NonNullable<RecordingSettings["readout"]> = { main: "distance", secondary: ["moving", "heart_rate", "clock"] };
-    expect(liveReadout(run, { readout: chosen, heartRateDevice: venu })).toEqual(chosen);
+    expect(liveReadout(run, { readout: chosen, heartRateDevice: venu }, false)).toEqual(chosen);
   });
 
   it("leaves out the metrics the profile does not compute", () => {
     const bike = profileOf("bike", { kind: "road" });
-    expect(liveReadout(bike, { readout: { main: "gap_now", secondary: ["distance", "steps", "moving", "speed_avg"] }, heartRateDevice: null })).toEqual({
+    expect(liveReadout(bike, { readout: { main: "gap_now", secondary: ["distance", "steps", "moving", "speed_avg"] }, heartRateDevice: null }, false)).toEqual({
       main: bike.readout.main,
       secondary: ["distance", "moving", "speed_avg"],
     });
   });
 
+  it("gives the main place to the step of a guided workout (WKT-004)", () => {
+    expect(liveReadout(run, none, true)).toEqual({ main: "workout_step", secondary: ["distance", "moving", "pace_avg", "cadence"] });
+    const chosen: NonNullable<RecordingSettings["readout"]> = { main: "distance", secondary: ["moving", "heart_rate", "clock"] };
+    expect(liveReadout(run, { readout: chosen, heartRateDevice: venu }, true)).toEqual({ main: "workout_step", secondary: ["moving", "heart_rate", "clock"] });
+  });
+
   it("swaps a metric already shown and keeps three to five secondary metrics", () => {
-    const readout = liveReadout(run, none);
+    const readout = liveReadout(run, none, false);
     expect(withMetric(readout, { kind: "main" }, "distance")).toEqual({ main: "distance", secondary: ["pace_now", "moving", "pace_avg", "cadence"] });
     expect(withMetric(readout, { kind: "secondary", index: 3 }, "heart_rate")).toEqual({ main: "pace_now", secondary: ["distance", "moving", "pace_avg", "heart_rate"] });
     const full = withSecondaryAdded(readout, "ascent");
@@ -141,8 +151,8 @@ describe("live readout", () => {
   });
 
   it("stores the default readout as none", () => {
-    expect(storedReadout(run, { heartRateDevice: null }, liveReadout(run, none))).toBeNull();
-    const changed = withMetric(liveReadout(run, none), { kind: "main" }, "moving");
+    expect(storedReadout(run, { heartRateDevice: null }, liveReadout(run, none, false))).toBeNull();
+    const changed = withMetric(liveReadout(run, none, false), { kind: "main" }, "moving");
     expect(storedReadout(run, { heartRateDevice: null }, changed)).toEqual(changed);
   });
 });
@@ -252,6 +262,16 @@ describe("recording alerts", () => {
     expect(alertNotice({ kind: "workout_target", step: work, status: "above", repeat: 0 }, run)).toEqual({ title: "Allure trop rapide", detail: "Cible 3:20 – 3:35 /km", tone: "warn" });
     expect(alertNotice({ kind: "workout_target", step: { ...work, target: { kind: "heart_rate_zone", zone: 4 } }, status: "back" }, run)).toEqual({ title: "Cardio dans la cible", detail: "Cible Z4", tone: "mark" });
     expect(alertPulses({ kind: "workout_step", step: null })).toEqual([200, 150, 200]);
+    expect(alertLabel("target", run).title).toBe("Cible de la séance guidée");
+  });
+
+  it("reads the step of a guided workout as its main metric (WKT-004)", () => {
+    const work = { index: 2, intent: "work", duration: { kind: "time", ms: 120_000 }, target: { kind: "none" }, label: null, repetition: null } as const;
+    const steps = [{ ...work, index: 0 }, { ...work, index: 1 }, work, { ...work, index: 3, duration: { kind: "distance", mm: 1_200_000 } }] as const;
+    const view = { steps, started: true, current: work, next: steps[3], stepElapsedMs: 48_000, stepDistanceMm: 0, target: null, done: [] } as const;
+    expect(workoutStepText({ ...view, remaining: { kind: "time", ms: 132_000 }, extendedMs: 60_000, extendable: true })).toEqual({ value: "3/4 · 2:12", unit: "" });
+    expect(workoutStepText({ ...view, current: steps[3], remaining: { kind: "distance", mm: 750_000 }, extendedMs: 0, extendable: false })).toEqual({ value: "4/4 · 750", unit: "m" });
+    expect(workoutStepText({ ...view, current: null, remaining: null, extendedMs: 0, extendable: false }).value).toBe("Terminée");
   });
 
   it("points back to the route when off it (RTE-005)", () => {

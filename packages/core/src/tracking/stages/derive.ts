@@ -79,6 +79,7 @@ export class PauseLedger {
         if (this.openSince !== null) this.openSince = null;
         break;
       case "lap":
+      case "extend":
         break;
       default: {
         const unreachable: never = mark.kind;

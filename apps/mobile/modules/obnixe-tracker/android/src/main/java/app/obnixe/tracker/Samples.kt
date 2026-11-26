@@ -94,12 +94,13 @@ data class PowerSample(override val t: Long, val watts: Int, /** Crank revolutio
   override fun toBridge(): Map<String, Any?> = mapOf("type" to "power", "t" to t.toDouble(), "watts" to watts, "cadence" to cadence)
 }
 
-/** Code 4 (`extend`) belongs to guided workouts (V2) and has no member until then. */
+/** `EXTEND` adds a minute to the current time step of a guided workout. */
 enum class MarkKind(val code: Int, val wire: String) {
   START(0, "start"),
   PAUSE(1, "pause"),
   RESUME(2, "resume"),
   LAP(3, "lap"),
+  EXTEND(4, "extend"),
   STOP(5, "stop"),
 }
 

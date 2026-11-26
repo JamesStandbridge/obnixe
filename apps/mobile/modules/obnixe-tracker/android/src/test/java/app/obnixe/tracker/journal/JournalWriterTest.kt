@@ -315,6 +315,22 @@ class JournalWriterTest {
   }
 
   @Test
+  fun `an extend mark is a valid batch that leaves the pause state alone`() {
+    JournalWriter.create(path, header).use { writer ->
+      writer.flush(Mark(0, MarkKind.START))
+      writer.append(fix)
+      assertEquals(Mark(1_500, MarkKind.EXTEND), writer.flush(Mark(1_500, MarkKind.EXTEND))!!.mark)
+    }
+    val bytes = path.readBytes()
+    assertEquals(4, bytes[bytes.size - 4 - 6 + 5].toInt())
+    val tail = JournalScanner.scan(bytes)
+    assertEquals(bytes.size, tail.validLength)
+    assertEquals(2L, tail.nextSequence)
+    assertFalse(tail.paused)
+    assertFalse(tail.stopped)
+  }
+
+  @Test
   fun `resuming refuses a damaged header and a stopped journal`() {
     writeSession(stop = true)
     assertThrows(JournalFormatException::class.java) { JournalWriter.resume(path) }
@@ -352,7 +368,7 @@ class JournalWriterTest {
     val ends = writeSession(stop = false)
     val bytes = path.readBytes()
     val markKind = ends[3] - 5
-    bytes[markKind] = 4
+    bytes[markKind] = 6
     val buffer = le(bytes)
     buffer.putInt(ends[3] - 4, crc(bytes, ends[2], ends[3] - 4))
     val tail = JournalScanner.scan(bytes)

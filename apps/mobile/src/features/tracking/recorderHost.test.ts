@@ -10,7 +10,7 @@ import type { RecorderFeedback, RecorderView, RecordingStart, RecordingView, Tra
 import { journalUri, readTrackFile, writeRouteTrack } from "@/features/tracking/trackStore";
 import { db, environment } from "../../../test/mocks/database.ts";
 import { Paths, storedFiles } from "../../../test/mocks/expoFileSystem.ts";
-import type { TrackerEvents, TrackerIssueKind, TrackerNotification, TrackerPower, TrackerStartRequest, TrackerStatus } from "../../../modules/obnixe-tracker";
+import type { TrackerControlMark, TrackerEvents, TrackerIssueKind, TrackerNotification, TrackerPower, TrackerStartRequest, TrackerStatus } from "../../../modules/obnixe-tracker";
 
 type Listeners = { [Name in keyof TrackerEvents]: Set<TrackerEvents[Name]> };
 
@@ -79,9 +79,9 @@ class FakeTracker implements TrackerPort {
     return { startedAt: this.startedAt, sources: { location: "replay", barometer: false, pedometer: false, heartRate: false, cadence: false, power: false } };
   }
 
-  mark(kind: "pause" | "resume" | "lap"): void {
+  mark(kind: TrackerControlMark): void {
     if ((kind === "resume") !== this.paused) return;
-    if (kind !== "lap") this.paused = kind === "pause";
+    if (kind === "pause" || kind === "resume") this.paused = kind === "pause";
     this.write([], kind, this.now());
   }
 
@@ -683,6 +683,24 @@ describe("guided workout", () => {
     await started(newHost());
     expect(tracker.requests.at(-1)).toMatchObject({ deliveryIntervalMs: 1000, backgroundDeliveryIntervalMs: 5000 });
     expect(recordingOf(hosts[0] as RecorderHost).workout).toBeNull();
+  });
+
+  it("extends the current time step by a minute through a journal mark, never a distance step (WKT-004)", async () => {
+    const first = newHost();
+    await startedGuided(first);
+    let meters = await run(10, 0);
+    expect(first.extend()).toEqual({ ok: true, value: undefined });
+    await settle();
+    expect(recordingOf(first).workout).toMatchObject({ current: { index: 0 }, extendedMs: 60_000, extendable: true });
+    meters = await run(40, meters);
+    expect(recordingOf(first).workout?.current?.index).toBe(0);
+    first.dispose();
+    const host = newHost();
+    await host.recover();
+    expect(recordingOf(host).workout).toMatchObject({ current: { index: 0 }, extendedMs: 60_000 });
+    await run(45, meters);
+    expect(recordingOf(host).workout).toMatchObject({ current: { index: 1, intent: "work" }, extendedMs: 0, extendable: false });
+    expect(host.extend()).toEqual({ ok: false, failure: { kind: "not_extendable" } });
   });
 
   it("finds its step again from the journal at launch", async () => {

@@ -11,7 +11,7 @@ import { IncompatibleWorkoutError, LapOutsideWorkoutError } from "../writer.ts";
 import type { Mutation } from "../writer.ts";
 import type { RecordingAlertEvent } from "./alerts.ts";
 import { activityWindow, processTrack } from "./batch.ts";
-import { encodeTrack, trackDigest } from "./codec/track.ts";
+import { decodeTrack, encodeTrack, trackDigest } from "./codec/track.ts";
 import type { Track } from "./codec/track.ts";
 import { LiveTracker } from "./live.ts";
 import type { TrackerProgress } from "./live.ts";
@@ -21,7 +21,7 @@ import { buildTruth, clearSky, move, simulate } from "./testing/scenarios.ts";
 import type { Truth } from "./testing/scenarios.ts";
 import { toSampleColumns } from "./types.ts";
 import type { Sample, TrackerMark } from "./types.ts";
-import { recordingLapSource, unfoldWorkout, workoutLapBounds, WorkoutRunner, workoutTargetTallies } from "./workout.ts";
+import { recordingLapSource, unfoldWorkout, workoutExtensionMs, workoutLapBounds, WorkoutRunner, workoutTargetTallies } from "./workout.ts";
 import { lastWorkoutOf, recentSpeedOf, workoutEstimate, workoutReport } from "./workouts.ts";
 import { heartRateZones } from "./zones.ts";
 
@@ -218,6 +218,32 @@ describe("WorkoutRunner (WKT-003)", () => {
       { trigger: "workout", workoutStep: 0, startOffsetMs: 0, endOffsetMs: 60_000 },
       { trigger: "workout", workoutStep: 1, startOffsetMs: 60_000, endOffsetMs: 90_000 },
     ]);
+  });
+
+  it("adds a minute to a time step for each extend mark, none to a distance step or once the plan is done (WKT-004)", () => {
+    const runner = new WorkoutRunner(plan(step("recovery", seconds(60)), step("work", meters(200)), step("cooldown", seconds(30))), { heartRateZones: null });
+    runner.mark(mark("start", 0));
+    drive(runner, 0, 30_000, () => 0);
+    runner.mark(mark("extend", 30_500));
+    expect(runner.view(31_000)).toMatchObject({ extendable: true, extendedMs: workoutExtensionMs, remaining: { kind: "time", ms: 89_000 } });
+    expect(stepEvents(drive(runner, 31_000, 125_000, () => 0))).toEqual([1]);
+    expect(runner.view(125_000)).toMatchObject({ current: { index: 1 }, extendable: false, extendedMs: 0 });
+    runner.mark(mark("extend", 125_500));
+    expect(runner.view(126_000).extendedMs).toBe(0);
+    drive(runner, 126_000, 240_000, (t) => 4 * (t - 126_000));
+    runner.mark(mark("extend", 240_500));
+    expect(runner.view(241_000)).toMatchObject({ current: null, extendable: false, extendedMs: 0 });
+    expect(runner.view(241_000).done.map((span) => span.endMs)).toEqual([120_000, 176_000, 206_000]);
+  });
+
+  it("finds an extended step again when replaying its track (WKT-003, WKT-004)", () => {
+    const workout = plan(step("warmup", seconds(60)), step("work", seconds(30)), step("cooldown", open));
+    const { samples } = simulate(buildTruth({ latitude: 45.1885, longitude: 5.7245, altitude: 214, legs: [move(900, 3, 0)] }), clearSky, 5);
+    const endT = samples.at(-1)?.t ?? 0;
+    const marks = [mark("start", 0), mark("extend", 20_000), mark("extend", 40_000), mark("stop", endT)];
+    const track = decodeTrack(encodeTrack({ startedAt: 1_780_000_000_000 as EpochMs, samples: toSampleColumns(samples), marks }));
+    expect(track.marks).toEqual(marks);
+    expect(workoutLapBounds(track, profileOf({ sport: "run" }), workout).map((bounds) => bounds.endOffsetMs)).toEqual([180_000, 210_000, endT]);
   });
 
   it("shows the current step, what remains of it and the next one (WKT-004)", () => {

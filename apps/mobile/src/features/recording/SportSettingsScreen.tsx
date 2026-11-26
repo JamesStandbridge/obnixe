@@ -80,7 +80,7 @@ function RecordingSettingsForm({ profile }: RecordingSettingsFormProps) {
   const current = useSportSettings(sport, profile);
   const maxHeartRate = maxHeartRateOf(usePhysiology(), environment.now());
   const [sheet, setSheet] = useState<OpenSheet>(null);
-  const readout = liveReadout(profile, current);
+  const readout = liveReadout(profile, current, false);
   const { paceRange, heartRateRange } = current.alerts;
   const heartRate = profile.metrics.includes("heart_rate");
   const sensorRoles = sensorRolesOf(profile);

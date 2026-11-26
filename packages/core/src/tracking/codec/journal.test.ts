@@ -199,7 +199,7 @@ describe("raw journal .ojr", () => {
     };
     expect(corrupt(() => undefined)).toBe(0);
     expect(corrupt((bytes) => (bytes[start + 8] = 9))).toBeNull();
-    expect(corrupt((bytes) => (bytes[start + 8 + 38 + 5] = 4))).toBeNull();
+    expect(corrupt((bytes) => (bytes[start + 8 + 38 + 5] = 6))).toBeNull();
     expect(corrupt((bytes) => (bytes[start + 8 + 37] = 0x03))).toBeNull();
     expect(corrupt((bytes) => new DataView(bytes.buffer).setUint32(start + 8 + 44 + 1, 1000, true))).toBeNull();
     expect(corrupt((bytes) => new DataView(bytes.buffer).setInt32(start + 8 + 9, 900_000_001, true))).toBeNull();

@@ -1,4 +1,4 @@
-import type { RecordingProfile, RecordingSettings, SensorDeviceChoice, SportKey } from "@obnixe/schema";
+import type { RecordingProfile, RecordingSettings, SensorDeviceChoice } from "@obnixe/schema";
 import type { ResolvedProfile } from "./profile.ts";
 import { absentValue } from "./types.ts";
 import type { PowerColumns, SampleColumns } from "./types.ts";
@@ -8,30 +8,18 @@ import type { TimeSpan } from "./zones.ts";
 export const sensorRoles = ["heart_rate", "cadence", "power"] as const;
 export type SensorRole = (typeof sensorRoles)[number];
 
-/** Sports whose power a Cycling Power source measures: crank, pedal or hub meters on the bike, running pods on foot (`SPT-008`). */
-const powerSports: ReadonlySet<SportKey> = new Set<SportKey>(["bike", "run", "trail"]);
-
-/** The sources a profile pairs: the heart rate and the cadence where it shows them, the power on the `powerSports`. */
-export function sensorRolesOf(profile: Pick<ResolvedProfile, "sport" | "metrics">): readonly SensorRole[] {
-  return sensorRoles.filter((role) => {
-    switch (role) {
-      case "heart_rate":
-      case "cadence":
-        return profile.metrics.includes(role);
-      case "power":
-        return powerSports.has(profile.sport);
-      default: {
-        const unhandled: never = role;
-        throw new Error(`Unhandled sensor role ${String(unhandled)}`);
-      }
-    }
-  });
+/**
+ * The sources a profile pairs, those whose metric it shows: a Cycling Power source measures crank, pedal or hub meters on the
+ * bike and running pods on foot (`SPT-008`).
+ */
+export function sensorRolesOf(profile: Pick<ResolvedProfile, "metrics">): readonly SensorRole[] {
+  return sensorRoles.filter((role) => profile.metrics.includes(role));
 }
 
 const sensorDeviceKeys = { heart_rate: "heartRateDevice", cadence: "cadenceDevice", power: "powerDevice" } as const satisfies Record<SensorRole, keyof RecordingSettings>;
 
 /** The source memorized for `role`; `null` when the profile does not pair it, whatever the settings hold. */
-export function pairedSensorOf(profile: Pick<ResolvedProfile, "sport" | "metrics">, settings: RecordingSettings, role: SensorRole): SensorDeviceChoice | null {
+export function pairedSensorOf(profile: Pick<ResolvedProfile, "metrics">, settings: RecordingSettings, role: SensorRole): SensorDeviceChoice | null {
   return sensorRolesOf(profile).includes(role) ? settings[sensorDeviceKeys[role]] : null;
 }
 

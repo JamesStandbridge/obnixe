@@ -12,13 +12,14 @@ export function liveMetricsOf(profile: Pick<ResolvedProfile, "metrics">): readon
 
 /**
  * `SPT-005`: the sport's chosen readout, else annex A where a memorized heart-rate source takes the last secondary place.
- * Metrics the profile of the chosen option does not compute are left out (`SPT-004`).
+ * Metrics the profile of the chosen option does not compute are left out (`SPT-004`). A guided workout takes the main place
+ * with `workout_step` (`WKT-004`).
  */
-export function liveReadout(profile: Pick<ResolvedProfile, "metrics" | "readout">, settings: Pick<RecordingSettings, "readout" | "heartRateDevice">): Readout {
+export function liveReadout(profile: Pick<ResolvedProfile, "metrics" | "readout">, settings: Pick<RecordingSettings, "readout" | "heartRateDevice">, guided: boolean): Readout {
   const available = new Set(liveMetricsOf(profile));
   const chosen = settings.readout;
   const base = chosen ?? withHeartRate(profile.readout, settings.heartRateDevice !== null && available.has("heart_rate"));
-  const main = available.has(base.main) ? base.main : profile.readout.main;
+  const main = guided ? "workout_step" : available.has(base.main) ? base.main : profile.readout.main;
   return { main, secondary: base.secondary.filter((key) => key !== main && available.has(key)) };
 }
 
@@ -58,5 +59,5 @@ export function sameReadout(left: Readout, right: Readout): boolean {
 
 /** The value to store: the default readout is stored as none, so a change of annex A reaches it. */
 export function storedReadout(profile: Pick<ResolvedProfile, "metrics" | "readout">, settings: Pick<RecordingSettings, "heartRateDevice">, readout: Readout): Readout | null {
-  return sameReadout(readout, liveReadout(profile, { readout: null, heartRateDevice: settings.heartRateDevice })) ? null : readout;
+  return sameReadout(readout, liveReadout(profile, { readout: null, heartRateDevice: settings.heartRateDevice }, false)) ? null : readout;
 }

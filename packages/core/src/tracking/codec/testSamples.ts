@@ -105,6 +105,7 @@ export function syntheticActivity(options: SyntheticOptions): SyntheticActivity 
   const marks: TrackerMark[] = [
     { kind: "start", t: 0 },
     { kind: "lap", t: Math.floor(end / 3) },
+    { kind: "extend", t: Math.floor(end / 3) + 1000 },
     { kind: "pause", t: Math.floor(end / 2) },
     { kind: "resume", t: Math.floor(end / 2) + Math.floor(end / 10) },
     { kind: "stop", t: end },

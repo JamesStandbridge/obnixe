@@ -54,7 +54,7 @@ function coloringOf(activity: RecordedActivity, coloring: TrackColoring): Colori
       return { scale: null, values: null };
     case "pace":
     case "speed": {
-      const values = metricColumn(processed, profile, track.samples.heartRate, "speed");
+      const values = metricColumn(processed, profile, track.samples, "speed");
       return { scale: colorScale(coloring, values), values };
     }
     case "grade":
@@ -62,7 +62,7 @@ function coloringOf(activity: RecordedActivity, coloring: TrackColoring): Colori
     case "altitude":
       return { scale: colorScale("altitude", processed.series.altitude), values: processed.series.altitude };
     case "heart_rate":
-      return { scale: { kind: "zones", range: { min: 0, max: 5 } }, values: metricColumn(processed, profile, track.samples.heartRate, "heart_rate") };
+      return { scale: { kind: "zones", range: { min: 0, max: 5 } }, values: metricColumn(processed, profile, track.samples, "heart_rate") };
     default: {
       const unreachable: never = coloring;
       return unreachable;

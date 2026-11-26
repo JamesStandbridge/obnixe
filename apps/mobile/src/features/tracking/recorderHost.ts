@@ -181,6 +181,8 @@ export type RecorderFailure =
   | { readonly kind: "busy" }
   | { readonly kind: "no_recording" }
   | { readonly kind: "refused"; readonly refusal: RecorderRefusal }
+  /** No guided time step to extend, or a pause. */
+  | { readonly kind: "not_extendable" }
   | { readonly kind: "open_session"; readonly sessionId: Id }
   /** The route chosen is gone, of another sport, or its file cannot be read. */
   | { readonly kind: "route_unavailable" }
@@ -423,6 +425,17 @@ export class RecorderHost {
 
   lap(): RecorderOutcome<void> {
     return this.requestMark("lap");
+  }
+
+  /** `WKT-004`: one more minute in the current time step of the guided workout, written to the journal so a replay finds it. */
+  extend(): RecorderOutcome<void> {
+    const active = this.active;
+    const tracker = this.options.tracker;
+    if (active === null || tracker === null) return failed({ kind: "no_recording" });
+    const phase = active.state.phase;
+    if (active.runner === null || !active.runner.view(this.trackTime(active)).extendable || (phase !== "recording" && phase !== "auto_paused")) return failed({ kind: "not_extendable" });
+    tracker.mark("extend");
+    return succeeded(undefined);
   }
 
   /** Resumes a manual pause through the journal, or restarts from the stop summary or an interruption (`REC-081`). */
@@ -997,7 +1010,7 @@ export class RecorderHost {
     }
     if (sample.type === "fix" && active.runner !== null) {
       const events = active.runner.push(active.live.progress(sample.t));
-      if (mode === "live") this.signal(active, events);
+      if (mode === "live") this.signal(active, active.monitor.workout(events));
     }
   }
 
@@ -1006,7 +1019,7 @@ export class RecorderHost {
     active.live.mark(mark);
     if (active.runner !== null) {
       const events = active.runner.mark(mark);
-      if (mode === "live") this.signal(active, events);
+      if (mode === "live") this.signal(active, active.monitor.workout(events));
     }
     const report = this.options.feedback.report;
     switch (mark.kind) {
@@ -1014,6 +1027,12 @@ export class RecorderHost {
       case "resume":
       case "lap":
         void this.dispatch({ type: mark.kind, t: mark.t }, mode).catch(report);
+        return;
+      case "extend":
+        if (mode === "live") {
+          this.refreshNotification(active);
+          this.publish(true);
+        }
         return;
       case "start":
         if (mode === "replay") void this.dispatch(active.state.phase === "preparing" ? { type: "start" } : { type: "resume", t: mark.t }, mode).catch(report);
@@ -1080,7 +1099,7 @@ export class RecorderHost {
     if (active === null) return;
     this.ticks += 1;
     void this.dispatch({ type: "tick", t: this.trackTime(active) }, "live").catch(this.options.feedback.report);
-    if (active.runner !== null && isActivePhase(active.state)) this.signal(active, active.runner.advance(this.trackTime(active)));
+    if (active.runner !== null && isActivePhase(active.state)) this.signal(active, active.monitor.workout(active.runner.advance(this.trackTime(active))));
     this.observe(active);
     if (this.ticks % (notificationIntervalMs / publishIntervalMs) === 0) this.refreshNotification(active);
     this.publish(false);

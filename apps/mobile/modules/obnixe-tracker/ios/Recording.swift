@@ -152,13 +152,13 @@ final class Recording: SensorLinkListener {
     return TrackerSources(location: location?.kind, barometer: pressure != nil, pedometer: steps != nil, bluetooth: Set(links.flatMap { $0.services.map(\.role) }))
   }
 
-  /// Writes a pause, resume or lap mark at `t` (now by default); false when the pause state makes it meaningless (lap or pause while paused).
+  /// Writes a pause, resume, lap or extend mark at `t` (now by default); false when the pause state makes it meaningless (lap, extend or pause while paused).
   @discardableResult
   func mark(_ kind: MarkKind, at t: Int64? = nil) -> Bool {
     guard !stopped else { return false }
     let accepted: Bool
     switch kind {
-    case .pause, .lap: accepted = !paused
+    case .pause, .lap, .extend: accepted = !paused
     case .resume: accepted = paused
     case .start, .stop: accepted = false
     }

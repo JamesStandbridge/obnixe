@@ -74,7 +74,7 @@ function workoutText(workout: WorkoutView): string {
 function stepFraction(step: WorkoutStepRun, workout: WorkoutView): number {
   switch (step.duration.kind) {
     case "time":
-      return workout.stepElapsedMs / step.duration.ms;
+      return workout.stepElapsedMs / (step.duration.ms + workout.extendedMs);
     case "distance":
       return workout.stepDistanceMm / step.duration.mm;
     case "open":

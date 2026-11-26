@@ -1,9 +1,10 @@
-import { ScrollView, StyleSheet, View } from "react-native";
-import type { ResolvedProfile, SpanBounds, WorkoutRemaining, WorkoutStepRun, WorkoutTargetReading, WorkoutView } from "@obnixe/core";
+import { Pressable, ScrollView, StyleSheet, View } from "react-native";
+import type { AccessibilityActionEvent } from "react-native";
+import type { ResolvedProfile, SpanBounds, WorkoutStepRun, WorkoutTargetReading, WorkoutView } from "@obnixe/core";
 import { MetricTile } from "@/features/recording/LiveParts";
-import type { MetricText } from "@/features/recording/metrics";
+import { workoutRemainingText } from "@/features/recording/metrics";
 import { compactStep, stepTitle, workoutDurationText, workoutTargetText } from "@/features/workouts/format";
-import { formatClock, formatLongClock } from "@/format/durations";
+import { formatClock } from "@/format/durations";
 import { formatNumber } from "@/format/numbers";
 import { Icon } from "@/ui/icons/Icon";
 import { Text } from "@/ui/Text";
@@ -15,22 +16,6 @@ import { fonts, radii } from "@/ui/tokens";
 const gaugeMargin = 0.6;
 /** The span drawn above an open-ended heart-rate zone, in bpm. */
 const openZoneBpm = 20;
-
-function remainingText(remaining: WorkoutRemaining | null, elapsedMs: number): MetricText {
-  if (remaining === null) return { value: "—", unit: "" };
-  switch (remaining.kind) {
-    case "time":
-      return { value: formatLongClock(Math.ceil(remaining.ms / 1000)), unit: "" };
-    case "distance":
-      return remaining.mm < 1_000_000 ? { value: formatNumber(remaining.mm / 1000, 0), unit: "m" } : { value: formatNumber(remaining.mm / 1_000_000, 2), unit: "km" };
-    case "open":
-      return { value: formatLongClock(elapsedMs / 1000), unit: "" };
-    default: {
-      const unreachable: never = remaining;
-      return unreachable;
-    }
-  }
-}
 
 /** The smoothed value as the target reads: a pace, a speed or a heart rate. */
 function readingText(step: WorkoutStepRun, value: number | null): string {
@@ -86,13 +71,20 @@ function fraction(value: number, scale: GaugeScale): number {
   return Math.min(1, Math.max(0, (value - scale.low) / (scale.high - scale.low)));
 }
 
+function remainingCaption(workout: WorkoutView): string {
+  if (workout.remaining?.kind === "open") return "Écoulé · étape libre";
+  return workout.extendedMs > 0 ? `Restant · prolongée de ${formatNumber(workout.extendedMs / 60_000, 0)} min` : "Restant";
+}
+
 interface GuidedPanelProps {
   readonly workout: WorkoutView;
   readonly profile: ResolvedProfile;
+  /** Offers « Prolonger de 1 min » on a long press, for a time step. */
+  readonly onExtend: () => void;
 }
 
 /** `WKT-004`: the step, its rank, what remains of it, the target gauge and the next step. */
-export function GuidedPanel({ workout, profile }: GuidedPanelProps) {
+export function GuidedPanel({ workout, profile, onExtend }: GuidedPanelProps) {
   const { colors } = useTheme();
   const { current, next, target } = workout;
   if (current === null) {
@@ -106,7 +98,7 @@ export function GuidedPanel({ workout, profile }: GuidedPanelProps) {
       </View>
     );
   }
-  const remaining = remainingText(workout.remaining, workout.stepElapsedMs);
+  const remaining = workoutRemainingText(workout.remaining, workout.stepElapsedMs);
   const rank = `${current.index + 1}/${workout.steps.length}`;
   return (
     <View style={styles.panel}>
@@ -122,8 +114,16 @@ export function GuidedPanel({ workout, profile }: GuidedPanelProps) {
         )}
         <Text style={[styles.rank, { color: colors.text2 }]}>{rank}</Text>
       </View>
-      <MetricTile caption={workout.remaining?.kind === "open" ? "Écoulé · étape libre" : "Restant"} text={remaining} scale="guided" accent={colors.sport[profile.sport]} style={styles.remaining} />
-      {target === null || current.target.kind === "none" ? null : <TargetGauge step={current} reading={target} />}
+      <Pressable
+        disabled={!workout.extendable}
+        onLongPress={onExtend}
+        accessibilityActions={workout.extendable ? [{ name: "longpress", label: "Prolonger de 1 min" }] : []}
+        onAccessibilityAction={(event: AccessibilityActionEvent) => (event.nativeEvent.actionName === "longpress" ? onExtend() : undefined)}
+        style={styles.step}
+      >
+        <MetricTile caption={remainingCaption(workout)} text={remaining} scale="guided" accent={colors.sport[profile.sport]} style={styles.remaining} />
+        {target === null || current.target.kind === "none" ? null : <TargetGauge step={current} reading={target} />}
+      </Pressable>
       <Text variant="small" tone="secondary" numberOfLines={1} style={styles.next}>
         {next === null ? "Dernière étape" : `Ensuite : ${stepTitle(next)} · ${compactStep(next)}`}
       </Text>
@@ -219,6 +219,7 @@ const styles = StyleSheet.create({
   intent: { width: 4, height: 22, borderRadius: 2 },
   title: { flex: 1, minWidth: 0 },
   rank: { fontFamily: fonts.figure700, fontSize: 18 },
+  step: { flex: 1, gap: 8 },
   remaining: { flex: 1, minHeight: 130, justifyContent: "center" },
   gauge: { gap: 6 },
   gaugeHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline" },

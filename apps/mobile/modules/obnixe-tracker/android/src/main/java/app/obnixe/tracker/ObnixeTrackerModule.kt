@@ -129,13 +129,15 @@ class ObnixeTrackerModule : Module() {
 enum class ControlMark(val value: String) : Enumerable {
   PAUSE("pause"),
   RESUME("resume"),
-  LAP("lap");
+  LAP("lap"),
+  EXTEND("extend");
 
   val kind: MarkKind
     get() = when (this) {
       PAUSE -> MarkKind.PAUSE
       RESUME -> MarkKind.RESUME
       LAP -> MarkKind.LAP
+      EXTEND -> MarkKind.EXTEND
     }
 }
 

@@ -266,7 +266,7 @@ internal object JournalScanner {
                 batchStopped = false
                 batchPaused = false
               }
-              MarkKind.LAP, null -> Unit
+              MarkKind.LAP, MarkKind.EXTEND, null -> Unit
             }
             kind != null
           }

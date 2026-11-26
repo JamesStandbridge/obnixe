@@ -89,6 +89,9 @@ describe("catalog", () => {
     for (const metric of [profile.readout.main, ...profile.readout.secondary]) expect(profile.metrics).toContain(metric);
     expect(profile.metrics.includes("cadence")).toBe(profile.cadence === "steps" || name.split(":")[0] === "bike");
     expect(profile.metrics.includes("gap_now")).toBe(profile.gradeAdjustedPace);
+    expect(profile.metrics.includes("power")).toBe(["bike", "run", "trail"].includes(name.split(":")[0] ?? ""));
+    expect(profile.metrics.includes("power_avg")).toBe(profile.metrics.includes("power"));
+    expect(profile.metrics).not.toContain("workout_step");
     expect(profile.metrics.includes(profile.primary === "pace" ? "pace_now" : "speed_now")).toBe(true);
     expect([...profile.bestEffortMeters].sort((left, right) => left - right)).toEqual(profile.bestEffortMeters);
     expect(profile.bestEffortMeters.every((meters) => meters > 0)).toBe(true);

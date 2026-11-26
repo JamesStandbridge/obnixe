@@ -254,7 +254,7 @@ enum JournalScanner {
           case .start:
             batchStopped = false
             batchPaused = false
-          case .lap: break
+          case .lap, .extend: break
           case nil: recordValid = false
           }
         case .pressure, .steps, .power, .cadence:
