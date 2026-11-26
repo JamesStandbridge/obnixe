@@ -7,7 +7,7 @@ import type { Fixtures } from "../data/testFixtures.ts";
 import { createTestContext } from "../testing.ts";
 import type { TestContext } from "../testing.ts";
 import type { NewRow } from "../writer.ts";
-import { activityRecords, effortBoards, effortMeters, recordStandings, sessionEffortRanks } from "./records.ts";
+import { activityRecords, effortBoards, effortMeters, recordStandings, sessionEffortRanks, sportsWithActivities } from "./records.ts";
 
 let context: TestContext;
 let make: Fixtures;
@@ -151,5 +151,12 @@ describe("activity records", () => {
     expect(records.get("speed")).toMatchObject({ sessionId: long, value: (40_000_000 * 1000) / 4_800_000 });
     expect(records.get("distance")?.sessionId).toBe(long);
     expect([...records.values()].some((record) => record.sessionId === assisted)).toBe(false);
+  });
+
+  it("offers the sports of the kept activities", () => {
+    activity("run", "2026-01-01");
+    const trashed = activity("trail", "2026-01-02");
+    make.write([trashMutation("session", trashed, context.env.now())]);
+    expect([...sportsWithActivities(context.db)]).toEqual(["run"]);
   });
 });

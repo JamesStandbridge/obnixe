@@ -21,20 +21,24 @@ function syncOverlays(map: maplibregl.Map, overlays: readonly MapOverlay[], appl
     if (map.getSource(id)) map.removeSource(id);
     applied.delete(id);
   }
-  for (const overlay of overlays) {
+  overlays.forEach((overlay, position) => {
     const previous = applied.get(overlay.id);
     const layers = JSON.stringify(overlay.layers);
     const source = map.getSource<GeoJSONSource>(overlay.id);
     if (source === undefined) map.addSource(overlay.id, { type: "geojson", data: JSON.parse(overlay.data), lineMetrics: overlay.lineMetrics });
     else if (previous?.data !== overlay.data) source.setData(JSON.parse(overlay.data));
     if (previous?.layers !== layers) {
+      const before = overlays
+        .slice(position + 1)
+        .flatMap((later) => later.layers)
+        .find((layer) => map.getLayer(layer.id) !== undefined)?.id;
       for (const layer of overlay.layers) {
         if (map.getLayer(layer.id)) map.removeLayer(layer.id);
-        map.addLayer(layer as AddLayerObject);
+        map.addLayer(layer as AddLayerObject, before);
       }
     }
     applied.set(overlay.id, { data: overlay.data, layers });
-  }
+  });
 }
 
 function viewOf(map: maplibregl.Map): MapView {

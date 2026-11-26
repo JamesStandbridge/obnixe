@@ -154,7 +154,7 @@ export function ActivityMap({ activity, cursor, onCursor }: ActivityMapProps) {
         {mask === null ? null : (
           <View style={[styles.badge, { backgroundColor: colors.surface, borderColor: colors.line }]} pointerEvents="none">
             <Text variant="caption" tone="secondary">
-              Zones masquées
+              Parties masquées
             </Text>
           </View>
         )}

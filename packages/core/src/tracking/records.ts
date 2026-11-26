@@ -168,6 +168,16 @@ function manualValues(values: FieldValues, durationSeconds: number | null): Acti
   return { distance, moving, ascent, altitude: null, speed: distance !== null && moving !== null ? (distance * 1000) / moving : null };
 }
 
+/** The sports of the kept activities, for the sport picker of the records screen (`PR-005`). */
+export function sportsWithActivities(db: ObnixeDatabase): ReadonlySet<SportKey> {
+  const rows = db
+    .selectDistinct({ sport: session.sport })
+    .from(session)
+    .where(and(eq(session.status, "completed"), isNull(session.deletedAt)))
+    .all();
+  return new Set(rows.map((row) => row.sport));
+}
+
 /**
  * The activity records of `sport` (`PR-005`): recorded activities that count in records (`PR-002`) and the sessions logged by
  * hand with the value; the altitude needs a track, and an electric bike counts in no bike record.

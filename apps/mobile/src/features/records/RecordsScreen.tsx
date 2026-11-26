@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, View } from "react-native";
 import type { LayoutChangeEvent } from "react-native";
 import Svg, { Circle, Path } from "react-native-svg";
 import { router } from "expo-router";
-import { activityRecords, dateParts, effortBoards, effortScore } from "@obnixe/core";
+import { activityRecords, dateParts, effortBoards, effortScore, sportsWithActivities } from "@obnixe/core";
 import type { ActivityRecord, ActivityRecordKind, EffortBoard, EffortEntry } from "@obnixe/core";
 import { sportKeys, sports } from "@obnixe/schema";
 import type { Id, LocalDate, SportKey } from "@obnixe/schema";
@@ -82,6 +82,7 @@ function activityRecordValue(record: ActivityRecord): string {
 interface RecordsData {
   readonly boards: readonly EffortBoard[];
   readonly records: readonly ActivityRecord[];
+  readonly sports: ReadonlySet<SportKey>;
 }
 
 interface RecordsScreenProps {
@@ -94,13 +95,19 @@ export function RecordsScreen({ initialSport }: RecordsScreenProps) {
   const year = dateParts(today).year;
   const rebuild = useDerivedRebuildState();
   const [sport, setSport] = useState<SportKey>(initialSport !== null && recordSports.includes(initialSport) ? initialSport : (recordSports[0] ?? "run"));
-  const data = useLiveValue<RecordsData>(() => ({ boards: effortBoards(db(), sport, year), records: activityRecords(db(), sport) }), ["best_effort", "session", "recording"], [sport, year]);
-  const options: readonly ChipOption<SportKey>[] = recordSports.map((key) => ({ value: key, label: sports[key].label, sport: key }));
+  const data = useLiveValue<RecordsData>(
+    () => ({ boards: effortBoards(db(), sport, year), records: activityRecords(db(), sport), sports: sportsWithActivities(db()) }),
+    ["best_effort", "session", "recording"],
+    [sport, year],
+  );
+  const options: readonly ChipOption<SportKey>[] = recordSports
+    .filter((key) => key === sport || data.sports.has(key))
+    .map((key) => ({ value: key, label: sports[key].label, sport: key }));
 
   return (
     <Screen>
       <AppBar title="Records" leading={<BackButton />} />
-      <FilterChips label="Sport" options={options} value={sport} onChange={setSport} />
+      {options.length > 1 ? <FilterChips label="Sport" options={options} value={sport} onChange={setSport} /> : null}
       {rebuild.running ? (
         <Text variant="small" tone="secondary" style={styles.rebuilding} accessibilityLiveRegion="polite">
           Calcul des records…

@@ -89,7 +89,10 @@ export function PeriodTotals({ sport, today }: PeriodTotalsProps) {
   const top = Math.max(1, ...totals.map((total) => total.distanceMeters));
   if (current === undefined) return null;
   const distance = distanceText(current.distanceMeters * 1000);
-  const energy = current.count === current.withoutEnergy ? "aucune estimation" : `${formatInteger(current.energyKcal)} kcal${current.withoutEnergy === 0 ? "" : ` · ${plural(current.withoutEnergy, "activité")} sans estimation`}`;
+  const energy =
+    current.count === current.withoutEnergy
+      ? "sans estimation d'énergie"
+      : `${formatInteger(current.energyKcal)} kcal${current.withoutEnergy === 0 ? "" : ` · ${plural(current.withoutEnergy, "activité")} sans estimation`}`;
 
   return (
     <Section title="Cumuls" action={<LinkButton label="Records" onPress={() => router.push({ pathname: "/records", params: { sport } })} style={styles.link} />}>
@@ -124,7 +127,7 @@ export function PeriodTotals({ sport, today }: PeriodTotalsProps) {
         ]}
       />
       <Text variant="small" tone="secondary" style={styles.detail}>
-        {plural(current.count, "activité")} · énergie {energy}
+        {current.count === 0 ? "Aucune activité" : `${plural(current.count, "activité")} · ${energy}`}
       </Text>
     </Section>
   );
