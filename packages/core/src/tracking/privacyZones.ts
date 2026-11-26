@@ -1,0 +1,67 @@
+import type { Id, PrivacyZone } from "@obnixe/schema";
+import type { Environment } from "../database.ts";
+import type { Mutation } from "../writer.ts";
+import type { GeoPoint } from "./geo.ts";
+
+/** Radius chosen by the user (`PRV-010`), also enforced by the `privacy_zone_radius` check. */
+export const privacyZoneRadiusBounds = { minMeters: 100, maxMeters: 2000 } as const;
+
+export interface PrivacyZoneDraft {
+  readonly label: string;
+  /** Center in degrees, rounded to 1e-7 degree when stored. */
+  readonly center: GeoPoint;
+  readonly radiusMeters: number;
+}
+
+export type PrivacyZoneProblem = "label" | "radius" | "position";
+
+export class InvalidPrivacyZoneError extends Error {
+  constructor(readonly problem: PrivacyZoneProblem) {
+    super(`Invalid privacy zone ${problem}`);
+  }
+}
+
+export interface PrivacyZonePlan {
+  readonly zoneId: Id;
+  readonly mutation: Mutation;
+}
+
+type ZoneFields = Pick<PrivacyZone, "label" | "latitudeE7" | "longitudeE7" | "radiusMeters">;
+
+export function privacyZoneProblem(draft: PrivacyZoneDraft): PrivacyZoneProblem | null {
+  if (draft.label.trim() === "") return "label";
+  const { minMeters, maxMeters } = privacyZoneRadiusBounds;
+  if (!Number.isInteger(draft.radiusMeters) || draft.radiusMeters < minMeters || draft.radiusMeters > maxMeters) return "radius";
+  const { latitude, longitude } = draft.center;
+  if (!(Math.abs(latitude) <= 90) || !(Math.abs(longitude) <= 180)) return "position";
+  return null;
+}
+
+function zoneFields(draft: PrivacyZoneDraft): ZoneFields {
+  const problem = privacyZoneProblem(draft);
+  if (problem !== null) throw new InvalidPrivacyZoneError(problem);
+  return {
+    label: draft.label.trim(),
+    latitudeE7: Math.round(draft.center.latitude * 1e7),
+    longitudeE7: Math.round(draft.center.longitude * 1e7),
+    radiusMeters: draft.radiusMeters,
+  };
+}
+
+/** `maskScalePermille` is the zone's draw from `drawMaskScalePermille`, kept for the zone's whole life (`PRV-012`). */
+export function newPrivacyZone(env: Environment, draft: PrivacyZoneDraft, maskScalePermille: number): PrivacyZonePlan {
+  const zoneId = env.newId();
+  return { zoneId, mutation: { kind: "insert", table: "privacy_zone", row: { id: zoneId, ...zoneFields(draft), maskScalePermille, deletedAt: null } } };
+}
+
+/** The changed fields of a zone, or null when the draft matches it; the mask draw never changes. */
+export function editPrivacyZone(zone: PrivacyZone, draft: PrivacyZoneDraft): Mutation | null {
+  const fields = zoneFields(draft);
+  const patch: Partial<ZoneFields> = {};
+  if (fields.label !== zone.label) patch.label = fields.label;
+  if (fields.latitudeE7 !== zone.latitudeE7) patch.latitudeE7 = fields.latitudeE7;
+  if (fields.longitudeE7 !== zone.longitudeE7) patch.longitudeE7 = fields.longitudeE7;
+  if (fields.radiusMeters !== zone.radiusMeters) patch.radiusMeters = fields.radiusMeters;
+  if (Object.keys(patch).length === 0) return null;
+  return { kind: "update", table: "privacy_zone", key: zone.id, patch };
+}

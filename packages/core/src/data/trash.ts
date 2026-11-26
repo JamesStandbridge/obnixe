@@ -1,7 +1,7 @@
 import { and, desc, eq, getTableColumns, inArray, isNotNull, isNull, lt, ne, sql } from "drizzle-orm";
 import type { SQLiteColumn, SQLiteTable } from "drizzle-orm/sqlite-core";
-import { agentCall, backup, change, changeset, checkIn, journaled, journaledTables, measurement, painReport, photo, session, weighIn } from "@obnixe/schema";
-import type { Backup, CheckIn, EpochMs, Id, JournaledTable, Measurement, PainReport, Photo, RowImage, Session, WeighIn } from "@obnixe/schema";
+import { agentCall, backup, change, changeset, checkIn, journaled, journaledTables, measurement, painReport, photo, privacyZone, session, weighIn } from "@obnixe/schema";
+import type { Backup, CheckIn, EpochMs, Id, JournaledTable, Measurement, PainReport, Photo, PrivacyZone, RowImage, Session, WeighIn } from "@obnixe/schema";
 import type { Environment, ObnixeDatabase } from "../database.ts";
 import { rowKey } from "../keys.ts";
 import { keyCondition } from "../writer.ts";
@@ -16,11 +16,12 @@ export type TrashItem =
   | { readonly table: "measurement"; readonly row: Measurement; readonly expiresAt: EpochMs }
   | { readonly table: "photo"; readonly row: Photo; readonly expiresAt: EpochMs }
   | { readonly table: "check_in"; readonly row: CheckIn; readonly expiresAt: EpochMs }
-  | { readonly table: "pain_report"; readonly row: PainReport; readonly expiresAt: EpochMs };
+  | { readonly table: "pain_report"; readonly row: PainReport; readonly expiresAt: EpochMs }
+  | { readonly table: "privacy_zone"; readonly row: PrivacyZone; readonly expiresAt: EpochMs };
 
 export type TrashableTable = TrashItem["table"];
 
-export const trashableTables: readonly TrashableTable[] = ["session", "weigh_in", "measurement", "photo", "check_in", "pain_report"];
+export const trashableTables: readonly TrashableTable[] = ["session", "weigh_in", "measurement", "photo", "check_in", "pain_report", "privacy_zone"];
 
 const expiry = (deletedAt: EpochMs | null): EpochMs => ((deletedAt ?? 0) + trashRetentionMs) as EpochMs;
 
@@ -32,6 +33,7 @@ export function trashItems(db: ObnixeDatabase): readonly TrashItem[] {
     ...db.select().from(photo).where(isNotNull(photo.deletedAt)).all().map((row): TrashItem => ({ table: "photo", row, expiresAt: expiry(row.deletedAt) })),
     ...db.select().from(checkIn).where(isNotNull(checkIn.deletedAt)).all().map((row): TrashItem => ({ table: "check_in", row, expiresAt: expiry(row.deletedAt) })),
     ...db.select().from(painReport).where(isNotNull(painReport.deletedAt)).all().map((row): TrashItem => ({ table: "pain_report", row, expiresAt: expiry(row.deletedAt) })),
+    ...db.select().from(privacyZone).where(isNotNull(privacyZone.deletedAt)).all().map((row): TrashItem => ({ table: "privacy_zone", row, expiresAt: expiry(row.deletedAt) })),
   ];
   return items.sort((left, right) => (right.row.deletedAt ?? 0) - (left.row.deletedAt ?? 0));
 }
@@ -79,6 +81,7 @@ export function restoreBlocker(db: ObnixeDatabase, item: TrashItem): RestoreBloc
         : null;
     }
     case "photo":
+    case "privacy_zone":
       return null;
     default: {
       const unreachable: never = item;
@@ -160,6 +163,7 @@ function expiredRoots(db: ObnixeDatabase, cutoff: EpochMs): readonly PurgeTarget
   add("photo", db.select().from(photo).where(lt(photo.deletedAt, cutoff)).all());
   add("check_in", db.select().from(checkIn).where(lt(checkIn.deletedAt, cutoff)).all());
   add("pain_report", db.select().from(painReport).where(lt(painReport.deletedAt, cutoff)).all());
+  add("privacy_zone", db.select().from(privacyZone).where(lt(privacyZone.deletedAt, cutoff)).all());
   return roots;
 }
 
