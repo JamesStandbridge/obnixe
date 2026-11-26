@@ -15,10 +15,13 @@ interface ExpectedJournal {
 
 const fixture = (name: string): URL => new URL(`../../../test/fixtures/journal/${name}`, import.meta.url);
 
-/** Written by the Android tracker's `JournalWriter` (`JournalFixtureTest` regenerates both files). */
-describe("journal written by the Android tracker", () => {
-  const bytes = new Uint8Array(readFileSync(fixture("android-v1.ojr")));
-  const expected = JSON.parse(readFileSync(fixture("android-v1.json"), "utf8")) as ExpectedJournal;
+/** Each fixture is written by a native tracker's `JournalWriter`; its fixture test (`JournalFixtureTest` on Android, `JournalFixtureTests` on iOS) regenerates both files. */
+describe.each([
+  { platform: "Android", name: "android-v1" },
+  { platform: "iOS", name: "ios-v1" },
+])("journal written by the $platform tracker", ({ name }) => {
+  const bytes = new Uint8Array(readFileSync(fixture(`${name}.ojr`)));
+  const expected = JSON.parse(readFileSync(fixture(`${name}.json`), "utf8")) as ExpectedJournal;
 
   it("reads back every sample and mark the writer wrote", () => {
     expect(readJournal(bytes)).toEqual({ ...expected, header: { ...expected.header, monotonicOriginNs: BigInt(expected.header.monotonicOriginNs) } });
