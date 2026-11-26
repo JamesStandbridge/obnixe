@@ -155,11 +155,6 @@ export function segmentShape(row: Pick<Segment, "id" | "family" | "polyline" | "
   };
 }
 
-/** The decoded polyline of a segment, in degrees. */
-export function segmentPath(row: Pick<Segment, "polyline">): TrackPositions {
-  return decodeSegmentPath(row.polyline);
-}
-
 /** The prefilter of `SEG-005`: a segment can only be passed by an activity whose box, grown by `nearMeters`, overlaps its own. */
 export function segmentSearchBox(activity: BoundingBoxE7): BoundingBoxE7 {
   return expandBoundingBox(activity, segmentRules.nearMeters);

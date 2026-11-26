@@ -5,8 +5,8 @@ import { write } from "@/data/write";
 import { reconcileRecordingFiles } from "@/features/tracking/launchReconciliation";
 import { derivedRebuild, recorder, watchBattery, watchWeather, weatherQueue } from "@/features/tracking/recorder";
 
-/** Tables whose changes can make records or masked previews stale. */
-const derivedSources: ReadonlySet<string> = new Set(["session", "recording", "lap", "privacy_zone", "settings"]);
+/** Tables whose changes can make records, segment efforts or masked previews stale. */
+const derivedSources: ReadonlySet<string> = new Set(["session", "recording", "lap", "privacy_zone", "settings", "segment"]);
 const rebuildDelayMs = 500;
 
 function report(error: unknown): void {
