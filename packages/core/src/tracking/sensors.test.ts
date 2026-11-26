@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { FieldValues, SportKey } from "@obnixe/schema";
+import { axisColumn, chartSeries, metricColumn } from "./charts.ts";
 import type { LiveSnapshot } from "./live.ts";
 import { defaultRecordingSettings } from "./plans.ts";
 import { resolveProfile } from "./profile.ts";
@@ -122,6 +123,21 @@ describe("sensor readings (SPT-008)", () => {
     expect(at(dropoutFromMs + 10_000)?.power).toBeNull();
     expect(at(dropoutFromMs + 10_000)?.metrics.cadence).toBeUndefined();
     expect(Math.abs((live.final.powerAvg ?? 0) - (summary.powerAvg ?? 0))).toBeLessThanOrEqual(2);
+    expect(at(100_000)?.metrics).toMatchObject({ power: 220, power_avg: 220 });
+    expect(at(dropoutFromMs + 10_000)?.metrics.power).toBeUndefined();
+    expect(live.final.metrics.power_avg).toBe(live.final.powerAvg);
+  });
+
+  it("chart the power of a ride, broken where the meter drops out (SPT-008)", () => {
+    const ride = withPowerMeter(coreScenarios.tunnel90s(4));
+    const processed = runBatch(ride);
+    const column = metricColumn(processed, profileOf("bike"), toSampleColumns(ride.samples), "power");
+    const atTime = (t: number): number => column[processed.series.t.findIndex((seriesT) => seriesT >= t)] ?? Number.NaN;
+    expect(atTime(100_000)).toBe(220);
+    expect(atTime(coastingFromMs + 10_000)).toBe(0);
+    expect(atTime(dropoutFromMs + 10_000)).toBeNaN();
+    expect(chartSeries(axisColumn(processed, "time"), column, "power", 600)?.range).toEqual({ min: 0, max: 220 });
+    expect(chartSeries(axisColumn(processed, "time"), metricColumn(processed, profileOf("bike"), toSampleColumns(coreScenarios.tunnel90s(4).samples), "power"), "power", 600)).toBeNull();
   });
 
   it("leave a ride without a sensor with no cadence and no power", () => {

@@ -51,6 +51,8 @@ function metricLabel(metric: ChartMetric): string {
       return "Vitesse";
     case "heart_rate":
       return "Fréquence cardiaque";
+    case "power":
+      return "Puissance";
     default: {
       const unreachable: never = metric;
       return unreachable;
@@ -62,6 +64,7 @@ function tickText(metric: ChartMetric, value: number): string {
   switch (metric) {
     case "altitude":
     case "heart_rate":
+    case "power":
       return formatInteger(value);
     case "pace":
       return formatClock(value);
@@ -81,6 +84,8 @@ function readout(metric: ChartMetric, pacePerMeters: number, value: number): str
       return `${formatInteger(value)} m`;
     case "heart_rate":
       return `${formatInteger(value)} bpm`;
+    case "power":
+      return `${formatInteger(value)} W`;
     case "pace": {
       const figure = paceFigure(value, pacePerMeters);
       return `${figure.value} ${figure.unit}`;
@@ -105,6 +110,7 @@ function displayedRange(metric: ChartMetric, range: ValueRange): ValueRange {
     case "pace":
       return paddedRange(range, 30, 0.04);
     case "speed":
+    case "power":
       return { min: 0, max: Math.max(range.max * 1.06, 1) };
     default: {
       const unreachable: never = metric;
@@ -151,7 +157,8 @@ export function ActivityCharts({ activity, cursor, onCursor }: ActivityChartsPro
     if (processed.summary.ascentMm !== null) metrics.push("altitude");
     metrics.push(profile.primary === "pace" ? "pace" : "speed");
     if (track.samples.heartRate.length > 0) metrics.push("heart_rate");
-    return metrics.map((metric) => ({ metric, column: metricColumn(processed, profile, track.samples.heartRate, metric) }));
+    if (track.samples.power.length > 0) metrics.push("power");
+    return metrics.map((metric) => ({ metric, column: metricColumn(processed, profile, track.samples, metric) }));
   }, [processed, profile, track]);
 
   const axisValues = useMemo(() => axisColumn(processed, axis), [processed, axis]);
@@ -160,7 +167,7 @@ export function ActivityCharts({ activity, cursor, onCursor }: ActivityChartsPro
 
   const panels = useMemo((): readonly Panel[] => {
     if (plotWidth === 0) return [];
-    const metricColors: Readonly<Record<ChartMetric, string>> = { altitude: colors.text2, pace: colors.sport[sport], speed: colors.sport[sport], heart_rate: trackPalettes[name].zones[4] ?? colors.stop };
+    const metricColors: Readonly<Record<ChartMetric, string>> = { altitude: colors.text2, pace: colors.sport[sport], speed: colors.sport[sport], heart_rate: trackPalettes[name].zones[4] ?? colors.stop, power: colors.warn };
     return columns.flatMap(({ metric, column }): Panel[] => {
       const series = chartSeries(axisValues, column, metric, Math.round(plotWidth * pointsPerPixel));
       if (series === null) return [];

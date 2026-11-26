@@ -1,4 +1,4 @@
-import type { LiveLap, LiveMetrics, RecordingSummary, ResolvedProfile } from "@obnixe/core";
+import type { LiveLap, LiveMetrics, RecordingSummary, ResolvedProfile, WorkoutRemaining, WorkoutView } from "@obnixe/core";
 import type { EpochMs, MetricKey } from "@obnixe/schema";
 import { formatTimeAt } from "@/format/dates";
 import { formatClock, formatLongClock } from "@/format/durations";
@@ -37,9 +37,12 @@ export const metricCaptions: Readonly<Record<MetricKey, string>> = {
   heart_rate_avg: "FC moy.",
   heart_rate_max: "FC max",
   heart_rate_zone: "Zone FC",
+  power: "Puissance",
+  power_avg: "Puiss. moy.",
   energy: "Énergie",
   gps_quality: "Précision GPS",
   clock: "Heure",
+  workout_step: "Étape",
   route_remaining: "Restant",
   route_ascent_remaining: "D+ restant",
   route_progress: "Progression",
@@ -72,9 +75,12 @@ export const metricNames: Readonly<Record<MetricKey, string>> = {
   heart_rate_avg: "Fréquence cardiaque moyenne",
   heart_rate_max: "Fréquence cardiaque maximale",
   heart_rate_zone: "Zone cardiaque",
+  power: "Puissance",
+  power_avg: "Puissance moyenne",
   energy: "Énergie",
   gps_quality: "Précision GPS",
   clock: "Heure",
+  workout_step: "Étape de la séance guidée",
   route_remaining: "Distance restante de l'itinéraire",
   route_ascent_remaining: "D+ restant de l'itinéraire",
   route_progress: "Progression sur l'itinéraire",
@@ -115,7 +121,7 @@ export function paceOf(movingMs: number, distanceMeters: number, pacePerMeters: 
 
 /**
  * `SPT-006`: one live value in French units, from the units of `LiveMetrics`. `clock` reads `now` in the device time zone;
- * `energy` has no live value.
+ * `energy` has no live value and `workout_step` reads the workout (`workoutStepText`).
  */
 export function metricText(key: MetricKey, metrics: LiveMetrics, profile: Pick<ResolvedProfile, "pacePerMeters" | "cadence">, now: EpochMs, timeZone: string): MetricText {
   const value = metrics[key];
@@ -157,8 +163,13 @@ export function metricText(key: MetricKey, metrics: LiveMetrics, profile: Pick<R
       return { value: value === undefined ? missing : formatInteger(value), unit: "bpm" };
     case "heart_rate_zone":
       return { value: value === undefined ? missing : `Z${value}`, unit: "" };
+    case "power":
+    case "power_avg":
+      return { value: value === undefined ? missing : formatInteger(value), unit: "W" };
     case "energy":
       return { value: missing, unit: "kcal" };
+    case "workout_step":
+      return { value: missing, unit: "" };
     case "gps_quality":
       return { value: value === undefined ? missing : `±${formatInteger(value)}`, unit: "m" };
     case "clock":
@@ -174,6 +185,31 @@ export function metricText(key: MetricKey, metrics: LiveMetrics, profile: Pick<R
       return unreachable;
     }
   }
+}
+
+/** What remains of the current step, its elapsed time for an open one. */
+export function workoutRemainingText(remaining: WorkoutRemaining | null, elapsedMs: number): MetricText {
+  if (remaining === null) return { value: missing, unit: "" };
+  switch (remaining.kind) {
+    case "time":
+      return { value: formatLongClock(Math.ceil(remaining.ms / 1000)), unit: "" };
+    case "distance":
+      return remaining.mm < 1_000_000 ? { value: formatNumber(remaining.mm / 1000, 0), unit: "m" } : { value: formatNumber(remaining.mm / 1_000_000, 2), unit: "km" };
+    case "open":
+      return { value: formatLongClock(elapsedMs / 1000), unit: "" };
+    default: {
+      const unreachable: never = remaining;
+      return unreachable;
+    }
+  }
+}
+
+/** The `workout_step` metric: rank, then what remains of the step, « 3/8 · 1:12 ». */
+export function workoutStepText(workout: WorkoutView): MetricText {
+  const { current } = workout;
+  if (current === null) return { value: "Terminée", unit: "" };
+  const remaining = workoutRemainingText(workout.remaining, workout.stepElapsedMs);
+  return { value: `${current.index + 1}/${workout.steps.length} · ${remaining.value}`, unit: remaining.unit };
 }
 
 export interface LapFigures {
@@ -204,7 +240,7 @@ export interface SummaryFigures {
 }
 
 /** `REC-050`: the figures of the stop summary. */
-export function summaryFigures(summary: Pick<RecordingSummary, "elapsedMs" | "movingMs" | "distanceMm" | "ascentMm" | "heartRateAvg" | "cadenceAvg">, profile: Pick<ResolvedProfile, "primary" | "pacePerMeters" | "cadence" | "stopwatch">): SummaryFigures {
+export function summaryFigures(summary: Pick<RecordingSummary, "elapsedMs" | "movingMs" | "distanceMm" | "ascentMm" | "heartRateAvg" | "cadenceAvg" | "powerAvg">, profile: Pick<ResolvedProfile, "primary" | "pacePerMeters" | "cadence" | "stopwatch">): SummaryFigures {
   const meters = summary.distanceMm / 1000;
   const distanced = !profile.stopwatch || summary.distanceMm > 0;
   const pace = paceOf(summary.movingMs, meters, profile.pacePerMeters);
@@ -216,6 +252,7 @@ export function summaryFigures(summary: Pick<RecordingSummary, "elapsedMs" | "mo
     ...(summary.ascentMm === null ? [] : [{ label: "D+", value: formatInteger(summary.ascentMm / 1000), unit: "m" }]),
     ...(summary.heartRateAvg === null ? [] : [{ label: "FC moy.", value: formatInteger(summary.heartRateAvg), unit: "bpm" }]),
     ...(summary.cadenceAvg === null ? [] : [{ label: "Cadence", value: formatInteger(summary.cadenceAvg), unit: cadenceUnit(profile) }]),
+    ...(summary.powerAvg === null ? [] : [{ label: "Puiss. moy.", value: formatInteger(summary.powerAvg), unit: "W" }]),
   ];
   return {
     distance: distanced ? formatDistance(meters) : null,

@@ -26,9 +26,13 @@ export const metricKeys = [
   "heart_rate_avg",
   "heart_rate_max",
   "heart_rate_zone",
+  "power",
+  "power_avg",
   "energy",
   "gps_quality",
   "clock",
+  /** The current step of a guided workout; the main metric while one runs, never in a profile's `metrics`. */
+  "workout_step",
   "route_remaining",
   "route_ascent_remaining",
   "route_progress",
@@ -103,7 +107,7 @@ export const runProfile: RecordingProfile = {
   metrics: [
     "elapsed", "moving", "distance", "pace_avg", "pace_now", "pace_lap", "gap_avg", "gap_now", "speed_avg", "speed_now", "speed_max",
     "ascent", "descent", "altitude", "altitude_min", "altitude_max", "grade_now", "cadence", "steps",
-    "heart_rate", "heart_rate_avg", "heart_rate_max", "heart_rate_zone", "energy", "gps_quality", "clock",
+    "heart_rate", "heart_rate_avg", "heart_rate_max", "heart_rate_zone", "power", "power_avg", "energy", "gps_quality", "clock",
     "route_remaining", "route_ascent_remaining", "route_progress",
   ],
   readout: { main: "pace_now", secondary: ["distance", "moving", "pace_avg", "cadence"] },
@@ -130,7 +134,7 @@ export const trailProfile: RecordingProfile = {
   metrics: [
     "elapsed", "moving", "distance", "pace_avg", "pace_now", "pace_lap", "gap_avg", "gap_now", "speed_avg", "speed_now", "speed_max",
     "ascent", "descent", "altitude", "altitude_min", "altitude_max", "grade_now", "vam", "vertical_speed", "cadence", "steps",
-    "heart_rate", "heart_rate_avg", "heart_rate_max", "heart_rate_zone", "energy", "gps_quality", "clock",
+    "heart_rate", "heart_rate_avg", "heart_rate_max", "heart_rate_zone", "power", "power_avg", "energy", "gps_quality", "clock",
     "route_remaining", "route_ascent_remaining", "route_progress",
   ],
   readout: { main: "distance", secondary: ["moving", "ascent", "vertical_speed", "pace_now"] },
@@ -211,7 +215,7 @@ export const bikeProfile: RecordingProfile = {
   metrics: [
     "elapsed", "moving", "distance", "speed_avg", "speed_now", "speed_max",
     "ascent", "descent", "altitude", "altitude_min", "altitude_max", "grade_now", "vam", "vertical_speed", "cadence",
-    "heart_rate", "heart_rate_avg", "heart_rate_max", "heart_rate_zone", "energy", "gps_quality", "clock",
+    "heart_rate", "heart_rate_avg", "heart_rate_max", "heart_rate_zone", "power", "power_avg", "energy", "gps_quality", "clock",
     "route_remaining", "route_ascent_remaining", "route_progress",
   ],
   readout: { main: "speed_now", secondary: ["distance", "moving", "speed_avg", "ascent"] },

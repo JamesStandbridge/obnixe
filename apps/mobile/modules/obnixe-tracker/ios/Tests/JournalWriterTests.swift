@@ -255,6 +255,21 @@ final class JournalWriterTests: XCTestCase {
     }
   }
 
+  func testAnExtendMarkIsAValidBatchThatLeavesThePauseStateAlone() throws {
+    try withWriter { writer in
+      _ = try writer.flush(mark: Mark(t: 0, kind: .start))
+      _ = writer.append(.fix(fix))
+      XCTAssertEqual(try writer.flush(mark: Mark(t: 1_500, kind: .extend))?.mark, Mark(t: 1_500, kind: .extend))
+    }
+    let written = try bytes()
+    XCTAssertEqual(written[written.count - 4 - 6 + 5], 4)
+    let tail = try JournalScanner.scan(written)
+    XCTAssertEqual(tail.validLength, written.count)
+    XCTAssertEqual(tail.nextSequence, 2)
+    XCTAssertFalse(tail.paused)
+    XCTAssertFalse(tail.stopped)
+  }
+
   func testCreatingOverAnExistingJournalFails() throws {
     try JournalWriter.create(at: url, header: header).close()
     XCTAssertThrowsError(try JournalWriter.create(at: url, header: header))

@@ -198,7 +198,7 @@ describe("track .otrk", () => {
       rejects(forge([oneFix(0, 1 << 9)]), /unknown presence bits/);
       rejects(forge([{ kind: 4, count: 1, bytes: varints([0, 65_536, 0], [false, true, true]) }]), /heart rate 0 is out of range/);
       rejects(forge([{ kind: 1, count: 1, bytes: varints([0, 0b1, 0, 0, 0, -2_147_483_648], [false, false, true, true, true, true]) }]), /altitudeEllipsoidMm 0 is out of range/);
-      rejects(forge([{ kind: 5, count: 1, bytes: varints([0, 4], []) }]), /unknown kind/);
+      rejects(forge([{ kind: 5, count: 1, bytes: varints([0, 6], []) }]), /unknown kind/);
       rejects(forge([{ kind: 6, count: 1, bytes: varints([0, 65_536, 0], [false, true, true]) }]), /power 0 is out of range/);
       rejects(forge([{ kind: 6, count: 1, bytes: varints([0, 0, -1], [false, true, true]) }]), /power cadence 0 is out of range/);
       rejects(forge([{ kind: 7, count: 1, bytes: varints([0, 65_536], [false, true]) }]), /cadence 0 is out of range/);

@@ -132,12 +132,13 @@ enum Sample: Equatable {
   }
 }
 
-/// Code 4 (`extend`) belongs to guided workouts (V2) and has no case until then.
+/// `extend` adds a minute to the current time step of a guided workout.
 enum MarkKind: UInt8, CaseIterable {
   case start = 0
   case pause = 1
   case resume = 2
   case lap = 3
+  case extend = 4
   case stop = 5
 
   var wire: String {
@@ -146,6 +147,7 @@ enum MarkKind: UInt8, CaseIterable {
     case .pause: return "pause"
     case .resume: return "resume"
     case .lap: return "lap"
+    case .extend: return "extend"
     case .stop: return "stop"
     }
   }

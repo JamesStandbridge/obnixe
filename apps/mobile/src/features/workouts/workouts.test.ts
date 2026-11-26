@@ -80,6 +80,8 @@ describe("guided notification (REC-074, REC-075)", () => {
     remaining: index === null ? null : { kind: "distance", mm: 400_000 - stepDistanceMm },
     target: null,
     done: [],
+    extendedMs: 0,
+    extendable: false,
   });
   const state: RecorderState = { phase: "recording", autoPause: false, motion: "moving", idleSince: null, pausedMs: 0, autoPausedMs: 0 };
 
@@ -90,6 +92,12 @@ describe("guided notification (REC-074, REC-075)", () => {
     expect(progress.segments[1]).toEqual({ length: 100, highlighted: true });
     expect(progress.value).toBe(125);
     expect(workoutProgress(view(null, 0)).value).toBe(1800);
+  });
+
+  it("fills an extended time step against its lengthened duration (WKT-004)", () => {
+    const warmup = { ...view(0, 0), stepElapsedMs: 480_000, remaining: { kind: "time", ms: 420_000 }, extendable: true } as const;
+    expect(workoutProgress(warmup).value).toBe(53);
+    expect(workoutProgress({ ...warmup, remaining: { kind: "time", ms: 480_000 }, extendedMs: 60_000 }).value).toBe(50);
   });
 
   it("shows the current step in the text", () => {

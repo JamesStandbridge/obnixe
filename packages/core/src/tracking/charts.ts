@@ -2,15 +2,16 @@ import type { ProcessedTrack } from "./batch.ts";
 import type { ResolvedProfile } from "./profile.ts";
 import { lttb } from "./simplify.ts";
 import { intervalCodes, isCountedCode, locateTime, slowestPaceSecondsPerKm, valueAt } from "./stages/derive.ts";
-import type { HeartRateColumns } from "./types.ts";
+import { powerReadings, sensorReader } from "./sensors.ts";
+import type { SampleColumns } from "./types.ts";
 import { heartRateReader } from "./zones.ts";
 
 /** `SUM-002`: distance by default, elapsed time on demand. */
 export type ChartAxis = "distance" | "time";
 
-export type ChartMetric = "altitude" | "pace" | "speed" | "heart_rate";
+export type ChartMetric = "altitude" | "pace" | "speed" | "heart_rate" | "power";
 
-/** The kept points of a chart: `x` in meters or ms since the start, `y` in meters, s per pace unit, m/s or bpm; `NaN` breaks the line. */
+/** The kept points of a chart: `x` in meters or ms since the start, `y` in meters, s per pace unit, m/s, bpm or W; `NaN` breaks the line. */
 export interface ChartLine {
   readonly x: Float64Array;
   readonly y: Float64Array;
@@ -70,7 +71,7 @@ export function axisAtIndex(column: Float64Array, index: number): number {
 const paused = new Set([intervalCodes.paused, intervalCodes.gap]);
 
 /** The metric at each series entry; `NaN` where it is unknown or meaningless, such as a pace while stopped. */
-export function metricColumn(processed: Pick<ProcessedTrack, "series">, profile: Pick<ResolvedProfile, "pacePerMeters">, heartRate: HeartRateColumns, metric: ChartMetric): Float64Array {
+export function metricColumn(processed: Pick<ProcessedTrack, "series">, profile: Pick<ResolvedProfile, "pacePerMeters">, samples: Pick<SampleColumns, "heartRate" | "power">, metric: ChartMetric): Float64Array {
   const { series } = processed;
   const values = new Float64Array(series.length);
   switch (metric) {
@@ -90,8 +91,13 @@ export function metricColumn(processed: Pick<ProcessedTrack, "series">, profile:
       return values;
     }
     case "heart_rate": {
-      const read = heartRateReader(heartRate);
+      const read = heartRateReader(samples.heartRate);
       for (let index = 0; index < series.length; index += 1) values[index] = read(series.t[index] ?? 0) ?? Number.NaN;
+      return values;
+    }
+    case "power": {
+      const read = sensorReader(powerReadings(samples.power));
+      for (let index = 0; index < series.length; index += 1) values[index] = paused.has(series.interval[index] ?? 0) ? Number.NaN : (read(series.t[index] ?? 0) ?? Number.NaN);
       return values;
     }
     default: {
@@ -171,7 +177,7 @@ function extent(values: ArrayLike<number>): ValueRange | null {
   return min <= max ? { min, max } : null;
 }
 
-/** The scale of a chart: the full extent for altitude and heart rate, robust bounds for the noisier pace and speed. */
+/** The scale of a chart: the full extent for altitude and heart rate, robust bounds for the noisier pace, speed and power. */
 function chartRange(metric: ChartMetric, y: Float64Array): ValueRange | null {
   switch (metric) {
     case "altitude":
@@ -182,9 +188,10 @@ function chartRange(metric: ChartMetric, y: Float64Array): ValueRange | null {
       const slowest = quantile(y, 0.98);
       return fastest === null || slowest === null ? null : { min: fastest, max: slowest };
     }
-    case "speed": {
-      const fastest = quantile(y, 0.99);
-      return fastest === null ? null : { min: 0, max: fastest };
+    case "speed":
+    case "power": {
+      const highest = quantile(y, 0.99);
+      return highest === null ? null : { min: 0, max: highest };
     }
     default: {
       const unreachable: never = metric;

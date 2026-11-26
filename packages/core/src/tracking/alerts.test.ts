@@ -152,6 +152,15 @@ describe("signal, sensor, battery and settings", () => {
     expect(monitor().segments([])).toEqual([]);
     expect(monitor({ settings: { ...noAlerts, disabled: ["segment"] } }).segments([entered, finished])).toEqual([]);
   });
+
+  it("drops the guided-workout target alerts with the target setting, never the step changes (REC-075, WKT-005)", () => {
+    const step = { index: 1, intent: "work", duration: { kind: "time", ms: 60_000 }, target: { kind: "heart_rate", minBpm: 150, maxBpm: 160 }, label: null, repetition: null } as const;
+    const out: RecordingAlertEvent = { kind: "workout_target", step, status: "above", repeat: 0 };
+    const next: RecordingAlertEvent = { kind: "workout_step", step };
+    expect(monitor().workout([next, out])).toEqual([next, out]);
+    expect(monitor({ settings: { ...noAlerts, disabled: ["target"] } }).workout([next, out])).toEqual([next]);
+    expect(monitor().workout([])).toEqual([]);
+  });
 });
 
 describe("route", () => {

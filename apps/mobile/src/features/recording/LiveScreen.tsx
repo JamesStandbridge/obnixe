@@ -15,7 +15,7 @@ import { ElevationPage } from "@/features/recording/ElevationPage";
 import { GuidedPanel, StepsPage } from "@/features/recording/GuidedPanel";
 import { LiveControls } from "@/features/recording/LiveControls";
 import { Chronometer, MetricTile, SignalBars } from "@/features/recording/LiveParts";
-import { lapFigures, metricCaptions, metricText } from "@/features/recording/metrics";
+import { lapFigures, metricCaptions, metricText, workoutStepText } from "@/features/recording/metrics";
 import type { MetricText } from "@/features/recording/metrics";
 import { sessionTargetOf } from "@/features/recording/queries";
 import { liveReadout } from "@/features/recording/readout";
@@ -71,14 +71,14 @@ export function LiveScreen({ recording }: LiveScreenProps) {
   const pager = useRef<ScrollViewInstance>(null);
   const [page, setPage] = useState<Page>("metrics");
   const [locked, setLocked] = useState(false);
-  const [menu, setMenu] = useState<"closed" | "options" | "pain">("closed");
+  const [menu, setMenu] = useState<"closed" | "options" | "pain" | "extend">("closed");
   const [confirmStop, setConfirmStop] = useState(false);
   const [controlsHeight, setControlsHeight] = useState(120);
 
   const { sessionId, profile, state, live, laps, clock, workout } = recording;
   const guided = workout !== null;
   const phase = state.phase;
-  const readout = useMemo(() => liveReadout(profile, recording.settings), [profile, recording.settings]);
+  const readout = useMemo(() => liveReadout(profile, recording.settings, guided), [profile, recording.settings, guided]);
   const route = recording.route;
   const routeProfile = route === null || route.profile.length < 2 ? null : route.profile;
   const pages = useMemo(
@@ -88,7 +88,7 @@ export function LiveScreen({ recording }: LiveScreenProps) {
   const target = useMemo(() => sessionTargetOf(sessionId), [sessionId]);
   const timeZone = useMemo(() => deviceTimeZone(), []);
   const now = useNow(readout.main === "clock" || readout.secondary.includes("clock") ? 15_000 : 3_600_000);
-  const text = (key: MetricKey): MetricText => metricText(key, live.metrics, profile, now as EpochMs, timeZone);
+  const text = (key: MetricKey): MetricText => (key === "workout_step" && workout !== null ? workoutStepText(workout) : metricText(key, live.metrics, profile, now as EpochMs, timeZone));
   const alertBanner = useAlertBanner(recording.alert);
   const progress = target === null || guided ? null : targetProgress(target, live);
 
@@ -116,6 +116,13 @@ export function LiveScreen({ recording }: LiveScreenProps) {
   const stop = (): void => {
     setConfirmStop(false);
     void recorder.stop().then(failed);
+  };
+
+  const extend = (): void => {
+    setMenu("closed");
+    const outcome = recorder.extend();
+    if (outcome.ok) notify({ text: "Étape prolongée de 1 min", aboveTabBar: false, extraOffset: 96 });
+    else failed(outcome);
   };
 
   const reportPain = (zone: ZoneKey, level: "discomfort" | "stop"): void => {
@@ -208,13 +215,13 @@ export function LiveScreen({ recording }: LiveScreenProps) {
               </View>
             </View>
           )}
-          {workout === null ? (
-            <View style={[styles.mainTile, { borderBottomColor: colors.line }, phase === "paused" && styles.dimmed]}>
-              <MetricTile caption={metricCaptions[readout.main]} text={text(readout.main)} scale="main" accent={colors.sport[profile.sport]} />
+          {readout.main === "workout_step" && workout !== null ? (
+            <View style={[styles.guided, { borderBottomColor: colors.line }, phase === "paused" && styles.dimmed]}>
+              <GuidedPanel workout={workout} profile={profile} onExtend={() => setMenu("extend")} />
             </View>
           ) : (
-            <View style={[styles.guided, { borderBottomColor: colors.line }, phase === "paused" && styles.dimmed]}>
-              <GuidedPanel workout={workout} profile={profile} />
+            <View style={[styles.mainTile, { borderBottomColor: colors.line }, phase === "paused" && styles.dimmed]}>
+              <MetricTile caption={metricCaptions[readout.main]} text={text(readout.main)} scale="main" accent={colors.sport[profile.sport]} />
             </View>
           )}
           <View style={[styles.grid, phase === "paused" && styles.dimmed]}>
@@ -324,6 +331,12 @@ export function LiveScreen({ recording }: LiveScreenProps) {
           {sports[profile.sport].painZones.map((zone) => (
             <ZoneRow key={zone} name={zoneLabel(zone)} value={null} levels={painLevels} onChange={(level) => (level === "discomfort" || level === "stop" ? reportPain(zone, level) : undefined)} />
           ))}
+        </View>
+      </Sheet>
+      <Sheet open={menu === "extend"} title="Prolonger l'étape" context={workout === null || workout.current === null ? undefined : `Étape ${workout.current.index + 1}/${workout.steps.length}`} onClose={() => setMenu("closed")}>
+        <View>
+          <MenuItem label="Prolonger de 1 min" detail="Le déroulé reprend ensuite" onPress={extend} />
+          <MenuItem label="Annuler" onPress={() => setMenu("closed")} />
         </View>
       </Sheet>
       <Sheet open={confirmStop} title="Terminer la sortie ?" context="Tu verras le résumé avant d'enregistrer" onClose={() => setConfirmStop(false)}>

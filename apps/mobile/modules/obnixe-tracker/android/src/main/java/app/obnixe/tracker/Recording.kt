@@ -157,11 +157,11 @@ class Recording private constructor(
     return TrackerSources(location?.kind, barometer != null, steps != null, links.flatMap { link -> link.services.map { it.role } }.toSet())
   }
 
-  /** Writes a pause, resume or lap mark; false when the pause state makes it meaningless (lap or pause while paused). */
+  /** Writes a pause, resume, lap or extend mark; false when the pause state makes it meaningless (lap, extend or pause while paused). */
   fun mark(kind: MarkKind): Boolean {
     if (stopped) return false
     val accepted = when (kind) {
-      MarkKind.PAUSE, MarkKind.LAP -> !paused
+      MarkKind.PAUSE, MarkKind.LAP, MarkKind.EXTEND -> !paused
       MarkKind.RESUME -> paused
       MarkKind.START, MarkKind.STOP -> false
     }

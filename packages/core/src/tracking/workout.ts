@@ -15,6 +15,9 @@ import type { HeartRateZoneBounds, TimeSpan } from "./zones.ts";
 /** `WKT-005`: pace and speed smoothed over 10 s of chronometer time, heart rate averaged over 5 s, 20 s to settle into a work step. */
 export const workoutTargetTiming = { speedWindowMs: 10_000, heartRateWindowMs: 5000, workGraceMs: 20_000 } as const;
 
+/** `WKT-004`: what an `extend` mark adds to the current time step. */
+export const workoutExtensionMs = 60_000;
+
 export interface WorkoutRepetition {
   /** From 1 to `count`. */
   readonly number: number;
@@ -83,6 +86,10 @@ export interface WorkoutView {
   /** Chronometer time in the current step, manual pauses excluded. */
   readonly stepElapsedMs: number;
   readonly stepDistanceMm: number;
+  /** Time added to the current step by `extend` marks. */
+  readonly extendedMs: number;
+  /** Only a time step can be extended. */
+  readonly extendable: boolean;
   readonly remaining: WorkoutRemaining | null;
   /** Null when the step has no target. */
   readonly target: WorkoutTargetReading | null;
@@ -120,7 +127,7 @@ function distanceBetween(from: TrackerProgress | null, to: TrackerProgress, t: n
  * `WKT-003`: runs the unfolded plan on the tracker progress after each fix and on the journal marks, with no clock of its own;
  * `advance` only closes time steps between fixes so their end is signalled on time (`WKT-006`). Time steps count chronometer
  * time (elapsed minus manual pauses, auto-pause ignored), distance steps the counted distance with the crossing interpolated
- * between fixes, open steps end with a lap mark. A lap mark once the plan is done is a manual lap.
+ * between fixes, open steps end with a lap mark. An extend mark lengthens a time step. A lap mark once the plan is done is a manual lap.
  */
 export class WorkoutRunner {
   readonly steps: readonly WorkoutStepRun[];
@@ -134,6 +141,7 @@ export class WorkoutRunner {
   private index = 0;
   private stepStartMs = 0;
   private stepStartTimerMs = 0;
+  private stepExtendedMs = 0;
   /** Null until a fix at or after the step start lets it be interpolated. */
   private stepStartDistanceMm: number | null = null;
   private earlier: TrackerProgress | null = null;
@@ -190,6 +198,9 @@ export class WorkoutRunner {
         if (this.finished) this.manualLaps.push(mark.t);
         else events.push(...this.endStep(mark.t, this.timerAt(mark.t), this.distanceAt(mark.t)));
         break;
+      case "extend":
+        if (this.steps[this.index]?.duration.kind === "time") this.stepExtendedMs += workoutExtensionMs;
+        break;
       default: {
         const unreachable: never = mark.kind;
         throw new Error(`Unhandled mark ${String(unreachable)}`);
@@ -239,7 +250,9 @@ export class WorkoutRunner {
       next: this.steps[this.index + 1] ?? null,
       stepElapsedMs,
       stepDistanceMm,
-      remaining: current === null ? null : remainingOf(current.duration, stepElapsedMs, stepDistanceMm),
+      extendedMs: this.stepExtendedMs,
+      extendable: current?.duration.kind === "time",
+      remaining: current === null ? null : remainingOf(current.duration, this.stepExtendedMs, stepElapsedMs, stepDistanceMm),
       target: current === null || current.target.kind === "none" ? null : (this.reading ?? { bounds: this.boundsOf(current.target), value: null, position: null }),
       done: this.spans,
     };
@@ -286,7 +299,7 @@ export class WorkoutRunner {
     for (;;) {
       const step = this.steps[this.index];
       if (step?.duration.kind !== "time" || this.pausedSince !== null) break;
-      const endTimerMs = this.stepStartTimerMs + step.duration.ms;
+      const endTimerMs = this.stepStartTimerMs + step.duration.ms + this.stepExtendedMs;
       const overMs = this.timerAt(now) - endTimerMs;
       if (overMs < 0) break;
       const endMs = now - overMs;
@@ -300,6 +313,7 @@ export class WorkoutRunner {
     this.index += 1;
     this.stepStartMs = endMs;
     this.stepStartTimerMs = timerMs;
+    this.stepExtendedMs = 0;
     this.stepStartDistanceMm = distanceMm;
     this.watch.reset();
     this.reading = null;
@@ -400,10 +414,10 @@ export class WorkoutRunner {
   }
 }
 
-function remainingOf(duration: WorkoutDuration, elapsedMs: number, distanceMm: number): WorkoutRemaining {
+function remainingOf(duration: WorkoutDuration, extendedMs: number, elapsedMs: number, distanceMm: number): WorkoutRemaining {
   switch (duration.kind) {
     case "time":
-      return { kind: "time", ms: Math.max(0, duration.ms - elapsedMs) };
+      return { kind: "time", ms: Math.max(0, duration.ms + extendedMs - elapsedMs) };
     case "distance":
       return { kind: "distance", mm: Math.max(0, duration.mm - distanceMm) };
     case "open":

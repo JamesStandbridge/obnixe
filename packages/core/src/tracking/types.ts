@@ -67,7 +67,8 @@ export interface PowerSample {
 
 export type Sample = Fix | PressureSample | StepSample | HeartRateSample | CadenceSample | PowerSample;
 
-export type TrackerMarkKind = "start" | "pause" | "resume" | "lap" | "stop";
+/** `extend` lengthens the current time step of a guided workout by `workoutExtensionMs` (`WKT-004`). */
+export type TrackerMarkKind = "start" | "pause" | "resume" | "lap" | "extend" | "stop";
 
 export interface TrackerMark {
   readonly kind: TrackerMarkKind;

@@ -26,6 +26,8 @@ export function alertLabel(alert: RecordingAlert, profile: Pick<ResolvedProfile,
       return { title: "Splits", detail: profile.splitMeters === null ? "Sans split pour ce sport" : `Tous les ${distanceLabel(profile.splitMeters)}, sans tour automatique` };
     case "goal":
       return { title: "Objectif atteint", detail: "Distance ou durée de la séance du programme" };
+    case "target":
+      return { title: "Cible de la séance guidée", detail: "Sortie de la cible d'allure, de vitesse ou de FC, puis retour" };
     case "auto_pause":
       return { title: "Pause et reprise automatiques", detail: "Quand tu t'arrêtes et repars" };
     case "segment":

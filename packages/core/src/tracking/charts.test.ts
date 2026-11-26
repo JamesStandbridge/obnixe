@@ -6,16 +6,17 @@ import { axisAtIndex, axisColumn, axisLength, chartSeries, downsample, indexAtAx
 import { coreScenarios } from "./testing/scenarios.ts";
 import { profileOf, recordedLaps, untrimmed } from "./testing/run.ts";
 import { toSampleColumns } from "./types.ts";
-import type { HeartRateColumns } from "./types.ts";
+import type { SampleColumns } from "./types.ts";
 
 let processed: ProcessedTrack;
-const noHeartRate: HeartRateColumns = { length: 0, t: new Uint32Array(0), bpm: new Uint16Array(0), rrInterval: new Int32Array(0) };
+let samples: SampleColumns;
 const profile = { pacePerMeters: 1000 as const };
 
 beforeAll(() => {
   const scenario = coreScenarios.steadyRun(4);
   const endT = scenario.samples.at(-1)?.t ?? 0;
   const track = { startedAt: Date.UTC(2026, 9, 24, 7, 30) as EpochMs, samples: toSampleColumns(scenario.samples), marks: [{ kind: "start" as const, t: 0 }, { kind: "stop" as const, t: endT }] };
+  samples = track.samples;
   processed = processTrack(track, profileOf(scenario), { laps: recordedLaps, trim: untrimmed });
 });
 
@@ -76,11 +77,11 @@ describe("activity charts", () => {
   });
 
   it("charts the pace of a steady run around its average and leaves the heart rate out without a stream", () => {
-    const pace = chartSeries(axisColumn(processed, "distance"), metricColumn(processed, profile, noHeartRate, "pace"), "pace", 600);
+    const pace = chartSeries(axisColumn(processed, "distance"), metricColumn(processed, profile, samples, "pace"), "pace", 600);
     const average = (processed.summary.movingMs / processed.summary.distanceMm) * 1000;
     expect(pace).not.toBeNull();
     expect(pace?.range.min).toBeLessThan(average);
     expect(pace?.range.max).toBeGreaterThan(average);
-    expect(chartSeries(axisColumn(processed, "distance"), metricColumn(processed, profile, noHeartRate, "heart_rate"), "heart_rate", 600)).toBeNull();
+    expect(chartSeries(axisColumn(processed, "distance"), metricColumn(processed, profile, samples, "heart_rate"), "heart_rate", 600)).toBeNull();
   });
 });

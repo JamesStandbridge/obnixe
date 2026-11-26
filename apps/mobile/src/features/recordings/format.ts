@@ -100,6 +100,8 @@ function figure(key: MetricKey, input: SummaryInput): (FigureText & { readonly l
       return labelled("FC moy.", summary.heartRateAvg === null ? null : { value: formatInteger(summary.heartRateAvg), unit: "bpm" });
     case "heart_rate_max":
       return labelled("FC max", summary.heartRateMax === null ? null : { value: formatInteger(summary.heartRateMax), unit: "bpm" });
+    case "power_avg":
+      return labelled("Puiss. moy.", summary.powerAvg === null ? null : { value: formatInteger(summary.powerAvg), unit: "W" });
     case "energy":
       return labelled("Énergie", input.energyKcal === null ? null : { value: formatInteger(input.energyKcal), unit: "kcal" });
     case "pace_now":
@@ -111,8 +113,10 @@ function figure(key: MetricKey, input: SummaryInput): (FigureText & { readonly l
     case "vertical_speed":
     case "heart_rate":
     case "heart_rate_zone":
+    case "power":
     case "gps_quality":
     case "clock":
+    case "workout_step":
     case "route_remaining":
     case "route_ascent_remaining":
     case "route_progress":

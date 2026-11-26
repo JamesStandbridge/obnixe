@@ -73,10 +73,11 @@ export function alertSettingOf(kind: RecordingAlertKind): RecordingAlert | null 
       return "segment";
     case "route":
       return "route";
+    case "workout_target":
+      return "target";
     case "pace_range":
     case "heart_rate_range":
     case "workout_step":
-    case "workout_target":
       return null;
     default: {
       const unreachable: never = kind;
@@ -215,6 +216,11 @@ export class AlertMonitor {
 
   /** `SEG-004`: the segment entries and passes of the live track. */
   segments(events: readonly LiveSegmentEvent[]): readonly RecordingAlertEvent[] {
+    return events.length === 0 ? [] : this.emit(events);
+  }
+
+  /** `WKT-005`, `WKT-006`: the step and target alerts of the workout runner. */
+  workout(events: readonly RecordingAlertEvent[]): readonly RecordingAlertEvent[] {
     return events.length === 0 ? [] : this.emit(events);
   }
 

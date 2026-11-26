@@ -310,7 +310,7 @@ function Preparation({ sport: requested, kind: requestedKind, slotId, variantId,
   const firstRecording = useMemo(() => !hasLiveRecording(), []);
   const [autoPause, setAutoPause] = useState<{ readonly sport: SportKey; readonly value: boolean } | null>(null);
   const autoPauseOn = autoPause?.sport === sport ? autoPause.value : (settings?.autoPause ?? false);
-  const readout = profile === null || settings === null ? null : liveReadout(profile, settings);
+  const readout = profile === null || settings === null ? null : liveReadout(profile, settings, false);
   const gear = useMemo(() => (definition.usesGear ? gearUsage(db(), sport) : []), [definition.usesGear, sport, gearVersion]);
   const selectedGear = gear.find((item) => item.gear.id === gearId);
   const choice = primaryChoice(definition);
@@ -388,6 +388,7 @@ function Preparation({ sport: requested, kind: requestedKind, slotId, variantId,
       case "no_recording":
       case "unsupported":
       case "refused":
+      case "not_extendable":
       case "failed":
         notify({ text: "Démarrage impossible, réessaie", aboveTabBar: false, extraOffset: bottomPanelHeight });
         return;
