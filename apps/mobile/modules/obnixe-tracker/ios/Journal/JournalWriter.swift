@@ -10,6 +10,10 @@ struct JournalBatch: Equatable {
 struct ResumedJournal {
   let writer: JournalWriter
   let paused: Bool
+  /// Only true for a journal reopened after its stop mark.
+  let stopped: Bool
+  /// Latest `t` of any record.
+  let lastT: Int64
 }
 
 /**
@@ -148,9 +152,10 @@ final class JournalWriter {
   }
 
   /// Reopens a journal after an interruption, cutting any torn or invalid tail so new batches stay readable.
-  static func resume(at url: URL) throws -> ResumedJournal {
+  /// A stopped journal is only reopened with `afterStop`, for a recording resumed from its stop summary.
+  static func resume(at url: URL, afterStop: Bool = false) throws -> ResumedJournal {
     let tail = try JournalScanner.scan([UInt8](Data(contentsOf: url)))
-    if tail.stopped { throw JournalFormatError("Journal already stopped") }
+    if tail.stopped && !afterStop { throw JournalFormatError("Journal already stopped") }
     let handle = try FileHandle(forWritingTo: url)
     do {
       try handle.truncate(atOffset: UInt64(tail.validLength))
@@ -161,7 +166,7 @@ final class JournalWriter {
       throw error
     }
     let writer = JournalWriter(handle: handle, header: tail.header, nextSequence: tail.nextSequence, lastT: tail.lastT)
-    return ResumedJournal(writer: writer, paused: tail.paused)
+    return ResumedJournal(writer: writer, paused: tail.paused, stopped: tail.stopped, lastT: tail.lastT.max() ?? 0)
   }
 }
 
@@ -216,7 +221,10 @@ enum JournalScanner {
           case .pause: batchPaused = true
           case .resume: batchPaused = false
           case .stop: batchStopped = true
-          case .start, .lap: break
+          case .start:
+            batchStopped = false
+            batchPaused = false
+          case .lap: break
           case nil: recordValid = false
           }
         case .pressure, .steps:
