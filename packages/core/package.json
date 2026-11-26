@@ -12,7 +12,8 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "geoid:generate": "node --experimental-strip-types scripts/generate-geoid-grid.ts"
   },
   "dependencies": {
     "@noble/ciphers": "^2.4.0",
@@ -27,6 +28,7 @@
     "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^26.6.5",
     "better-sqlite3": "^13.0.3",
+    "geographiclib-geodesic": "^2.2.0",
     "typescript": "^7.0.2",
     "vitest": "^5.0.5"
   }
