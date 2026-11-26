@@ -1,0 +1,19 @@
+appId: com.jamesstandbridge.obnixe
+name: Démarrer une course avec les autorisations accordées
+---
+- launchApp:
+    permissions:
+      location: allow
+      notifications: allow
+      activityRecognition: allow
+- setLocation:
+    latitude: 45.1885
+    longitude: 5.7245
+- tapOn: "Enregistrer une sortie"
+- tapOn: "Course"
+- assertVisible: "Pause automatique"
+- assertVisible: "Garder l'écran allumé"
+- tapOn: "Démarrer"
+- extendedWaitUntil:
+    visible: "Mettre en pause"
+    timeout: 10000

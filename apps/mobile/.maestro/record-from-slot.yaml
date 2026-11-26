@@ -1,0 +1,22 @@
+appId: com.jamesstandbridge.obnixe
+name: Sortie démarrée depuis le créneau course du programme
+# Needs an active program whose next slot is a run with a distance target.
+tags:
+  - TST-031
+  - REC-001
+  - INT-003
+---
+- launchApp:
+    permissions:
+      location: allow
+      notifications: allow
+      activityRecognition: allow
+- tapOn: "Démarrer la sortie"
+- tapOn: "Démarrer"
+- extendedWaitUntil:
+    visible: "Mettre en pause"
+    timeout: 10000
+- assertVisible: ".*km"
+- tapOn: "Mettre en pause"
+- longPressOn: "Terminer"
+- tapOn: "Supprimer"

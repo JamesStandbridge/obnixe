@@ -1,0 +1,15 @@
+appId: com.jamesstandbridge.obnixe
+name: Noter une activité reste possible et propose le direct
+tags:
+  - TST-031
+  - REC-002
+---
+- launchApp:
+    permissions:
+      location: allow
+- tapOn: "Autre sport"
+- tapOn: "Course"
+- assertVisible: "Fermer sans enregistrer"
+- tapOn: "Enregistrer en direct avec le GPS"
+- assertVisible: "Démarrer"
+- tapOn: "Fermer sans démarrer"

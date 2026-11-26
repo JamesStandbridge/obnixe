@@ -5,6 +5,7 @@
   "scripts": {
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
+    "traceability": "node scripts/traceability/check.ts",
     "mobile": "pnpm --filter @obnixe/mobile start",
     "bridge": "pnpm --filter obnixe-bridge start",
     "relay": "pnpm --filter obnixe-relay start"

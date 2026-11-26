@@ -1,0 +1,15 @@
+appId: com.jamesstandbridge.obnixe
+name: Réglages de confidentialité et politique publiée
+tags:
+  - TST-031
+  - PRV-021
+---
+- launchApp
+- tapOn: "Réglages et données"
+- scrollUntilVisible:
+    element: "Politique de confidentialité"
+- assertVisible: "Confidentialité"
+- tapOn: "Politique de confidentialité"
+- extendedWaitUntil:
+    visible: ".*Open-Meteo.*"
+    timeout: 15000

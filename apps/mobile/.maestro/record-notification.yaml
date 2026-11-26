@@ -1,0 +1,21 @@
+appId: com.jamesstandbridge.obnixe
+name: Actions de la notification Android et retour au direct
+tags:
+  - TST-031
+  - REC-071
+  - android
+---
+- runFlow: shared/start-run.yaml
+- pressKey: Home
+- swipe:
+    start: 50%, 0%
+    end: 50%, 70%
+- assertVisible: "Tour"
+- tapOn: "Pause"
+- assertVisible: "Reprendre"
+- tapOn: "Reprendre"
+- tapOn: "Course.*"
+- assertVisible: "Mettre en pause"
+- tapOn: "Mettre en pause"
+- longPressOn: "Terminer"
+- tapOn: "Supprimer"

@@ -1,0 +1,16 @@
+appId: com.jamesstandbridge.obnixe
+name: Localisation refusée, saisie manuelle proposée
+tags:
+  - TST-031
+  - PRV-002
+---
+- launchApp:
+    clearState: true
+    permissions:
+      all: deny
+- tapOn: "Enregistrer une sortie"
+- tapOn: "Autoriser la localisation"
+- tapOn: "(Don.t allow|Ne pas autoriser|Refuser)"
+- assertVisible: "Localisation refusée"
+- tapOn: "Noter à la main"
+- assertVisible: "Fermer sans enregistrer"

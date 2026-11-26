@@ -1,0 +1,14 @@
+appId: com.jamesstandbridge.obnixe
+name: Téléchargement d'une région hors ligne
+tags:
+  - TST-031
+---
+- launchApp
+- tapOn: "Réglages et données"
+- scrollUntilVisible:
+    element: "Cartes hors ligne"
+- tapOn: "Cartes hors ligne"
+- tapOn: "Télécharger une région"
+- tapOn: "Télécharger"
+- tapOn: "Retour"
+- assertVisible: "Régions"
