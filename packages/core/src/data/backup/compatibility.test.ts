@@ -178,3 +178,20 @@ describe("v2 backup", () => {
     expect(opened.settings).toMatchObject({ hideTrackEndsMeters: 300, maskInApp: false });
   });
 });
+
+describe("v5 backup", () => {
+  it("restores gear without a wear threshold", () => {
+    const source = createTestContext();
+    const gearId = source.env.newId();
+    source.db
+      .insert(settings)
+      .values({ singleton: 1, theme: "dark", massUnit: "kg", agentCanReadBody: false, agentCanWrite: false, agentCanReadPhotos: false, reminderWeekdays: 0, reminderMinutes: 1110, updatedAt: source.env.now() })
+      .run();
+    source.db.insert(gear).values({ id: gearId, sport: "run", name: "Pegasus 40", initialMeters: 120_000, wearMeters: null, retiredAt: null, createdAt: source.env.now(), updatedAt: source.env.now() }).run();
+    const current = buildSnapshot(source.db, source.env.now());
+    const gearV5 = current.tables.gear.map(({ wearMeters: _wearMeters, ...row }) => row);
+    const opened = parsePackedSnapshot({ ...current, schemaVersion: 5, tables: { ...current.tables, gear: gearV5 } }, testUpgrader);
+    expect(opened.schemaVersion).toBe(backupSchemaVersion);
+    expect(opened.tables.gear).toEqual([expect.objectContaining({ id: gearId, initialMeters: 120_000, wearMeters: null })]);
+  });
+});

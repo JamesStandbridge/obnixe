@@ -361,7 +361,7 @@ function slug(text: string): string {
 }
 
 /** `obnixe-YYYY-MM-DD-<normalized title>.<extension>` (`IO-004`), the local date of the start, the sport name without a title. */
-export function exportFileName(input: ExportNameInput, extension: ExportFormat): string {
+export function exportFileName(input: ExportNameInput, extension: ExportFormat | "png"): string {
   const name = slug(input.title ?? "") || slug(sportOf(input.sport).label);
   return `obnixe-${localDateOf(input.startedAt, input.timeZone)}${name === "" ? "" : `-${name}`}.${extension}`;
 }

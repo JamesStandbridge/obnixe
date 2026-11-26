@@ -1,0 +1,1 @@
+ALTER TABLE `gear` ADD `wear_meters` integer CONSTRAINT "gear_wear" CHECK("wear_meters" IS NULL OR "wear_meters" > 0);

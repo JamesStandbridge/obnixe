@@ -71,6 +71,13 @@
       "when": 1795722209305,
       "tag": "0009_guided_workouts",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1795723784287,
+      "tag": "0010_gear_wear",
+      "breakpoints": true
     }
   ]
 }

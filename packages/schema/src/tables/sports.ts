@@ -18,8 +18,10 @@ export const gear = sqliteTable(
     sport: sport("sport").notNull(),
     name: text("name").notNull(),
     initialMeters: integer("initial_meters").notNull(),
+    /** `INT-011`: distance past which the gear counts as worn; `null` when the user set none. */
+    wearMeters: integer("wear_meters"),
     retiredAt: timestamp("retired_at"),
     ...tracked(),
   },
-  (t) => [index("gear_sport").on(t.sport), check("gear_initial", sql`${t.initialMeters} >= 0`)],
+  (t) => [index("gear_sport").on(t.sport), check("gear_initial", sql`${t.initialMeters} >= 0`), check("gear_wear", sql`${t.wearMeters} IS NULL OR ${t.wearMeters} > 0`)],
 );
