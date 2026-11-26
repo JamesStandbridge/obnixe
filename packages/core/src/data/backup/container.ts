@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { EpochMs, Id } from "@obnixe/schema";
 import { decodeUtf8, encodeUtf8, InvalidUtf8Error } from "../utf8.ts";
 import { backupSchemaVersion, CorruptedBackupError, parseSnapshotSettings, parseSnapshotTables } from "./snapshot.ts";
-import type { PhotoFile, Snapshot } from "./snapshot.ts";
+import type { PhotoFile, Snapshot, TrackFile } from "./snapshot.ts";
 import { upgradeSnapshot } from "./upgrade.ts";
 import type { SnapshotUpgrader } from "./upgrade.ts";
 
@@ -16,12 +16,18 @@ const documentSchema = z.object({
   settings: z.unknown(),
   tables: z.unknown(),
   photos: z.array(z.object({ photoId: z.string(), offset: z.int().nonnegative(), length: z.int().nonnegative() })),
+  tracks: z.array(z.object({ kind: z.literal("recording"), rowId: z.string(), offset: z.int().nonnegative(), length: z.int().nonnegative() })).default([]),
 });
 
 export function packSnapshot(snapshot: Snapshot): Uint8Array {
   let offset = 0;
   const photos = snapshot.photos.map((file) => {
     const entry = { photoId: file.photoId, offset, length: file.bytes.length };
+    offset += file.bytes.length;
+    return entry;
+  });
+  const tracks = snapshot.tracks.map((file) => {
+    const entry = { kind: "recording", rowId: file.recordingId, offset, length: file.bytes.length };
     offset += file.bytes.length;
     return entry;
   });
@@ -34,13 +40,14 @@ export function packSnapshot(snapshot: Snapshot): Uint8Array {
       settings: snapshot.settings,
       tables: snapshot.tables,
       photos,
+      tracks,
     }),
   );
   const packed = new Uint8Array(lengthBytes + document.length + offset);
   new DataView(packed.buffer).setUint32(0, document.length);
   packed.set(document, lengthBytes);
   let cursor = lengthBytes + document.length;
-  for (const file of snapshot.photos) {
+  for (const file of [...snapshot.photos, ...snapshot.tracks]) {
     packed.set(file.bytes, cursor);
     cursor += file.bytes.length;
   }
@@ -55,6 +62,7 @@ export interface PackedSnapshot {
   readonly settings: unknown;
   readonly tables: unknown;
   readonly photos: readonly PhotoFile[];
+  readonly tracks: readonly TrackFile[];
 }
 
 /** Snapshots of an older schema version are first carried through the database migrations, so their rows are validated against the current catalog only once converted. */
@@ -81,7 +89,11 @@ export function readPackedSnapshot(packed: Uint8Array): PackedSnapshot {
     if (entry.offset + entry.length > blobs.length) throw new CorruptedBackupError(`photo ${entry.photoId} truncated`);
     return { photoId: entry.photoId as Id, bytes: blobs.slice(entry.offset, entry.offset + entry.length) };
   });
-  return { schemaVersion: document.schemaVersion, catalogVersion: document.catalogVersion, createdAt: document.createdAt as EpochMs, settings: document.settings, tables: document.tables, photos };
+  const tracks: TrackFile[] = document.tracks.map((entry) => {
+    if (entry.offset + entry.length > blobs.length) throw new CorruptedBackupError(`track ${entry.rowId} truncated`);
+    return { recordingId: entry.rowId as Id, bytes: blobs.slice(entry.offset, entry.offset + entry.length) };
+  });
+  return { schemaVersion: document.schemaVersion, catalogVersion: document.catalogVersion, createdAt: document.createdAt as EpochMs, settings: document.settings, tables: document.tables, photos, tracks };
 }
 
 function parseDocument(bytes: Uint8Array): unknown {

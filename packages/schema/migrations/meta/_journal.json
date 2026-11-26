@@ -29,6 +29,13 @@
       "when": 1795705922650,
       "tag": "0003_trail_sport",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1795711829765,
+      "tag": "0004_recording_derivation",
+      "breakpoints": true
     }
   ]
 }
