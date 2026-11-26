@@ -1,12 +1,13 @@
 import { useMemo, useState } from "react";
 import { View } from "react-native";
 import { Redirect, useRouter } from "expo-router";
-import type { ZoneProposal } from "@obnixe/core";
-import { recordAnnouncements } from "@obnixe/core";
+import type { GearWearAlert, ZoneProposal } from "@obnixe/core";
+import { gearWearAlert, recordAnnouncements } from "@obnixe/core";
 import type { Id, SportKey } from "@obnixe/schema";
 import { db } from "@/data/database";
 import { useUndoableWrite } from "@/data/write";
 import { bottomPanelHeight } from "@/features/activity/components";
+import { useRetireGear } from "@/features/activity/gearWear";
 import { LiveScreen } from "@/features/recording/LiveScreen";
 import { sessionExists, sessionTargetOf } from "@/features/recording/queries";
 import { recordLines } from "@/features/recording/records";
@@ -23,6 +24,7 @@ interface AfterSave {
   readonly sport: SportKey;
   readonly lines: readonly RecordLine[];
   readonly proposal: ZoneProposal | null;
+  readonly wear: GearWearAlert | null;
 }
 
 const zoneLabel = "Lieu fréquent";
@@ -38,6 +40,7 @@ export function RecordScreen({ sessionId }: RecordScreenProps) {
   const router = useRouter();
   const notify = useSnackbar();
   const undoableWrite = useUndoableWrite();
+  const retireGear = useRetireGear();
   const [after, setAfter] = useState<AfterSave | null>(null);
   const [leaving, setLeaving] = useState(false);
   const target = useMemo(() => sessionTargetOf(sessionId), [sessionId]);
@@ -60,8 +63,9 @@ export function RecordScreen({ sessionId }: RecordScreenProps) {
     if (!settled(outcome)) return;
     const saved = outcome.value;
     const lines = recordLines(recordAnnouncements(db(), saved.sessionId));
-    if (lines.length === 0 && saved.zoneProposal === null) review(saved.sessionId);
-    else setAfter({ sessionId: saved.sessionId, sport: recording.profile.sport, lines, proposal: saved.zoneProposal });
+    const wear = gearWearAlert(db(), saved.sessionId);
+    if (lines.length === 0 && saved.zoneProposal === null && wear === null) review(saved.sessionId);
+    else setAfter({ sessionId: saved.sessionId, sport: recording.profile.sport, lines, proposal: saved.zoneProposal, wear });
   };
 
   const discard = async (): Promise<void> => {
@@ -94,6 +98,12 @@ export function RecordScreen({ sessionId }: RecordScreenProps) {
         sport={after.sport}
         lines={after.lines}
         proposal={proposal}
+        wear={after.wear}
+        onRetireGear={() => {
+          if (after.wear === null) return;
+          retireGear(after.wear);
+          setAfter({ ...after, wear: null });
+        }}
         onCreateZone={() => {
           if (proposal === null) return;
           undoableWrite({ summary: `Zone de confidentialité : ${zoneLabel}`, mutations: [zoneFromProposal(proposal, zoneLabel).mutation], message: "Zone créée", ...placement });

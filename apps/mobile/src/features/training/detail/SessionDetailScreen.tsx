@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import Animated from "react-native-reanimated";
 import { router } from "expo-router";
@@ -34,9 +34,11 @@ import { db, environment } from "@/data/database";
 import { undo, useUndoableWrite, write } from "@/data/write";
 import { gearLabel } from "@/features/activity/presentation";
 import { ExportTrackActions } from "@/features/activityFiles/ExportTrackActions";
+import { writeGearWear } from "@/features/activity/gearWear";
 import { GearSheet } from "@/features/activity/LogSheets";
 import { loadRecorded, RecordedLeading, RecordedTrailing } from "@/features/recordings/RecordedActivityView";
 import type { RecordedData } from "@/features/recordings/RecordedActivityView";
+import { ShareImageAction } from "@/features/recordings/ShareImageAction";
 import { SportSheet } from "@/features/recordings/SportSheet";
 import { TrimSheet } from "@/features/recordings/TrimSheet";
 import { useRecordedActivity } from "@/features/recordings/useRecordedActivity";
@@ -230,6 +232,8 @@ function Detail({ data, recorded }: DetailProps) {
   const [trimming, setTrimming] = useState(false);
   const [changingSport, setChangingSport] = useState(false);
   const [choosingGear, setChoosingGear] = useState(false);
+  const [gearVersion, setGearVersion] = useState(0);
+  const gearItems = useMemo(() => (choosingGear ? gearUsage(db(), session.sport) : []), [choosingGear, session.sport, gearVersion]);
   const [drawingSegment, setDrawingSegment] = useState(false);
   const rebuild = useDerivedRebuildState();
   const title = sessionTitle(titleSource(report));
@@ -575,6 +579,7 @@ function Detail({ data, recorded }: DetailProps) {
           <>
             <RecordedTrailing state={recorded.state} />
             <Section title="Fichier">
+              {activity === null ? null : <ShareImageAction activity={activity} title={title} date={`${capitalize(formatLongDate(session.localDate))} · ${timeRange(session)}`} />}
               <ExportTrackActions sessionId={session.id} />
             </Section>
           </>
@@ -687,10 +692,13 @@ function Detail({ data, recorded }: DetailProps) {
         <GearSheet
           open={choosingGear}
           title={gearLabel(session.sport)}
-          items={choosingGear ? gearUsage(db(), session.sport) : []}
+          items={gearItems}
           selected={session.gearId}
           onSelect={chooseGear}
           onCreate={createGear}
+          onSetWear={(item, wearMeters) => {
+            if (writeGearWear(item, wearMeters)) setGearVersion((version) => version + 1);
+          }}
           onClose={() => setChoosingGear(false)}
         />
       )}

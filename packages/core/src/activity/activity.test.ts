@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 import { ZodError } from "zod";
-import { painReport, session, sessionItem, sports, zoneTracking } from "@obnixe/schema";
+import { gear, painReport, session, sessionItem, sports, zoneTracking } from "@obnixe/schema";
 import type { EpochMs, Id, LocalDate } from "@obnixe/schema";
 import { createTestContext } from "../testing.ts";
 import type { TestContext } from "../testing.ts";
@@ -13,7 +13,7 @@ import type { QuantityField } from "./catalog.ts";
 import { parseGrade } from "../stats/indicators.ts";
 import { FutureSessionError, InvalidDurationError, NotFreeSportError, activeSeconds, lastSessionSuggestion, planFreeSession } from "./freeSession.ts";
 import type { FreeSessionDraft } from "./freeSession.ts";
-import { EmptyGearNameError, gearUsage, newGear } from "./gear.ts";
+import { EmptyGearNameError, gearUsage, gearWearAlert, InvalidGearWearError, isWorn, newGear, retireGear, setGearWear } from "./gear.ts";
 import { evaluateIndicators } from "./indicators.ts";
 import { lastPain, sessionPainMutations, trackedZones, zoneStatuses } from "./pain.ts";
 import { nextSlot } from "../rotation.ts";
@@ -212,6 +212,49 @@ describe("gear", () => {
     expect(usage?.meters).toBe(8000);
     expect(gearUsage(context.db, "bike")).toEqual([]);
     expect(() => newGear(context.env, "run", "  ")).toThrow(EmptyGearNameError);
+  });
+
+  it("signals the wear threshold once, with the activity that crosses it", () => {
+    const shoes = newGear(context.env, "run", "Pegasus 40");
+    write([shoes.mutation]);
+    const first = planFreeSession(context.db, context.env, draft({ gearId: shoes.gearId, values: { kind: "easy", distance: 12_000 } }));
+    write(first.mutations);
+    expect(gearWearAlert(context.db, first.sessionId)).toBeNull();
+    const stored = context.db.select().from(gear).where(eq(gear.id, shoes.gearId)).get();
+    if (stored === undefined) throw new Error("Gear not stored");
+    const threshold = setGearWear(stored, 20_000);
+    if (threshold === null) throw new Error("Threshold unchanged");
+    write([threshold]);
+    expect(setGearWear({ ...stored, wearMeters: 20_000 }, 20_000)).toBeNull();
+    context.advance(60_000);
+    const second = planFreeSession(context.db, context.env, draft({ gearId: shoes.gearId, values: { kind: "easy", distance: 6000 } }));
+    write(second.mutations);
+    expect(gearWearAlert(context.db, second.sessionId)).toBeNull();
+    context.advance(60_000);
+    const third = planFreeSession(context.db, context.env, draft({ gearId: shoes.gearId, values: { kind: "easy", distance: 2000 } }));
+    write(third.mutations);
+    const alert = gearWearAlert(context.db, third.sessionId);
+    expect(alert).toMatchObject({ meters: 20_000, wearMeters: 20_000, gear: { name: "Pegasus 40" } });
+    const [usage] = gearUsage(context.db, "run");
+    expect(usage === undefined ? false : isWorn(usage)).toBe(true);
+    context.advance(60_000);
+    const fourth = planFreeSession(context.db, context.env, draft({ gearId: shoes.gearId, values: { kind: "easy", distance: 5000 } }));
+    write(fourth.mutations);
+    expect(gearWearAlert(context.db, fourth.sessionId)).toBeNull();
+    write([retireGear(shoes.gearId, context.env.now())]);
+    expect(gearWearAlert(context.db, third.sessionId)).toBeNull();
+    expect(gearUsage(context.db, "run")).toEqual([]);
+  });
+
+  it("refuses thresholds outside the bounds", () => {
+    const shoes = newGear(context.env, "run", "Pegasus 40");
+    write([shoes.mutation]);
+    const stored = context.db.select().from(gear).where(eq(gear.id, shoes.gearId)).get();
+    if (stored === undefined) throw new Error("Gear not stored");
+    expect(() => setGearWear(stored, 0)).toThrow(InvalidGearWearError);
+    expect(() => setGearWear(stored, 700.5)).toThrow(InvalidGearWearError);
+    expect(setGearWear(stored, null)).toBeNull();
+    expect(() => write([{ kind: "update", table: "gear", key: shoes.gearId, patch: { wearMeters: -1 } }])).toThrow();
   });
 });
 

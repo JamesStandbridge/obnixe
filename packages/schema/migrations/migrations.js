@@ -9,6 +9,7 @@ import m0006 from './0006_weather_fetch.sql';
 import m0007 from './0007_segments.sql';
 import m0008 from './0008_routes.sql';
 import m0009 from './0009_guided_workouts.sql';
+import m0010 from './0010_gear_wear.sql';
 
   export default {
     journal,
@@ -22,7 +23,8 @@ m0005,
 m0006,
 m0007,
 m0008,
-m0009
+m0009,
+m0010
     }
   }
   

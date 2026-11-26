@@ -53,7 +53,7 @@ export const rowSchemas = {
   check_in: createInsertSchema(tables.checkIn).extend(occurred),
   pain_report: createInsertSchema(tables.painReport).extend({ ...occurred, note: optionalText }),
   zone_tracking: createInsertSchema(tables.zoneTracking),
-  gear: createInsertSchema(tables.gear).extend({ name: z.string().trim().min(1) }),
+  gear: createInsertSchema(tables.gear).extend({ name: z.string().trim().min(1), wearMeters: z.int().positive().nullable().optional() }),
   recording: createInsertSchema(tables.recording).extend({
     device: label,
     externalId: label.nullable().optional(),

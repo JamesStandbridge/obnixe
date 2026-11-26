@@ -5,9 +5,10 @@ import Animated from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { isShortActivity } from "@obnixe/core";
-import type { FinishReason, ResolvedProfile, ZoneProposal } from "@obnixe/core";
+import type { FinishReason, GearWearAlert, ResolvedProfile, ZoneProposal } from "@obnixe/core";
 import type { SportKey } from "@obnixe/schema";
 import { BottomPanel, FigureRow, Figure, bottomPanelHeight } from "@/features/activity/components";
+import { gearWearText } from "@/features/activity/gearWear";
 import { AttributionButton } from "@/features/maps/MapControls";
 import { MapSurface } from "@/features/maps/MapSurface";
 import type { MapOverlay } from "@/features/maps/surface";
@@ -246,13 +247,15 @@ interface SavedViewProps {
   readonly sport: SportKey;
   readonly lines: readonly RecordLine[];
   readonly proposal: ZoneProposal | null;
+  readonly wear: GearWearAlert | null;
+  readonly onRetireGear: () => void;
   readonly onCreateZone: () => void;
   readonly onDeclineZone: () => void;
   readonly onContinue: () => void;
 }
 
-/** `PR-004` records of the saved activity, and the `PRV-014` zone offer. */
-export function SavedView({ sport, lines, proposal, onCreateZone, onDeclineZone, onContinue }: SavedViewProps) {
+/** `PR-004` records of the saved activity, the `PRV-014` zone offer and the `INT-011` gear wear. */
+export function SavedView({ sport, lines, proposal, wear, onRetireGear, onCreateZone, onDeclineZone, onContinue }: SavedViewProps) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
@@ -297,6 +300,20 @@ export function SavedView({ sport, lines, proposal, onCreateZone, onDeclineZone,
               <View style={styles.zoneActions}>
                 <ControlButton label="Créer la zone" onPress={onCreateZone} />
                 <LinkButton label="Non merci" onPress={onDeclineZone} />
+              </View>
+            </BevelView>
+          </Section>
+        )}
+
+        {wear === null ? null : (
+          <Section title="Matériel">
+            <BevelView fill={colors.surface} cut={bevels.card} style={styles.zone}>
+              <Text variant="bodyStrong">{`Pense à remplacer ${wear.gear.name}`}</Text>
+              <Text variant="small" tone="secondary">
+                {gearWearText(wear)}
+              </Text>
+              <View style={styles.zoneActions}>
+                <ControlButton label="Retirer ce matériel" onPress={onRetireGear} />
               </View>
             </BevelView>
           </Section>
