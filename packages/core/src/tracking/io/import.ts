@@ -94,6 +94,11 @@ export class ReplacedSessionNotFoundError extends Error {
   }
 }
 
+/** `recording.device` of an imported file: the device it names, or its format. */
+export function fileDevice(activity: ImportedActivity): string {
+  return activity.device ?? formatDevices[activity.format];
+}
+
 const fileElevation = (source: ElevationSource): ElevationSource => (source === "none" ? "none" : "file");
 const fileCadence = (source: CadenceSource): CadenceSource => (source === "none" ? "none" : "file");
 const fileSensor = (source: SensorSource): SensorSource => (source === "none" ? "none" : "file");
@@ -294,29 +299,35 @@ function hasSamples(track: Track): boolean {
 }
 
 /**
+ * Frees the file's `external_id` for a new recording: a trashed session or the replaced one gives it up. Throws
+ * `AlreadyImportedError` when a live session holds the file and is not the one replaced.
+ */
+export function externalIdRelease(db: ObnixeDatabase, externalId: string, replaceSessionId: Id | null): readonly Mutation[] {
+  const holder = db
+    .select({ recordingId: recording.id, sessionId: recording.sessionId, deletedAt: session.deletedAt })
+    .from(recording)
+    .innerJoin(session, eq(session.id, recording.sessionId))
+    .where(eq(recording.externalId, externalId))
+    .get();
+  if (holder === undefined) return [];
+  if (holder.deletedAt === null && holder.sessionId !== replaceSessionId) throw new AlreadyImportedError(holder.sessionId);
+  return [{ kind: "update", table: "recording", key: holder.recordingId, patch: { externalId: null } }];
+}
+
+/**
  * The changeset of an import (`IO-010`), author `import`: a `completed` session, its `recording` with `source = 'import'`, its
  * laps, and the trace to write first. A replaced session goes to the trash; a trashed session holding the same file gives up
- * its `external_id`. Throws `AlreadyImportedError` when a live session holds the file and is not the one replaced.
+ * its `external_id` (`externalIdRelease`).
  */
 export function planImport(db: ObnixeDatabase, env: Environment, draft: ImportDraft): ImportPlan {
   const { computation, timeZone, replaceSessionId } = draft;
   const { activity, summary } = computation;
-  const mutations: Mutation[] = [];
   const now = env.now();
   if (replaceSessionId !== null) {
     const replaced = db.select({ id: session.id }).from(session).where(and(eq(session.id, replaceSessionId), isNull(session.deletedAt))).get();
     if (replaced === undefined) throw new ReplacedSessionNotFoundError(replaceSessionId);
   }
-  const holder = db
-    .select({ recordingId: recording.id, sessionId: recording.sessionId, deletedAt: session.deletedAt })
-    .from(recording)
-    .innerJoin(session, eq(session.id, recording.sessionId))
-    .where(eq(recording.externalId, activity.externalId))
-    .get();
-  if (holder !== undefined) {
-    if (holder.deletedAt === null && holder.sessionId !== replaceSessionId) throw new AlreadyImportedError(holder.sessionId);
-    mutations.push({ kind: "update", table: "recording", key: holder.recordingId, patch: { externalId: null } });
-  }
+  const mutations: Mutation[] = [...externalIdRelease(db, activity.externalId, replaceSessionId)];
   if (replaceSessionId !== null) mutations.push(trashMutation("session", replaceSessionId, now));
 
   const sessionId = env.newId();
@@ -324,7 +335,7 @@ export function planImport(db: ObnixeDatabase, env: Environment, draft: ImportDr
   const bytes = hasSamples(computation.track) ? encodeTrack(computation.track) : null;
   const track = bytes === null ? null : { path: trackFilePath(recordingId), bytes, sha256: trackDigest(bytes) };
   const energy = energyOf(db, computation);
-  const device = activity.device ?? formatDevices[activity.format];
+  const device = fileDevice(activity);
   mutations.push(
     {
       kind: "insert",

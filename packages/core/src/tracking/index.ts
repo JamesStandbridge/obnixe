@@ -11,6 +11,7 @@ export * from "./io/export.ts";
 export * from "./io/fit.ts";
 export * from "./io/gpx.ts";
 export * from "./io/import.ts";
+export * from "./io/merge.ts";
 export * from "./io/sports.ts";
 export * from "./io/tcx.ts";
 export * from "./io/zip.ts";
