@@ -1,7 +1,9 @@
-import { effortMeters, isAscentEffort } from "@obnixe/core";
+import { isAscentEffort } from "@obnixe/core";
 import type { RecordingSummary, ResolvedProfile, TrackDetails } from "@obnixe/core";
 import type { BestEffortKey, MetricKey } from "@obnixe/schema";
+import { effortLabel } from "@/features/recording/records";
 import type { FigureText } from "@/features/stats/format";
+import { capitalize } from "@/format/labels";
 import { formatLongClock } from "@/format/durations";
 import { formatInteger, formatNumber } from "@/format/numbers";
 import type { StatValue } from "@/ui/Stats";
@@ -130,19 +132,9 @@ export function summaryFigures(input: SummaryInput): readonly SummaryFigure[] {
   });
 }
 
-const namedDistances: ReadonlyMap<number, string> = new Map([
-  [1609.344, "1 mile"],
-  [21097.5, "Semi-marathon"],
-  [42195, "Marathon"],
-  [160934, "100 miles"],
-]);
-
-export function effortName(effort: BestEffortKey): string {
-  if (isAscentEffort(effort)) return "D+ en 1 h";
-  const distance = effortMeters(effort) ?? 0;
-  const named = namedDistances.get(distance);
-  if (named !== undefined) return named;
-  return distance < 1000 ? `${formatInteger(distance)} m` : `${formatNumber(distance / 1000, 1)} km`;
+/** A best effort as a row or board title: « 10 km », « Semi-marathon », « D+ en 1 h ». */
+export function effortTitle(effort: BestEffortKey): string {
+  return capitalize(effortLabel(effort));
 }
 
 export interface EffortFigureInput {

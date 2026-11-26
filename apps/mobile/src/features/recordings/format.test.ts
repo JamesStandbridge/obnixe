@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { distanceText, effortFigure, effortName, paceSeconds, rateFigure, speedFigure } from "@/features/recordings/format";
+import { distanceText, effortFigure, effortTitle, paceSeconds, rateFigure, speedFigure } from "@/features/recordings/format";
 
 describe("recorded activity figures", () => {
   it("writes the pace per km or per 100 m, the speed in km/h", () => {
@@ -17,10 +17,10 @@ describe("recorded activity figures", () => {
   });
 
   it("names the best efforts and shows their time or ascent", () => {
-    expect(effortName("run:distance:21097.5")).toBe("Semi-marathon");
-    expect(effortName("run:distance:400")).toBe("400 m");
-    expect(effortName("run:distance:5000")).toBe("5 km");
-    expect(effortName("trail:ascent_1h")).toBe("D+ en 1 h");
+    expect(effortTitle("run:distance:21097.5")).toBe("Semi-marathon");
+    expect(effortTitle("run:distance:400")).toBe("400 m");
+    expect(effortTitle("run:distance:5000")).toBe("5 km");
+    expect(effortTitle("trail:ascent_1h")).toBe("D+ en 1 h");
     expect(effortFigure({ effort: "run:distance:5000", elapsedMs: 1_234_000, ascentMm: null })).toEqual({ value: "20:34", unit: "" });
     expect(effortFigure({ effort: "trail:ascent_1h", elapsedMs: 3_600_000, ascentMm: 812_400 })).toEqual({ value: "812", unit: "m" });
   });

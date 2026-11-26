@@ -1,7 +1,8 @@
 import { and, eq, inArray, isNull, ne } from "drizzle-orm";
 import { bestEffort, session } from "@obnixe/schema";
-import type { BestEffort, BestEffortKey, EpochMs, Id } from "@obnixe/schema";
+import type { BestEffortKey, EpochMs, Id } from "@obnixe/schema";
 import type { ObnixeDatabase } from "../database.ts";
+import { effortMeters, effortScore } from "./records.ts";
 
 export type AnnouncedRank = 1 | 2 | 3;
 
@@ -24,17 +25,9 @@ interface Ranked extends EffortResult {
   readonly startedAt: EpochMs;
 }
 
-const isAscentEffort = (effort: BestEffortKey): boolean => effort.endsWith(":ascent_1h");
-
-/** Higher is better: the ascent of an `ascent_1h` effort, the opposite of the time of a distance effort. */
-function scoreOf(row: Pick<BestEffort, "effort" | "elapsedMs" | "ascentMm">): number {
-  return isAscentEffort(row.effort) ? (row.ascentMm ?? 0) : -row.elapsedMs;
-}
-
 /** Distance efforts by increasing distance, the ascent window last. */
 function effortOrder(effort: BestEffortKey): number {
-  if (isAscentEffort(effort)) return Number.POSITIVE_INFINITY;
-  return Number(effort.split(":")[2]);
+  return effortMeters(effort) ?? Number.POSITIVE_INFINITY;
 }
 
 /**
@@ -60,11 +53,11 @@ export function recordAnnouncements(db: ObnixeDatabase, sessionId: Id): readonly
   return own
     .flatMap((row): RecordAnnouncement[] => {
       const rivals = byEffort.get(row.effort) ?? [];
-      const score = scoreOf(row);
-      const ahead = rivals.filter((rival) => scoreOf(rival) > score || (scoreOf(rival) === score && rival.startedAt <= row.startedAt)).length;
+      const score = effortScore(row);
+      const ahead = rivals.filter((rival) => effortScore(rival) > score || (effortScore(rival) === score && rival.startedAt <= row.startedAt)).length;
       const rank = ahead + 1;
       if (rank !== 1 && rank !== 2 && rank !== 3) return [];
-      const best = rivals.reduce<Ranked | null>((leader, rival) => (leader === null || scoreOf(rival) > scoreOf(leader) || (scoreOf(rival) === scoreOf(leader) && rival.startedAt < leader.startedAt) ? rival : leader), null);
+      const best = rivals.reduce<Ranked | null>((leader, rival) => (leader === null || effortScore(rival) > effortScore(leader) || (effortScore(rival) === effortScore(leader) && rival.startedAt < leader.startedAt) ? rival : leader), null);
       return [{ effort: row.effort, rank, elapsedMs: row.elapsedMs, ascentMm: row.ascentMm, best: best === null ? null : { elapsedMs: best.elapsedMs, ascentMm: best.ascentMm } }];
     })
     .sort((left, right) => effortOrder(left.effort) - effortOrder(right.effort));

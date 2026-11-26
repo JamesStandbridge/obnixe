@@ -2,7 +2,7 @@ import { StyleSheet, View } from "react-native";
 import { router } from "expo-router";
 import type { EffortRank, HeartRateZone, HeartRateZoneReport, SplitSummary } from "@obnixe/core";
 import type { BestEffortKey, CadenceSource, ElevationSource, EnergyMethod, Recording, SensorSource } from "@obnixe/schema";
-import { distanceText, effortFigure, effortName, elapsedText, paceFigure, paceSeconds, rateFigure } from "@/features/recordings/format";
+import { distanceText, effortFigure, effortTitle, elapsedText, paceFigure, paceSeconds, rateFigure } from "@/features/recordings/format";
 import { trackPalettes } from "@/features/recordings/palette";
 import type { RecordedActivity } from "@/features/recordings/useRecordedActivity";
 import { formatInteger, formatNumber } from "@/format/numbers";
@@ -149,7 +149,7 @@ export function EffortsSection({ activity, ranks, rebuilding }: EffortsSectionPr
         return (
           <Row
             key={effort.effort}
-            title={effortName(effort.effort)}
+            title={effortTitle(effort.effort)}
             detail={`à ${elapsedText(effort.startOffsetMs)} du départ`}
             value={`${figure.value}${figure.unit === "" ? "" : ` ${figure.unit}`}`}
             trailing={badge === null ? undefined : <Tag label={badge} />}

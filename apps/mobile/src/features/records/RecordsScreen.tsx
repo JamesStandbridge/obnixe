@@ -9,7 +9,7 @@ import { sportKeys, sports } from "@obnixe/schema";
 import type { Id, LocalDate, SportKey } from "@obnixe/schema";
 import { db } from "@/data/database";
 import { BackButton } from "@/features/data/parts";
-import { distanceText, effortFigure, effortName, elapsedText, speedFigure } from "@/features/recordings/format";
+import { distanceText, effortFigure, effortTitle, elapsedText, speedFigure } from "@/features/recordings/format";
 import { useLiveValue, useLocalNow } from "@/features/stats/live";
 import { FilterChips } from "@/features/stats/parts";
 import type { ChipOption } from "@/features/stats/parts";
@@ -156,7 +156,7 @@ function BoardCard({ board, year }: BoardCardProps) {
       <Pressable accessibilityRole="button" aria-expanded={open} onPress={() => setOpen(!open)} style={styles.cardHead}>
         <View style={styles.cardTitle}>
           <Text variant="eyebrow" tone="secondary">
-            {effortName(board.effort)}
+            {effortTitle(board.effort)}
           </Text>
           <Text style={styles.best}>{entryValue(best)}</Text>
           <Text variant="small" tone="secondary">
@@ -174,7 +174,7 @@ function BoardCard({ board, year }: BoardCardProps) {
             <Row
               key={`${entry.sessionId}${entry.effort}`}
               leading={<Text style={[styles.rank, { color: index === 0 ? colors.mark : colors.text2 }]}>{index + 1}</Text>}
-              title={entry.title ?? effortName(entry.effort)}
+              title={entry.title ?? effortTitle(entry.effort)}
               detail={dateText(entry.localDate)}
               value={entryValue(entry)}
               onPress={() => openSession(entry.sessionId)}
