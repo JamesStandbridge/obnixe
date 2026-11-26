@@ -19,6 +19,7 @@ import {
   planPublish,
   planRestoreExercise,
   programLimits,
+  resolveProfile,
   validateDraft,
 } from "@obnixe/core";
 import type { DraftItem, DraftSlot, ProgramDraft, PublishedBase, LatestZonePain } from "@obnixe/core";
@@ -39,6 +40,8 @@ import { ItemSheet, newItem, withExercise } from "@/features/programs/editor/Ite
 import { SlotList } from "@/features/programs/editor/SlotList";
 import type { ItemMarks } from "@/features/programs/editor/SlotList";
 import { AddSlotSheet, NewVariantSheet, SlotSheet, TargetPadSheet } from "@/features/programs/editor/SlotSheets";
+import { WorkoutSheet } from "@/features/programs/editor/WorkoutSheet";
+import { defaultWorkout } from "@/features/workouts/plan";
 import { ControlButton, LinkButton, PrimaryButton } from "@/ui/Button";
 import { Stepper } from "@/ui/Controls";
 import { Choices, IconButton } from "@/ui/Inputs";
@@ -63,6 +66,7 @@ type EditorSheet =
   | { readonly kind: "picker"; readonly purpose: ItemPurpose; readonly query: string }
   | { readonly kind: "exercise"; readonly exerciseId: Id | null; readonly name: string; readonly purpose: ItemPurpose; readonly query: string }
   | { readonly kind: "item"; readonly slotId: Id; readonly variantId: Id; readonly item: DraftItem; readonly isNew: boolean }
+  | { readonly kind: "workout"; readonly slotId: Id; readonly variantId: Id }
   | { readonly kind: "discard" };
 
 interface EditorBase {
@@ -103,6 +107,14 @@ function loadBase(id: string): Loaded {
       nextSlot: row.status === "active" ? (nextSlot(database)?.slot.lineageId ?? null) : null,
     },
   };
+}
+
+function nextGuidedName(slot: DraftSlot): string {
+  const used = new Set(slot.variants.map((variant) => variant.name.trim()));
+  if (!used.has("Fractionné")) return "Fractionné";
+  let index = 2;
+  while (used.has(`Fractionné ${index}`)) index += 1;
+  return `Fractionné ${index}`;
 }
 
 function nextStrengthName(draft: ProgramDraft): string {
@@ -255,11 +267,19 @@ function Editor({ base, onReload }: EditorProps) {
       targetDurationSeconds: null,
       targetEffort: null,
       targetValues: {},
-      variants: strength ? [{ lineageId: environment.newId(), name: "Salle", items: [] }] : [],
+      variants: strength ? [{ lineageId: environment.newId(), name: "Salle", items: [], workout: null }] : [],
     };
     dispatch({ type: "add_slot", slot });
     setOpenSlot(lineageId);
     close();
+  };
+
+  const addGuided = (slot: DraftSlot): void => {
+    const profile = resolveProfile(slot.sport, slot.targetValues);
+    if (profile === null) return;
+    const variantId = environment.newId();
+    dispatch({ type: "add_variant", slotId: slot.lineageId, variant: { lineageId: variantId, name: nextGuidedName(slot), items: [], workout: defaultWorkout(profile.primary) } });
+    show({ kind: "workout", slotId: slot.lineageId, variantId });
   };
 
   const pickExercise = (purpose: ItemPurpose, picked: Exercise): void => {
@@ -328,6 +348,8 @@ function Editor({ base, onReload }: EditorProps) {
             onPad={(slotId, field) => show({ kind: "pad", slotId, field })}
             onItem={(slot, variant, item) => show({ kind: "item", slotId: slot.lineageId, variantId: variant.lineageId, item, isNew: false })}
             onAddItem={(slot, variant) => show({ kind: "picker", purpose: { slotId: slot.lineageId, variantId: variant.lineageId, item: null, isNew: true }, query: "" })}
+            onWorkout={(slot, variant) => show({ kind: "workout", slotId: slot.lineageId, variantId: variant.lineageId })}
+            onAddGuided={addGuided}
           />
           <ControlButton label="Ajouter à la rotation" onPress={() => show({ kind: "add_slot" })} style={styles.add} />
         </Section>
@@ -447,7 +469,7 @@ function EditorSheets(props: EditorSheetsProps) {
             onCreate={(name, copy) => {
               const variantId = environment.newId();
               const items = copy && source !== null ? copyVariantItems(source, environment.newId) : [];
-              dispatch({ type: "add_variant", slotId: slot.lineageId, variant: { lineageId: variantId, name, items } });
+              dispatch({ type: "add_variant", slotId: slot.lineageId, variant: { lineageId: variantId, name, items, workout: null } });
               props.onCreatedVariant(slot.lineageId, variantId);
               close();
             }}
@@ -546,6 +568,25 @@ function EditorSheets(props: EditorSheetsProps) {
               dispatch({ type: "remove_item", slotId: slot.lineageId, variantId: variant.lineageId, itemId: sheet.item.lineageId });
               close();
             }}
+          />
+        </Sheet>
+      );
+    }
+    case "workout": {
+      const slot = findSlot(sheet.slotId);
+      const variant = slot?.variants.find((entry) => entry.lineageId === sheet.variantId);
+      if (slot === null || variant === undefined) return null;
+      return (
+        <Sheet open={open} title={variant.name.trim() === "" ? "Séance guidée" : variant.name} context={slot.name} onClose={close}>
+          <WorkoutSheet
+            slot={slot}
+            variant={variant}
+            dispatch={dispatch}
+            onRemove={() => {
+              dispatch({ type: "remove_variant", slotId: slot.lineageId, variantId: variant.lineageId });
+              close();
+            }}
+            onDone={close}
           />
         </Sheet>
       );

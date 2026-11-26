@@ -6,10 +6,25 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Redirect, useFocusEffect, useRouter } from "expo-router";
 import { impactAsync, ImpactFeedbackStyle } from "expo-haptics";
 import { useLiveQuery } from "drizzle-orm/expo-sqlite";
-import { distanceToRouteStart, finishOpenSessionMutations, gearUsage, isWorn, newGear, openSession, primaryChoice, recordingSettingsMutation, recordingSettingsOf, resolveProfile, signalLevelAccuracy } from "@obnixe/core";
+import {
+  distanceToRouteStart,
+  finishOpenSessionMutations,
+  gearUsage,
+  isWorn,
+  lastWorkoutOf,
+  newGear,
+  openSession,
+  primaryChoice,
+  recentSpeedOf,
+  recordingSettingsMutation,
+  recordingSettingsOf,
+  resolveProfile,
+  signalLevelAccuracy,
+  workoutEstimate,
+} from "@obnixe/core";
 import type { LiveSignal, ResolvedProfile } from "@obnixe/core";
-import { sportPreference, sports } from "@obnixe/schema";
-import type { FieldValues, Id, Readout, SportKey } from "@obnixe/schema";
+import { sportPreference, sports, workoutPlanSchemaFor } from "@obnixe/schema";
+import type { FieldValues, Id, Readout, SportKey, WorkoutPlan } from "@obnixe/schema";
 import { db, environment } from "@/data/database";
 import { updateSettings, useRecordingDisplay } from "@/data/settings";
 import { write } from "@/data/write";
@@ -21,6 +36,7 @@ import { writeGearWear } from "@/features/activity/gearWear";
 import type { GeoPoint } from "@/features/maps/tiles";
 import { signalWord, SignalBars } from "@/features/recording/LiveParts";
 import { HeartRateCard } from "@/features/recording/HeartRateParts";
+import { QuickIntervalsSheet } from "@/features/recording/QuickIntervalsSheet";
 import { defaultGear, hasLiveRecording, lastRecordedSport, recordableSports, slotStartOf } from "@/features/recording/queries";
 import { liveReadout, storedReadout } from "@/features/recording/readout";
 import { ReadoutEditor } from "@/features/recording/ReadoutEditor";
@@ -35,6 +51,8 @@ import { ensureActivityPermission, ensureNotificationPermission, locationAccess,
 import type { LocationAccess } from "@/features/tracking/permissions";
 import { recorder, recordingAvailable, useRecorderView } from "@/features/tracking/recorder";
 import type { RecorderFailure } from "@/features/tracking/recorderHost";
+import { estimateText, workoutText } from "@/features/workouts/format";
+import { defaultWorkout } from "@/features/workouts/plan";
 import { deviceTimeZone } from "@/format/dates";
 import { ControlButton, LinkButton, PrimaryButton } from "@/ui/Button";
 import { Icon } from "@/ui/icons/Icon";
@@ -226,7 +244,18 @@ interface PreparationProps extends PrepareScreenProps {
   readonly onLocationLost: () => void;
 }
 
-type PrepareSheet = { readonly kind: "none" } | { readonly kind: "catalogue" } | { readonly kind: "gear" } | { readonly kind: "route" } | { readonly kind: "open"; readonly sessionId: Id };
+type PrepareSheet =
+  | { readonly kind: "none" }
+  | { readonly kind: "catalogue" }
+  | { readonly kind: "gear" }
+  | { readonly kind: "route" }
+  | { readonly kind: "quick"; readonly initial: WorkoutPlan; readonly opening: number }
+  | { readonly kind: "open"; readonly sessionId: Id };
+
+/** Whether the plan can guide a recording of the profile (`WKT-002`). */
+function fits(plan: WorkoutPlan, profile: ResolvedProfile | null): boolean {
+  return profile !== null && workoutPlanSchemaFor(profile.primary).safeParse(plan).success;
+}
 
 function Preparation({ sport: requested, kind: requestedKind, slotId, variantId, routeId: requestedRoute, signal, position, onLocationLost }: PreparationProps) {
   const { colors } = useTheme();
@@ -252,6 +281,8 @@ function Preparation({ sport: requested, kind: requestedKind, slotId, variantId,
   const followed = chosenRoute !== null && chosenRoute.deletedAt === null && chosenRoute.sport === sport ? chosenRoute : null;
   const [counting, setCounting] = useState(false);
   const [starting, setStarting] = useState(false);
+  const [programGuided, setProgramGuided] = useState(true);
+  const [quick, setQuick] = useState<WorkoutPlan | null>(null);
   const launched = useRef(false);
 
   const definition = sports[sport];
@@ -266,6 +297,10 @@ function Preparation({ sport: requested, kind: requestedKind, slotId, variantId,
   const choice = primaryChoice(definition);
   const slotApplies = start !== null && start.slot.sport === sport;
   const goodFix = signal !== null && signal.accuracy !== null && signal.accuracy <= signalLevelAccuracy.fair;
+  const referenceSpeedMmS = useMemo(() => (profile === null ? null : recentSpeedOf(db(), sport)), [profile === null, sport]);
+  const programWorkout = slotApplies && start?.workout != null && fits(start.workout, profile) ? start.workout : null;
+  const quickWorkout = quick !== null && fits(quick, profile) ? quick : null;
+  const workout = quickWorkout ?? (programGuided ? programWorkout : null);
 
   useFocusEffect(
     useCallback(() => {
@@ -289,6 +324,7 @@ function Preparation({ sport: requested, kind: requestedKind, slotId, variantId,
     setSheet({ kind: "none" });
     if (next === sport) return;
     const nextValues = start !== null && start.slot.sport === next ? start.values : {};
+    if (quick !== null && !fits(quick, resolveProfile(next, nextValues))) setQuick(null);
     setSport(next);
     setValues(nextValues);
     setGearId(defaultGear(next, typeof nextValues.kind === "string" ? nextValues.kind : null));
@@ -347,7 +383,7 @@ function Preparation({ sport: requested, kind: requestedKind, slotId, variantId,
     if (profile === null) return;
     launched.current = true;
     const outcome = await recorder.start({
-      request: { sport, values, gearId, slot: slotApplies && start !== null ? { slotId: start.slot.id, variantId: start.variantId, countsInRotation: true } : null, timeZone: deviceTimeZone(), routeId: followed?.id ?? null, workout: null },
+      request: { sport, values, gearId, slot: slotApplies && start !== null ? { slotId: start.slot.id, variantId: start.variantId, countsInRotation: true } : null, timeZone: deviceTimeZone(), routeId: followed?.id ?? null, workout },
       autoPause: autoPauseOn,
       power: "normal",
       replay: null,
@@ -454,6 +490,22 @@ function Preparation({ sport: requested, kind: requestedKind, slotId, variantId,
                 value={followed === null ? "Aucun" : position === null ? followed.name : `${followed.name} · ${startDistanceText(distanceToRouteStart(followed, position))}`}
                 onPress={() => setSheet({ kind: "route" })}
               />
+              {programWorkout === null ? null : (
+                <SwitchRow
+                  title="Séance guidée"
+                  detail={guidedDetail(programWorkout, referenceSpeedMmS)}
+                  value={programGuided && quickWorkout === null}
+                  onChange={(value) => {
+                    setProgramGuided(value);
+                    if (value) setQuick(null);
+                  }}
+                />
+              )}
+              <DetailRow
+                title="Fractionné rapide"
+                value={quickWorkout === null ? null : (estimateText(workoutEstimate(quickWorkout, referenceSpeedMmS)) ?? workoutText(quickWorkout))}
+                onPress={() => setSheet({ kind: "quick", initial: quickWorkout ?? quickStart(sport, profile), opening: Date.now() })}
+              />
               <SwitchRow title="Pause automatique" detail="Pour cette sortie" value={autoPauseOn} onChange={(value) => setAutoPause({ sport, value })} />
               <SwitchRow title="Décompte de 3 secondes" detail="Avant le départ" value={display.countdown} onChange={(value) => updateSettings({ countdown: value })} />
               <SwitchRow title="Garder l'écran allumé" detail="Pendant l'enregistrement" value={display.keepScreenOn} onChange={(value) => updateSettings({ keepScreenOn: value })} />
@@ -519,6 +571,25 @@ function Preparation({ sport: requested, kind: requestedKind, slotId, variantId,
         }}
         onClose={() => setSheet({ kind: "none" })}
       />
+      {profile === null ? null : (
+        <QuickIntervalsSheet
+          open={sheet.kind === "quick"}
+          opening={sheet.kind === "quick" ? sheet.opening : 0}
+          initial={sheet.kind === "quick" ? sheet.initial : defaultWorkout(profile.primary)}
+          measure={profile.primary}
+          referenceSpeedMmS={referenceSpeedMmS}
+          chosen={quickWorkout !== null}
+          onUse={(plan) => {
+            setQuick(plan);
+            setSheet({ kind: "none" });
+          }}
+          onClear={() => {
+            setQuick(null);
+            setSheet({ kind: "none" });
+          }}
+          onClose={() => setSheet({ kind: "none" })}
+        />
+      )}
       <Sheet open={sheet.kind === "open"} title="Une séance est déjà ouverte" context="Une seule activité à la fois" onClose={() => setSheet({ kind: "none" })}>
         <View>
           <MenuItem
@@ -534,6 +605,17 @@ function Preparation({ sport: requested, kind: requestedKind, slotId, variantId,
       </Sheet>
     </View>
   );
+}
+
+function guidedDetail(plan: WorkoutPlan, referenceSpeedMmS: number | null): string {
+  const estimate = estimateText(workoutEstimate(plan, referenceSpeedMmS));
+  return estimate === null ? workoutText(plan) : `${estimate} · ${workoutText(plan)}`;
+}
+
+/** `WKT-008`: the last guided workout of the sport when it still fits, else the default intervals. */
+function quickStart(sport: SportKey, profile: ResolvedProfile): WorkoutPlan {
+  const last = lastWorkoutOf(db(), sport);
+  return last !== null && fits(last, profile) ? last : defaultWorkout(profile.primary);
 }
 
 interface IndoorNoticeProps {

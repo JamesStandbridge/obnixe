@@ -20,6 +20,8 @@ data class NotificationState(val sessionId: String, val content: TrackerNotifica
 object TrackerNotifications {
   const val notificationId = 7432
   private const val channelId = "obnixe-tracker"
+  private val workColor = 0xFFE5ED32.toInt()
+  private val restColor = 0xFF828B94.toInt()
 
   fun build(context: Context, state: NotificationState): Notification {
     val manager = context.getSystemService(NotificationManager::class.java)
@@ -46,10 +48,17 @@ object TrackerNotifications {
     } else {
       if (timerBaseAt != null) builder.setWhen(timerBaseAt).setUsesChronometer(true).setShowWhen(true) else builder.setShowWhen(false)
       builder.addAction(action(context, TrackerService.actionPause, R.drawable.obnixe_tracker_pause, "Pause"))
-        .addAction(action(context, TrackerService.actionLap, R.drawable.obnixe_tracker_lap, "Tour"))
+        .addAction(action(context, TrackerService.actionLap, R.drawable.obnixe_tracker_lap, if (content.progress == null) "Tour" else "Étape suivante"))
     }
+    content.progress?.let { builder.setStyle(progressStyle(it)) }
     return builder.build()
   }
+
+  /** `REC-074`: the steps of a guided workout as `ProgressStyle` segments, the work steps in the accent color. */
+  private fun progressStyle(progress: TrackerNotificationProgress): NotificationCompat.ProgressStyle =
+    NotificationCompat.ProgressStyle()
+      .setProgressSegments(progress.segments.map { NotificationCompat.ProgressStyle.Segment(it.length).setColor(if (it.highlighted) workColor else restColor) })
+      .setProgress(progress.value)
 
   private fun action(context: Context, action: String, icon: Int, title: String): NotificationCompat.Action {
     val intent = Intent(context, TrackerService::class.java).setAction(action)

@@ -326,6 +326,7 @@ function versionTree(db: ObnixeDatabase, version: ProgramVersion): Json {
         variants: variants.map((variant) => ({
           lineageId: variant.lineageId,
           name: variant.name,
+          workout: variant.workout,
           items: db
             .select({ item: programItem, name: exercise.name, measure: exercise.measure })
             .from(programItem)

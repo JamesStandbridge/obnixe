@@ -18,11 +18,13 @@ import {
   mondayOf,
   nextSlot,
   openSession,
+  recentSpeedOf,
   resumeDeadlineDate,
   todayNotices,
   variantPlan,
   weekdayIndex,
   weekSummary,
+  workoutEstimate,
 } from "@obnixe/core";
 import type { NextSlot, OpenSession, PainCarry, PlanItem, SessionSuggestion, TodayNotices } from "@obnixe/core";
 import { programItem, programVariant, settings, sportPreference, sports } from "@obnixe/schema";
@@ -59,6 +61,7 @@ import { WeekHero } from "@/features/stats/WeekStrip";
 import { lastRecordedSport, recordableSports, slotRecordable } from "@/features/recording/queries";
 import { LiveRecordingStats, StartRecordingCard } from "@/features/recording/TodayCards";
 import { recordingAvailable, useRecordingSessionId } from "@/features/tracking/recorder";
+import { estimateText, workoutText } from "@/features/workouts/format";
 
 const bottomPanelHeight = 84;
 const heroHeight = 148;
@@ -552,6 +555,9 @@ function NextCard({ next, variantId, onVariant, notices, today, onOpenNotices }:
   const stopZones = new Set(notices.pains.filter((pain) => pain.level === "stop").map((pain) => pain.zone));
   const affected = (pain: PainCarry): boolean => plan.some((item) => item.zones.includes(pain.zone));
   const others = otherPoints(notices, today, notices.pains.length > 0);
+  const referenceSpeedMmS = useMemo(() => recentSpeedOf(db(), next.slot.sport), [next.slot.sport]);
+  const workout = variant?.workout ?? null;
+  const workoutSummary = workout === null ? null : [estimateText(workoutEstimate(workout, referenceSpeedMmS)), workoutText(workout)].filter((part): part is string => part !== null).join("\n");
 
   return (
     <HeroCard sport={next.slot.sport} eyebrow="Prochaine séance" title={variant === null ? next.slot.name : `${next.slot.name} · ${variant.name}`} detail={next.current.version.name}>
@@ -561,6 +567,11 @@ function NextCard({ next, variantId, onVariant, notices, today, onOpenNotices }:
           <Segmented<Id> options={next.variants.map((item) => ({ value: item.id, label: item.name }))} value={variantId} onChange={onVariant} />
         </View>
       ) : null}
+      {workoutSummary === null ? null : (
+        <Text variant="small" tone="secondary" style={styles.workout}>
+          {workoutSummary}
+        </Text>
+      )}
 
       {notices.pains.length === 0 && others.count === 0 ? null : (
         <View style={styles.notices}>
@@ -808,6 +819,7 @@ const styles = StyleSheet.create({
   liveDot: { width: 8, height: 8, borderRadius: 4 },
   cardTitle: { marginTop: 10, fontFamily: fonts.brand800, fontSize: 26, lineHeight: 29, letterSpacing: -0.5 },
   variants: { marginTop: 12 },
+  workout: { marginTop: 10 },
   notices: { marginTop: 12, gap: 2, borderRadius: radii.control, overflow: "hidden" },
   notice: { flexDirection: "row", alignItems: "center", gap: 10, minHeight: 52, paddingVertical: 6, paddingLeft: 12, paddingRight: 4 },
   noticeText: { flex: 1, minWidth: 0 },

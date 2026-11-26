@@ -98,7 +98,7 @@ function versionMutations(header: VersionHeader, draft: ProgramDraft, newId: () 
     });
     slot.variants.forEach((variant, variantPosition) => {
       const variantId = newId();
-      mutations.push({ kind: "insert", table: "program_variant", row: { id: variantId, slotId, lineageId: variant.lineageId, position: variantPosition, name: variant.name.trim() } });
+      mutations.push({ kind: "insert", table: "program_variant", row: { id: variantId, slotId, lineageId: variant.lineageId, position: variantPosition, name: variant.name.trim(), workout: variant.workout } });
       variant.items.forEach((item, itemPosition) => {
         mutations.push({ kind: "insert", table: "program_item", row: { id: newId(), variantId, position: itemPosition, ...itemColumns(item) } });
       });

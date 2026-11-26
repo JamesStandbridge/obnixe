@@ -12,6 +12,7 @@ import { SwitchRow } from "@/features/activity/components";
 import { LiveMap } from "@/features/maps/LiveMap";
 import { rejoinText } from "@/features/recording/alerts";
 import { ElevationPage } from "@/features/recording/ElevationPage";
+import { GuidedPanel, StepsPage } from "@/features/recording/GuidedPanel";
 import { LiveControls } from "@/features/recording/LiveControls";
 import { Chronometer, MetricTile, SignalBars } from "@/features/recording/LiveParts";
 import { lapFigures, metricCaptions, metricText } from "@/features/recording/metrics";
@@ -37,7 +38,7 @@ import { fonts, layout, radii } from "@/ui/tokens";
 import { useKeepAwakeWhile } from "@/ui/useKeepAwakeWhile";
 import type { TrackerIssueKind } from "../../../modules/obnixe-tracker";
 
-type Page = "metrics" | "laps" | "profile" | "map";
+type Page = "metrics" | "steps" | "laps" | "profile" | "map";
 
 interface PageTab {
   readonly key: Page;
@@ -45,6 +46,7 @@ interface PageTab {
 }
 
 const metricsTab: PageTab = { key: "metrics", label: "Données" };
+const stepsTab: PageTab = { key: "steps", label: "Étapes" };
 const lapsTab: PageTab = { key: "laps", label: "Tours" };
 const profileTab: PageTab = { key: "profile", label: "Profil" };
 const mapTab: PageTab = { key: "map", label: "Carte" };
@@ -71,21 +73,22 @@ export function LiveScreen({ recording }: LiveScreenProps) {
   const [confirmStop, setConfirmStop] = useState(false);
   const [controlsHeight, setControlsHeight] = useState(120);
 
-  const { sessionId, profile, state, live, laps, clock } = recording;
+  const { sessionId, profile, state, live, laps, clock, workout } = recording;
+  const guided = workout !== null;
   const phase = state.phase;
   const readout = useMemo(() => liveReadout(profile, recording.settings), [profile, recording.settings]);
   const route = recording.route;
   const routeProfile = route === null || route.profile.length < 2 ? null : route.profile;
   const pages = useMemo(
-    (): readonly PageTab[] => (profile.metrics.includes("ascent") || routeProfile !== null ? [metricsTab, lapsTab, profileTab, mapTab] : [metricsTab, lapsTab, mapTab]),
-    [profile, routeProfile],
+    (): readonly PageTab[] => [metricsTab, ...(guided ? [stepsTab] : []), lapsTab, ...(profile.metrics.includes("ascent") || routeProfile !== null ? [profileTab] : []), mapTab],
+    [profile, routeProfile, guided],
   );
   const target = useMemo(() => sessionTargetOf(sessionId), [sessionId]);
   const timeZone = useMemo(() => deviceTimeZone(), []);
   const now = useNow(readout.main === "clock" || readout.secondary.includes("clock") ? 15_000 : 3_600_000);
   const text = (key: MetricKey): MetricText => metricText(key, live.metrics, profile, now as EpochMs, timeZone);
   const alertBanner = useAlertBanner(recording.alert);
-  const progress = target === null ? null : targetProgress(target, live);
+  const progress = target === null || guided ? null : targetProgress(target, live);
 
   useEffect(() => {
     if (!locked || Platform.OS !== "android") return undefined;
@@ -203,9 +206,15 @@ export function LiveScreen({ recording }: LiveScreenProps) {
               </View>
             </View>
           )}
-          <View style={[styles.mainTile, { borderBottomColor: colors.line }, phase === "paused" && styles.dimmed]}>
-            <MetricTile caption={metricCaptions[readout.main]} text={text(readout.main)} size={120} minimumScale={0.55} accent={colors.sport[profile.sport]} />
-          </View>
+          {workout === null ? (
+            <View style={[styles.mainTile, { borderBottomColor: colors.line }, phase === "paused" && styles.dimmed]}>
+              <MetricTile caption={metricCaptions[readout.main]} text={text(readout.main)} size={120} minimumScale={0.55} accent={colors.sport[profile.sport]} />
+            </View>
+          ) : (
+            <View style={[styles.guided, { borderBottomColor: colors.line }, phase === "paused" && styles.dimmed]}>
+              <GuidedPanel workout={workout} profile={profile} />
+            </View>
+          )}
           <View style={[styles.grid, phase === "paused" && styles.dimmed]}>
             {readout.secondary.map((key, index) => (
               <MetricTile
@@ -219,6 +228,12 @@ export function LiveScreen({ recording }: LiveScreenProps) {
             ))}
           </View>
         </View>
+
+        {workout === null ? null : (
+          <View style={[styles.page, { width }]}>
+            <StepsPage workout={workout} />
+          </View>
+        )}
 
         <View style={[styles.page, { width }]}>
           <LapsPage current={live.lap} laps={laps} profile={profile} />
@@ -262,6 +277,7 @@ export function LiveScreen({ recording }: LiveScreenProps) {
           phase={phase}
           locked={locked}
           busy={recording.busy}
+          guided={workout !== null && workout.current !== null}
           onLap={() => {
             failed(recorder.lap());
           }}
@@ -529,6 +545,7 @@ const styles = StyleSheet.create({
   targetTrack: { height: 8, borderRadius: 4, overflow: "hidden" },
   targetFill: { height: 8, borderRadius: 4 },
   mainTile: { flex: 1, minHeight: 150, justifyContent: "center", paddingVertical: 12, borderBottomWidth: 1 },
+  guided: { flex: 1.6, minHeight: 260, borderBottomWidth: 1 },
   grid: { flex: 1.4, flexDirection: "row", flexWrap: "wrap", alignContent: "stretch", columnGap: 16 },
   cell: { width: "47%", flexGrow: 1, justifyContent: "center", paddingVertical: 10, borderTopWidth: 1 },
   cellWide: { width: "100%" },

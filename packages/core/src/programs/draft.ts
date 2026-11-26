@@ -1,4 +1,4 @@
-import type { Effort, FieldValues, Id, ProgramItem, ProgramSlot, ProgramVariant, ProgramVersion, SportKey } from "@obnixe/schema";
+import type { Effort, FieldValues, Id, ProgramItem, ProgramSlot, ProgramVariant, ProgramVersion, SportKey, WorkoutPlan } from "@obnixe/schema";
 
 export type ItemTarget =
   | { readonly kind: "reps"; readonly min: number; readonly max: number }
@@ -14,10 +14,12 @@ export interface DraftItem {
   readonly restAfterSeconds: number | null;
 }
 
+/** A strength variant lists exercises; an endurance variant is a guided workout (`DEC-10`). */
 export interface DraftVariant {
   readonly lineageId: Id;
   readonly name: string;
   readonly items: readonly DraftItem[];
+  readonly workout: WorkoutPlan | null;
 }
 
 export interface DraftSlot {
@@ -85,6 +87,7 @@ export function draftFromTree(tree: VersionTree): ProgramDraft {
           ({ variant, items }): DraftVariant => ({
             lineageId: variant.lineageId,
             name: variant.name,
+            workout: variant.workout,
             items: items.map(
               (item): DraftItem => ({
                 lineageId: item.lineageId,

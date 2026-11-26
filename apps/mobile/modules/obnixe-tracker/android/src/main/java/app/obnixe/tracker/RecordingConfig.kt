@@ -2,6 +2,7 @@ package app.obnixe.tracker
 
 import android.content.Context
 import expo.modules.kotlin.types.Enumerable
+import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
 
@@ -12,11 +13,18 @@ enum class TrackerPower(val value: String) : Enumerable {
   CRITICAL("critical"),
 }
 
+data class TrackerProgressSegment(val length: Int, val highlighted: Boolean)
+
+/** A segmented progress bar (`REC-074`), `value` counted on the summed segment lengths. */
+data class TrackerNotificationProgress(val segments: List<TrackerProgressSegment>, val value: Int)
+
 data class TrackerNotificationContent(
   val title: String,
   val text: String,
   /** EpochMs at which the notification timer read zero; null hides the timer. */
   val timerBaseAt: Long?,
+  /** The steps of a guided workout; null for a free recording. */
+  val progress: TrackerNotificationProgress?,
 )
 
 data class ReplaySource(val gpxPath: String, val speed: Double)
@@ -62,6 +70,7 @@ object RecordingStore {
       .put("title", config.notification.title)
       .put("text", config.notification.text)
       .put("timerBaseAt", config.notification.timerBaseAt ?: JSONObject.NULL)
+      .put("progress", config.notification.progress?.let(::progressJson) ?: JSONObject.NULL)
       .put("stepBaseline", recording.stepBaseline ?: JSONObject.NULL)
     store(context).edit().putString(key, json.toString()).commit()
   }
@@ -79,7 +88,12 @@ object RecordingStore {
         heartRateDevice = json.optNullableString("heartRateDevice"),
         batchIntervalMs = json.getLong("batchIntervalMs"),
         backgroundBatchIntervalMs = json.getLong("backgroundBatchIntervalMs"),
-        notification = TrackerNotificationContent(json.getString("title"), json.getString("text"), json.optNullableLong("timerBaseAt")),
+        notification = TrackerNotificationContent(
+          json.getString("title"),
+          json.getString("text"),
+          json.optNullableLong("timerBaseAt"),
+          if (json.isNull("progress")) null else progressOf(json.getJSONObject("progress")),
+        ),
         replay = null,
       )
       StoredRecording(config, json.optNullableLong("stepBaseline"))
@@ -91,6 +105,20 @@ object RecordingStore {
 
   fun clear(context: Context) {
     store(context).edit().remove(key).commit()
+  }
+
+  private fun progressJson(progress: TrackerNotificationProgress): JSONObject {
+    val segments = JSONArray()
+    progress.segments.forEach { segments.put(JSONObject().put("length", it.length).put("highlighted", it.highlighted)) }
+    return JSONObject().put("segments", segments).put("value", progress.value)
+  }
+
+  private fun progressOf(json: JSONObject): TrackerNotificationProgress {
+    val segments = json.getJSONArray("segments")
+    return TrackerNotificationProgress(
+      (0 until segments.length()).map { index -> segments.getJSONObject(index).let { TrackerProgressSegment(it.getInt("length"), it.getBoolean("highlighted")) } },
+      json.getInt("value"),
+    )
   }
 
   private fun store(context: Context) = context.getSharedPreferences(preferences, Context.MODE_PRIVATE)

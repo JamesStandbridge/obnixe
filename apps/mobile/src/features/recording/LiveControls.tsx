@@ -66,6 +66,8 @@ interface LiveControlsProps {
   readonly phase: RecorderPhase;
   readonly locked: boolean;
   readonly busy: boolean;
+  /** `WKT-004`: the lap button moves to the next step of a guided workout. */
+  readonly guided: boolean;
   readonly onLap: () => void;
   readonly onPause: () => void;
   readonly onResume: () => void;
@@ -75,7 +77,7 @@ interface LiveControlsProps {
 }
 
 /** `UX-003`: large targets, *Terminer* and the unlock after a long press. */
-export function LiveControls({ phase, locked, busy, onLap, onPause, onResume, onStop, onConfirmStop, onUnlock }: LiveControlsProps) {
+export function LiveControls({ phase, locked, busy, guided, onLap, onPause, onResume, onStop, onConfirmStop, onUnlock }: LiveControlsProps) {
   if (locked) {
     return (
       <View style={styles.row}>
@@ -114,7 +116,15 @@ export function LiveControls({ phase, locked, busy, onLap, onPause, onResume, on
   }
   return (
     <View style={styles.row}>
-      <BigButton label="Tour" accessibilityLabel="Marquer un tour" icon="flag" tone="plain" disabled={busy || phase === "preparing"} onPress={onLap} style={styles.side} />
+      <BigButton
+        label={guided ? "Étape suivante" : "Tour"}
+        accessibilityLabel={guided ? "Passer à l'étape suivante" : "Marquer un tour"}
+        icon={guided ? "forward" : "flag"}
+        tone="plain"
+        disabled={busy || phase === "preparing"}
+        onPress={onLap}
+        style={styles.side}
+      />
       <BigButton label="Pause" accessibilityLabel="Mettre en pause" icon="pause" tone="act" disabled={busy || phase === "preparing"} onPress={onPause} style={styles.main} />
       {stop}
     </View>
@@ -128,6 +138,6 @@ const styles = StyleSheet.create({
   side: { flex: 1, height: controlHeight },
   big: { height: controlHeight, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingHorizontal: 10 },
   plain: { borderRadius: radii.panel },
-  bigLabel: { fontFamily: fonts.brand700, fontSize: 18 },
+  bigLabel: { flexShrink: 1, fontFamily: fonts.brand700, fontSize: 18, textAlign: "center" },
   disabled: { opacity: 0.4 },
 });

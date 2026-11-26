@@ -9,6 +9,17 @@ export type TrackerPower = "normal" | "saver" | "critical";
 /** Marks the app or the notification asks for; the module writes `start` and `stop` itself. */
 export type TrackerControlMark = Exclude<TrackerMarkKind, "start" | "stop">;
 
+export interface TrackerProgressSegment {
+  readonly length: number;
+  readonly highlighted: boolean;
+}
+
+/** A segmented progress bar, `value` counted on the summed segment lengths. */
+export interface TrackerNotificationProgress {
+  readonly segments: readonly TrackerProgressSegment[];
+  readonly value: number;
+}
+
 export interface TrackerNotification {
   /** First line, e.g. "Course · 5,24 km". */
   readonly title: string;
@@ -16,6 +27,8 @@ export interface TrackerNotification {
   readonly text: string;
   /** Instant the displayed timer read zero, shown as a running chronometer, the Live Update chip (Android) and the Live Activity (iOS); null hides it. */
   readonly timerBaseAt: EpochMs | null;
+  /** The steps of a guided workout as `Notification.ProgressStyle` on Android 16 (`REC-074`); ignored elsewhere. */
+  readonly progress: TrackerNotificationProgress | null;
 }
 
 export interface TrackerSensors {

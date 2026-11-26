@@ -1,13 +1,16 @@
+import { useMemo } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { sports } from "@obnixe/schema";
 import type { Id, ZoneKey } from "@obnixe/schema";
-import { worstPain } from "@obnixe/core";
+import { recentSpeedOf, resolveProfile, workoutEstimate, worstPain } from "@obnixe/core";
 import type { DraftItem, DraftSlot, DraftVariant, LatestZonePain } from "@obnixe/core";
+import { db } from "@/data/database";
 import { formatItemDetail, formatPrescription, slotDetail, slotTitle } from "@/features/programs/format";
 import { zoneLabel } from "@/format/labels";
 import type { ExerciseName } from "@/features/programs/format";
 import type { SlotPatch } from "@/features/programs/editor/draftReducer";
 import { TargetFields } from "@/features/programs/editor/TargetFields";
+import { estimateText, workoutText } from "@/features/workouts/format";
 import { ControlButton, LinkButton } from "@/ui/Button";
 import { PainMark, Segmented, Tag } from "@/ui/Controls";
 import { Icon } from "@/ui/icons/Icon";
@@ -40,6 +43,8 @@ interface SlotListProps {
   readonly onPad: (slotId: Id, field: string) => void;
   readonly onItem: (slot: DraftSlot, variant: DraftVariant, item: DraftItem) => void;
   readonly onAddItem: (slot: DraftSlot, variant: DraftVariant) => void;
+  readonly onWorkout: (slot: DraftSlot, variant: DraftVariant) => void;
+  readonly onAddGuided: (slot: DraftSlot) => void;
 }
 
 export function SlotList(props: SlotListProps) {
@@ -79,7 +84,14 @@ export function SlotList(props: SlotListProps) {
             </Pressable>
             {open ? (
               <View style={[styles.template, { backgroundColor: colors.surface }]}>
-                {strength ? <StrengthTemplate {...props} slot={slot} variant={variant} /> : <TargetFields slot={slot} onPatch={(patch) => props.onPatchSlot(slot.lineageId, patch)} onPad={(field) => props.onPad(slot.lineageId, field)} />}
+                {strength ? (
+                  <StrengthTemplate {...props} slot={slot} variant={variant} />
+                ) : (
+                  <>
+                    <TargetFields slot={slot} onPatch={(patch) => props.onPatchSlot(slot.lineageId, patch)} onPad={(field) => props.onPad(slot.lineageId, field)} />
+                    <GuidedVariants slot={slot} onWorkout={props.onWorkout} onAddGuided={props.onAddGuided} />
+                  </>
+                )}
                 <LinkButton label="Réglages de la séance" onPress={() => props.onEditSlot(slot.lineageId)} style={styles.slotLink} />
               </View>
             ) : null}
@@ -168,6 +180,52 @@ function StrengthTemplate({ slot, variant, marks, onSelectVariant, onAddVariant,
   );
 }
 
+interface GuidedVariantsProps {
+  readonly slot: DraftSlot;
+  readonly onWorkout: (slot: DraftSlot, variant: DraftVariant) => void;
+  readonly onAddGuided: (slot: DraftSlot) => void;
+}
+
+/** The guided workouts of an endurance slot (`DEC-10`, `WKT-001`), offered when its sport records a track. */
+function GuidedVariants({ slot, onWorkout, onAddGuided }: GuidedVariantsProps) {
+  const { colors } = useTheme();
+  const recordable = resolveProfile(slot.sport, slot.targetValues) !== null;
+  const referenceSpeedMmS = useMemo(() => recentSpeedOf(db(), slot.sport), [slot.sport]);
+  if (!recordable && slot.variants.length === 0) return null;
+  return (
+    <View style={styles.guided}>
+      <Text variant="eyebrow" tone="secondary">
+        Séances guidées
+      </Text>
+      {slot.variants.map((variant) => {
+        const name = variant.name.trim() === "" ? "Sans nom" : variant.name;
+        const summary = variant.workout === null ? "Déroulé à composer" : workoutText(variant.workout);
+        const estimate = variant.workout === null ? null : estimateText(workoutEstimate(variant.workout, referenceSpeedMmS));
+        return (
+          <Pressable
+            key={variant.lineageId}
+            accessibilityRole="button"
+            accessibilityLabel={`${name}, ${summary}${estimate === null ? "" : `, ${estimate}`}`}
+            onPress={() => onWorkout(slot, variant)}
+            style={({ pressed }) => [styles.item, { borderBottomColor: colors.line }, pressed && { backgroundColor: colors.surfacePress }]}
+          >
+            <View style={styles.main}>
+              <Text variant="bodyStrong" numberOfLines={1}>
+                {name}
+              </Text>
+              <Text variant="small" tone="secondary" numberOfLines={2}>
+                {summary}
+              </Text>
+            </View>
+            {estimate === null ? null : <Text style={[styles.prescription, { color: colors.text2 }]}>{estimate}</Text>}
+          </Pressable>
+        );
+      })}
+      {recordable ? <ControlButton label="Ajouter une séance guidée" onPress={() => onAddGuided(slot)} style={styles.addItem} /> : null}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 56, paddingVertical: 10 },
   handle: { width: 28, height: 44, alignItems: "center", justifyContent: "center" },
@@ -179,5 +237,6 @@ const styles = StyleSheet.create({
   itemMeta: { flexDirection: "row", alignItems: "center", gap: 6 },
   prescription: { fontFamily: fonts.figure600, fontSize: 15, lineHeight: 18 },
   addItem: { marginTop: 10 },
+  guided: { marginTop: 14 },
   slotLink: { alignSelf: "flex-start", marginLeft: -10, marginTop: 8 },
 });

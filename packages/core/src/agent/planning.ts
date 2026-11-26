@@ -114,7 +114,7 @@ function planVariant(context: PlanningContext, slot: ProgramSlot, variant: Progr
     return row === undefined ? [] : [exerciseJson(context, item, row)];
   });
   return {
-    json: { lineageId: variant.lineageId, name: variant.name, isDefault, estimatedDurationSeconds: estimatedSlotSeconds(slot, items), exercises: exercisesJson },
+    json: { lineageId: variant.lineageId, name: variant.name, isDefault, estimatedDurationSeconds: estimatedSlotSeconds(slot, items), exercises: exercisesJson, workout: variant.workout },
     zones: exerciseIds.flatMap((id) => context.pain.zonesByExercise.get(id) ?? []),
   };
 }

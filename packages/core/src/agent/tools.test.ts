@@ -527,6 +527,37 @@ describe("upsert_program", () => {
     expect(context.db.select().from(programVersion).all()).toHaveLength(1);
   });
 
+  it("writes the guided workout of an endurance variant and refuses one that does not fit its slot (INT-044)", () => {
+    const intervals = {
+      version: 1,
+      nodes: [
+        { type: "step", intent: "warmup", duration: { kind: "distance", mm: 2_000_000 }, target: { kind: "none" }, label: null },
+        {
+          type: "repeat",
+          count: 6,
+          steps: [
+            { type: "step", intent: "work", duration: { kind: "distance", mm: 1_000_000 }, target: { kind: "pace", fastestSecondsPerKm: 240, slowestSecondsPerKm: 250 }, label: null },
+            { type: "step", intent: "recovery", duration: { kind: "time", ms: 120_000 }, target: { kind: "none" }, label: null },
+          ],
+        },
+        { type: "step", intent: "cooldown", duration: { kind: "open" }, target: { kind: "none" }, label: null },
+      ],
+    };
+    const guided = (variant: Record<string, unknown>, slot: Record<string, unknown> = {}) => ({ ...benchProgram, slots: [{ name: "Fractionné", sport: "run", variants: [variant], ...slot }] });
+    const created = ok<{ programId: Id }>("upsert_program", guided({ name: "Piste", workout: intervals }));
+    const tree = ok<{ latest: { slots: readonly { variants: readonly { name: string; items: readonly unknown[]; workout: unknown }[] }[] } }>("get_program", { programId: created.programId });
+    expect(tree.latest.slots[0]?.variants).toEqual([expect.objectContaining({ name: "Piste", items: [], workout: intervals })]);
+
+    const speed = { version: 1, nodes: [{ type: "step", intent: "work", duration: { kind: "time", ms: 60_000 }, target: { kind: "speed", minMmS: 8000, maxMmS: 9000 }, label: null }] };
+    expect(call("upsert_program", guided({ name: "Piste" })).text).toContain("need a workout");
+    expect(call("upsert_program", guided({ name: "Piste", workout: speed })).text).toContain("A speed target needs a speed sport");
+    expect(call("upsert_program", guided({ name: "Piste", workout: intervals, items: [{ exercise: "Fentes", sets: 3, repsMin: 8, repsMax: 10 }] })).text).toContain("carry a workout, not items");
+    expect(call("upsert_program", guided({ name: "Home trainer", workout: speed }, { sport: "bike", targetValues: { kind: "indoor" } })).text).toContain("recordable sport");
+    expect(call("upsert_program", { ...benchProgram, slots: [{ ...benchProgram.slots[0], variants: [{ ...benchProgram.slots[0]?.variants[0], workout: intervals }] }] }).text).toContain("not a workout");
+    expect(call("upsert_program", guided({ name: "Piste", workout: { version: 1, nodes: [] } })).isError).toBe(true);
+    expect(context.db.select().from(programVersion).all()).toHaveLength(1);
+  });
+
   it("rolls back inline exercises when the version is rejected", () => {
     const outcome = call("upsert_program", { ...benchProgram, slots: [benchProgram.slots[0], { ...benchProgram.slots[1], targetValues: { kind: "sprint" } }] });
     expect(outcome.isError).toBe(true);

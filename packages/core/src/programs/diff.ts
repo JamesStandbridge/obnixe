@@ -20,6 +20,7 @@ export type ProgramChange =
   | { readonly kind: "variant_removed"; readonly slot: DraftSlot; readonly variant: DraftVariant }
   | { readonly kind: "variant_renamed"; readonly slot: DraftSlot; readonly before: DraftVariant; readonly after: DraftVariant }
   | { readonly kind: "variants_reordered"; readonly slot: DraftSlot }
+  | { readonly kind: "variant_workout_changed"; readonly slot: DraftSlot; readonly before: DraftVariant; readonly after: DraftVariant }
   | ({ readonly kind: "item_added"; readonly item: DraftItem } & VariantContext)
   | ({ readonly kind: "item_removed"; readonly item: DraftItem } & VariantContext)
   | ({ readonly kind: "item_replaced"; readonly before: DraftItem; readonly after: DraftItem } & VariantContext)
@@ -131,6 +132,7 @@ function variantChanges(before: DraftSlot, after: DraftSlot): ProgramChange[] {
   for (const variant of matched.added) changes.push({ kind: "variant_added", slot: after, variant });
   for (const pair of matched.kept) {
     if (pair.before.name.trim() !== pair.after.name.trim()) changes.push({ kind: "variant_renamed", slot: after, before: pair.before, after: pair.after });
+    if (!sameValues(pair.before.workout, pair.after.workout)) changes.push({ kind: "variant_workout_changed", slot: after, before: pair.before, after: pair.after });
     changes.push(...itemChanges(after, pair.before, pair.after));
   }
   if (matched.reordered) changes.push({ kind: "variants_reordered", slot: after });
@@ -178,6 +180,7 @@ export function changedItemLineages(changes: readonly ProgramChange[]): Readonly
       case "variant_removed":
       case "variant_renamed":
       case "variants_reordered":
+      case "variant_workout_changed":
       case "item_removed":
       case "items_reordered":
         break;
