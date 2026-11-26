@@ -1,6 +1,6 @@
 import { useLiveQuery } from "drizzle-orm/expo-sqlite";
 import { updateSettings as writeSettings } from "@obnixe/core";
-import type { SettingsPatch } from "@obnixe/core";
+import type { PhysiologyProfile, SettingsPatch } from "@obnixe/core";
 import { settings } from "@obnixe/schema";
 import type { EpochMs, MassUnit } from "@obnixe/schema";
 import { db, environment } from "@/data/database";
@@ -24,4 +24,10 @@ export interface RecordingDisplay {
 export function useRecordingDisplay(): RecordingDisplay {
   const { data } = useLiveQuery(db().select({ keepScreenOn: settings.keepScreenOn, countdown: settings.countdown }).from(settings));
   return { keepScreenOn: data[0]?.keepScreenOn ?? false, countdown: data[0]?.countdown ?? false };
+}
+
+/** `CAL-004`: what the zones and the energy estimates read, all optional. */
+export function usePhysiology(): PhysiologyProfile {
+  const { data } = useLiveQuery(db().select({ birthYear: settings.birthYear, sex: settings.sex, maxHeartRate: settings.maxHeartRate }).from(settings));
+  return data[0] ?? { birthYear: null, sex: null, maxHeartRate: null };
 }

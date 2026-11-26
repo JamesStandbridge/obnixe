@@ -168,9 +168,11 @@ export function alertNotice(event: RecordingAlertEvent, profile: Pick<ResolvedPr
 export function heartRateSpanBpm(range: HeartRateRange, maxHeartRate: number | null): string | null {
   if (maxHeartRate === null) return null;
   const zones = heartRateZones(maxHeartRate);
-  const low = zones.find((zone) => zone.zone === range.lowest)?.minBpm;
-  const high = zones.find((zone) => zone.zone === range.highest)?.maxBpm;
-  if (low === undefined || high === undefined) return null;
+  const lowest = zones.find((zone) => zone.zone === range.lowest);
+  const highest = zones.find((zone) => zone.zone === range.highest);
+  if (lowest === undefined || highest === undefined) return null;
+  const low = Math.round(lowest.minBpm);
+  const high = Math.round(highest.maxBpm);
   return range.highest === 5 ? `dès ${low} bpm` : `${low} – ${high} bpm`;
 }
 

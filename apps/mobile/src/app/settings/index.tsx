@@ -18,6 +18,7 @@ import { MapSettingsSection } from "@/features/maps/MapSettingsSection";
 import { MassUnitSheet, RemindersSheet, massUnitLabels } from "@/features/data/PreferenceSheets";
 import { RestAlertsRow } from "@/features/data/RestAlertsRow";
 import { PrivacySettingsSection } from "@/features/privacy/PrivacySettingsSection";
+import { RecordingSettingsSection } from "@/features/recording/RecordingSettingsSection";
 import { updateSettings } from "@/data/settings";
 import { SportsSheet } from "@/features/data/SportsSheet";
 import { TrashSheet, useTrash } from "@/features/data/TrashSheet";
@@ -121,6 +122,8 @@ export default function Settings() {
         <Section title="Séances">
           <RestAlertsRow />
         </Section>
+
+        <RecordingSettingsSection preferences={preferences} />
 
         <Section title="Affichage">
           <View style={styles.theme} accessibilityLabel="Thème">

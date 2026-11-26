@@ -83,6 +83,11 @@ export function recordingTitle(sessionId: Id): string | null {
   return row === undefined ? null : sessionTitle({ ...row, recorded: true });
 }
 
+/** `PLT-011`: the battery help is offered until a first live recording went through. */
+export function hasLiveRecording(): boolean {
+  return db().select({ id: recording.id }).from(recording).where(eq(recording.source, "live")).limit(1).get() !== undefined;
+}
+
 /** Where a recording link leads once the recording is over: its session, unless it was deleted. */
 export function sessionExists(sessionId: Id): boolean {
   return db().select({ id: session.id }).from(session).where(and(eq(session.id, sessionId), isNull(session.deletedAt))).get() !== undefined;

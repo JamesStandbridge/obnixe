@@ -3,6 +3,7 @@ import { StyleSheet, useWindowDimensions, View } from "react-native";
 import type { LayoutChangeEvent } from "react-native";
 import Animated from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { router } from "expo-router";
 import { isShortActivity } from "@obnixe/core";
 import type { FinishReason, ResolvedProfile, ZoneProposal } from "@obnixe/core";
 import type { SportKey } from "@obnixe/schema";
@@ -229,6 +230,7 @@ export function RecoveryView({ recording, endT, onResume, onFinish }: RecoveryVi
         <Text variant="small" tone="secondary" style={styles.recoveryNote}>
           En reprenant, le temps passé depuis l'arrêt compte comme une pause.
         </Text>
+        <LinkButton label="Éviter que le téléphone ne la coupe" onPress={() => router.push("/settings/battery")} style={styles.recoveryHelp} />
       </Screen>
       <BottomPanel>
         <View style={styles.actions}>
@@ -323,6 +325,7 @@ const styles = StyleSheet.create({
   resume: { minWidth: 140 },
   recoveryHero: { height: 170, alignItems: "center", justifyContent: "center", marginTop: 8 },
   recoveryNote: { marginTop: 18 },
+  recoveryHelp: { alignSelf: "flex-start", marginTop: 8 },
   record: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 60, paddingVertical: 10, borderBottomWidth: 1 },
   medal: { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center" },
   recordText: { flex: 1, gap: 2 },

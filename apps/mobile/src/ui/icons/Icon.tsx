@@ -85,6 +85,15 @@ const glyphs = {
       </>
     ),
   },
+  heart: {
+    viewBox: 22,
+    render: (color) => (
+      <>
+        <Path d="M11 18.5s-7-4.3-7-9.4A3.9 3.9 0 0 1 11 6.8a3.9 3.9 0 0 1 7 2.3c0 5.1-7 9.4-7 9.4Z" {...stroke(color, 1.7)} />
+        <Path d="M6.5 11.5h2.2l1.2-2 1.8 4 1.2-2h2.6" {...stroke(color, 1.5)} />
+      </>
+    ),
+  },
   more: {
     viewBox: 22,
     render: (color) => (
