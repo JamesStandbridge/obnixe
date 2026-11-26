@@ -1,6 +1,7 @@
 import { displace } from "../geo.ts";
 import type { GeoPoint } from "../geo.ts";
-import type { Fix } from "../types.ts";
+import { toSampleColumns } from "../types.ts";
+import type { Fix, HeartRateColumns, HeartRateSample } from "../types.ts";
 
 export const origin: GeoPoint = { latitude: 45.1885, longitude: 5.7245 };
 
@@ -24,4 +25,10 @@ export function fixAt(t: number, east: number, north: number, overrides: Partial
     simulated: false,
     ...overrides,
   };
+}
+
+/** Heart-rate columns from `[t, bpm]` readings, a 0 bpm reading standing for a lost skin contact. */
+export function heartRateColumns(readings: readonly (readonly [number, number])[]): HeartRateColumns {
+  const samples = readings.map(([t, bpm]): HeartRateSample => ({ type: "heart_rate", t, bpm, contact: bpm === 0 ? "absent" : "contact", rrInterval: null }));
+  return toSampleColumns(samples).heartRate;
 }

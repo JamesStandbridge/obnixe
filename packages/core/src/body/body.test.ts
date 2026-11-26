@@ -9,7 +9,7 @@ import { commit } from "../writer.ts";
 import type { Mutation } from "../writer.ts";
 import { DuplicateKindError, EmptyKindLabelError, InvalidMeasurementError, measurementsOverview, planKindArchive, planMeasurement, planMeasurementKind } from "./measurements.ts";
 import { nextPose, photoOverview, photosOfPose, planPhoto } from "./photos.ts";
-import { WeightOutOfRangeError, gramsToMass, massToGrams, planTrash, planWeighIn, weighInOn, weightTrend } from "./weight.ts";
+import { WeightOutOfRangeError, gramsToMass, isStaleWeighIn, massToGrams, planTrash, planWeighIn, staleWeighInMs, weighInBefore, weighInOn, weightTrend } from "./weight.ts";
 import type { WeightPoint } from "./weight.ts";
 
 const zone = "Europe/Paris";
@@ -55,6 +55,23 @@ describe("weigh-ins", () => {
     weigh(75_000);
     expect(context.db.select().from(weighIn).where(isNull(weighIn.deletedAt)).all()).toHaveLength(1);
     expect(() => revert(context.db, context.env, { actor: { author: "user", connectionId: null }, changesetId: trashed, summary: "Annulation", restoredVersionSummary: () => "" })).toThrow(/UNIQUE/);
+  });
+
+  it("estimates energy with the last live weigh-in before the start (CAL-003)", () => {
+    const start = context.env.now();
+    expect(weighInBefore(context.db, start)).toBeNull();
+    weigh(74_800);
+    context.advance(2 * day);
+    const trashed = weigh(75_200);
+    write([planTrash(context.env, "weigh_in", trashed)]);
+    context.advance(day);
+    const startedAt = context.env.now();
+    context.advance(3_600_000);
+    weigh(75_600);
+    const used = weighInBefore(context.db, startedAt);
+    expect(used?.grams).toBe(74_800);
+    expect(used === null ? null : isStaleWeighIn(used, startedAt)).toBe(false);
+    expect(isStaleWeighIn({ occurredAt: start }, (start + staleWeighInMs + 1) as EpochMs)).toBe(true);
   });
 
   it("refuses implausible weights", () => {

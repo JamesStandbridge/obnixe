@@ -1,12 +1,14 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull, lte } from "drizzle-orm";
 import { weighIn } from "@obnixe/schema";
 import type { EpochMs, Id, LocalDate, MassUnit, WeighIn } from "@obnixe/schema";
 import type { Environment, ObnixeDatabase } from "../database.ts";
 import type { Mutation } from "../writer.ts";
 import { fromStored, massUnitOf, toStored } from "../activity/catalog.ts";
-import { addDays, daysBetween, localDateOf } from "../dates.ts";
+import { addDays, dayMs, daysBetween, localDateOf } from "../dates.ts";
 
 export const weighInBounds = { minGrams: 20_000, maxGrams: 400_000 } as const;
+/** An activity's energy estimate shows the date of a weigh-in older than this (`CAL-003`). */
+export const staleWeighInMs = 30 * dayMs;
 
 export interface WeighInDraft {
   readonly grams: number;
@@ -55,6 +57,15 @@ export function massToGrams(value: number, unit: MassUnit): number {
 
 export function weighInOn(db: ObnixeDatabase, localDate: LocalDate): WeighIn | null {
   return db.select().from(weighIn).where(and(eq(weighIn.localDate, localDate), isNull(weighIn.deletedAt))).get() ?? null;
+}
+
+/** The mass an activity's energy is estimated with (`CAL-003`): the last live weigh-in at or before its start. */
+export function weighInBefore(db: ObnixeDatabase, at: EpochMs): WeighIn | null {
+  return db.select().from(weighIn).where(and(lte(weighIn.occurredAt, at), isNull(weighIn.deletedAt))).orderBy(desc(weighIn.occurredAt)).limit(1).get() ?? null;
+}
+
+export function isStaleWeighIn(weighed: Pick<WeighIn, "occurredAt">, at: EpochMs): boolean {
+  return at - weighed.occurredAt > staleWeighInMs;
 }
 
 export function planWeighIn(db: ObnixeDatabase, env: Environment, draft: WeighInDraft): WeighInPlan {
