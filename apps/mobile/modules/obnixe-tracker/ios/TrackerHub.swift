@@ -144,7 +144,7 @@ final class TrackerHub: RecordingListener {
         return promise.resolve(stopped.bridge)
       }
       let stopped = recording.stop()
-      self.finish(stopped)
+      if self.recording === recording { self.finish(stopped) }
       promise.resolve(stopped.bridge)
     }
   }

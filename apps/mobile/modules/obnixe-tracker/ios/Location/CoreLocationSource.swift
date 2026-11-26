@@ -15,7 +15,7 @@ final class CoreLocationSource: NSObject, LocationSource, CLLocationManagerDeleg
   private let onFix: (Fix) -> Void
   private let onIssue: (TrackerIssue) -> Void
   private var manager: CLLocationManager?
-  private var liveUpdates: Task<Void, Never>?
+  private var liveUpdates: Task<Void, any Error>?
   /// A `CLBackgroundActivitySession`, which only exists on iOS 17+.
   private var backgroundSession: AnyObject?
   private var mode: LocationMode?
@@ -80,15 +80,12 @@ final class CoreLocationSource: NSObject, LocationSource, CLLocationManagerDeleg
   }
 
   @available(iOS 17.0, *)
-  private func readLiveUpdates() -> Task<Void, Never> {
+  /// The updates end with an error only when Core Location gives up; the authorization callback reports why.
+  private func readLiveUpdates() -> Task<Void, any Error> {
     Task { @MainActor [weak self] in
-      do {
-        for try await update in CLLocationUpdate.liveUpdates(.fitness) {
-          guard let self, !Task.isCancelled else { return }
-          if let location = update.location { self.deliver([location]) }
-        }
-      } catch {
-        // The updates end with an error only when Core Location gives up; the authorization callback tells why.
+      for try await update in CLLocationUpdate.liveUpdates(.fitness) {
+        guard let self, !Task.isCancelled else { return }
+        if let location = update.location { self.deliver([location]) }
       }
     }
   }

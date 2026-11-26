@@ -77,6 +77,8 @@ final class Recording: HeartRateLinkListener {
   private var heartRate: HeartRateLink?
   private var tick: DispatchWorkItem?
   private var stopped = false
+  /// Set once the journal is closed; a storage-full self stop can happen while `stop()` drains the mark requests.
+  private var ended: StoppedRecording?
   private var storageLowReported = false
   private var storageCheckedAt: Int64?
 
@@ -189,12 +191,15 @@ final class Recording: HeartRateLinkListener {
   /// Writes the pending Live Activity marks, stops the sources, writes the stop mark and closes the journal.
   func stop() -> StoppedRecording {
     takeMarkRequests()
+    if let ended { return ended }
     let endT = clock.now()
     release()
     let batch = try? journal.flush(mark: Mark(t: endT, kind: .stop))
     journal.close()
     if let batch { listener?.recording(self, didWrite: batch) }
-    return StoppedRecording(sessionId: sessionId, endedAt: startedAt + (batch?.mark?.t ?? endT), lastSequence: batch?.sequence ?? journal.nextSequence - 1)
+    let stopped = StoppedRecording(sessionId: sessionId, endedAt: startedAt + (batch?.mark?.t ?? endT), lastSequence: batch?.sequence ?? journal.nextSequence - 1)
+    ended = stopped
+    return stopped
   }
 
   private func release() {
