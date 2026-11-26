@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { RecordingAlertSettings } from "@obnixe/schema";
+import type { Id, RecordingAlertSettings } from "@obnixe/schema";
 import { AlertMonitor, heartRateBounds, rangeAlertTiming, speedBounds } from "./alerts.ts";
 import type { AlertMonitorOptions, RecordingAlertEvent } from "./alerts.ts";
 import type { LiveLap, LiveSnapshot } from "./live.ts";
@@ -137,5 +137,13 @@ describe("signal, sensor, battery and settings", () => {
     expect(target.recorder("auto_resume", null)).toEqual([]);
     expect(feed(target, 0, 400_000, (t) => ({ distanceMm: t * 3 }))).toEqual([]);
     expect(monitor().recorder("lap", lap)).toEqual([{ kind: "lap", lap }]);
+  });
+
+  it("passes the segment entries and passes on unless the sport switched them off (SEG-004)", () => {
+    const entered = { kind: "segment_entered", segmentId: "segment" as Id, name: "Côte", bestElapsedMs: null } as const;
+    const finished = { kind: "segment_finished", segmentId: "segment" as Id, name: "Côte", elapsedMs: 120_000, bestElapsedMs: 125_000 } as const;
+    expect(monitor().segments([entered, finished])).toEqual([entered, finished]);
+    expect(monitor().segments([])).toEqual([]);
+    expect(monitor({ settings: { ...noAlerts, disabled: ["segment"] } }).segments([entered, finished])).toEqual([]);
   });
 });

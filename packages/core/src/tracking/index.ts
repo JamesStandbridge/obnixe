@@ -19,6 +19,7 @@ export * from "./io/sports.ts";
 export * from "./io/tcx.ts";
 export * from "./io/zip.ts";
 export * from "./live.ts";
+export * from "./liveSegments.ts";
 export * from "./plans.ts";
 export * from "./privacy.ts";
 export * from "./privacyZones.ts";

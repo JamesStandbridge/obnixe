@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import {
   AlertMonitor,
+  LiveSegmentWatch,
   LiveTracker,
   OpenSessionExistsError,
   activePrivacyMask,
@@ -8,6 +9,7 @@ import {
   encodeTrack,
   heartRateZoneOf,
   heartRateZones,
+  liveSegmentTargets,
   maxHeartRateOf,
   openLiveRecording,
   planInterruption,
@@ -188,6 +190,8 @@ interface Active {
   readonly live: LiveTracker;
   readonly map: LiveTrack;
   readonly monitor: AlertMonitor;
+  /** `SEG-004`: the known segments of the sport, followed on the live track. */
+  readonly segments: LiveSegmentWatch;
   readonly replay: TrackerReplay | null;
   readonly pains: ActivityPain[];
   alert: LiveAlert | null;
@@ -563,6 +567,7 @@ export class RecorderHost {
       live: new LiveTracker(fields.profile, fields.settings.autoLap),
       map: new LiveTrack(),
       monitor: new AlertMonitor({ splitMeters: fields.settings.autoLap === null ? fields.profile.splitMeters : null, settings: fields.settings.alerts, heartRateZones: heartRate, goal }),
+      segments: new LiveSegmentWatch(liveSegmentTargets(db(), fields.profile.sport)),
       pains: [],
       alert: null,
       plan: null,
@@ -850,7 +855,11 @@ export class RecorderHost {
         this.applyMark(active, item.mark, mode);
       }
     }
-    for (const point of active.live.takeTrack()) active.map.push({ latitude: point.latitude, longitude: point.longitude, stretch: point.dashed ? "interrupted" : "moving" });
+    for (const point of active.live.takeTrack()) {
+      active.map.push({ latitude: point.latitude, longitude: point.longitude, stretch: point.dashed ? "interrupted" : "moving" });
+      const passes = active.segments.push(point);
+      if (mode === "live") this.signal(active, active.monitor.segments(passes));
+    }
     if (position !== null) {
       active.map.locate({
         latitude: position.latitudeE7 / 1e7,

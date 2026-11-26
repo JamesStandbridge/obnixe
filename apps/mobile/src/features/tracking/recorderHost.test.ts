@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { commit, defaultRecordingSettings, encodeJournalBatch, encodeJournalHeader, readJournal, recordingSettingsMutation, revert } from "@obnixe/core";
+import { commit, defaultRecordingSettings, encodeJournalBatch, encodeJournalHeader, encodePolyline, readJournal, recordingSettingsMutation, revert } from "@obnixe/core";
 import type { Fix, JournalRecord, Mutation, Sample, TrackerMarkKind } from "@obnixe/core";
 import { bestEffort, painReport, recording, session, settings } from "@obnixe/schema";
 import type { EpochMs, Id, RecordingSettings } from "@obnixe/schema";
@@ -368,6 +368,37 @@ describe("alerts and sensors", () => {
     const announced = tracker.notifications.findIndex((notification) => notification.text.startsWith("Kilomètre 1 · "));
     expect(announced).toBeGreaterThan(0);
     expect(tracker.notifications.at(-1)?.text).toMatch(/^Allure /);
+  });
+
+  it("announces a known segment on entry, then its time at the end (SEG-004)", async () => {
+    const latitudeE7 = Int32Array.from({ length: 7 }, (_, index) => Math.round((451_885_000 + (300 + index * 50) / metersPerE7) / 10) * 10);
+    const longitudeE7 = new Int32Array(7).fill(57_245_000);
+    const south = latitudeE7[0] ?? 0;
+    const north = latitudeE7[6] ?? 0;
+    writer.write("Segment", [
+      {
+        kind: "insert",
+        table: "segment",
+        row: {
+          id: environment.newId(),
+          name: "Ligne droite",
+          family: "foot",
+          polyline: encodePolyline({ length: 7, latitudeE7, longitudeE7 }, 6),
+          distanceMm: 300_000,
+          ascentMm: 0,
+          bbox: { south, west: 57_245_000, north, east: 57_245_000 },
+          south,
+          north,
+          sourceSessionId: null,
+          deletedAt: null,
+        },
+      },
+    ]);
+    const host = newHost();
+    await started(host);
+    await run(250, 0);
+    expect(feedback.calls.filter((call) => call.startsWith("alert:"))).toEqual(["alert:segment_entered", "alert:segment_finished"]);
+    expect(recordingOf(host).alert?.notice).toMatchObject({ title: expect.stringMatching(/^Ligne droite · 1:\d\d$/), detail: "Premier passage" });
   });
 
   it("keeps quiet about the alerts the sport switched off", async () => {
