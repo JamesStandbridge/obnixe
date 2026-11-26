@@ -1,5 +1,5 @@
 import { asc, eq } from "drizzle-orm";
-import { lap, recording, session, sportPreference } from "@obnixe/schema";
+import { gear, lap, programSlot, recording, session, sportPreference } from "@obnixe/schema";
 import type { EpochMs, FieldValues, Id, Lap, Recording, RecordingSettings, Session, SportKey } from "@obnixe/schema";
 import { sportOf } from "../activity/catalog.ts";
 import { OpenSessionExistsError } from "../activity/climb.ts";
@@ -20,7 +20,7 @@ import { estimateEnergy } from "./energy.ts";
 import type { EnergyEstimate } from "./energy.ts";
 import { resolveProfile } from "./profile.ts";
 import type { ResolvedProfile } from "./profile.ts";
-import { sessionValuesFromRecording } from "./summary.ts";
+import { importedSummary, sessionValuesFromRecording } from "./summary.ts";
 import type { LapBounds } from "./stages/derive.ts";
 import { trackingAlgorithmVersion } from "./version.ts";
 
@@ -165,14 +165,33 @@ export interface StoredTrack {
   readonly bytes: number;
 }
 
-export interface LiveRecording {
+export class NotMeasuredError extends Error {
+  constructor(readonly sessionId: Id) {
+    super(`Session ${sessionId} has no completed recording with a track to measure`);
+  }
+}
+
+export interface SessionRecording {
   readonly session: Session;
   readonly recording: Recording;
 }
 
-export function liveRecordingOf(db: ObnixeDatabase, sessionId: Id): LiveRecording {
-  const found = db.select({ session, recording }).from(session).innerJoin(recording, eq(recording.sessionId, session.id)).where(eq(session.id, sessionId)).get();
+function sessionRecordingOf(db: ObnixeDatabase, sessionId: Id): SessionRecording | undefined {
+  return db.select({ session, recording }).from(session).innerJoin(recording, eq(recording.sessionId, session.id)).where(eq(session.id, sessionId)).get();
+}
+
+export function liveRecordingOf(db: ObnixeDatabase, sessionId: Id): SessionRecording {
+  const found = sessionRecordingOf(db, sessionId);
   if (found === undefined || found.recording.source !== "live") throw new NotRecordingError(sessionId);
+  return found;
+}
+
+/** A completed recording, live or imported, with a stored track of positions that the engine measures (`SUM-004`, `SUM-005`). */
+export function measuredRecordingOf(db: ObnixeDatabase, sessionId: Id): SessionRecording {
+  const found = sessionRecordingOf(db, sessionId);
+  if (found === undefined || found.session.status !== "completed" || found.session.deletedAt !== null || found.recording.trackFile === null || found.recording.pointCount < 2) {
+    throw new NotMeasuredError(sessionId);
+  }
   return found;
 }
 
@@ -204,10 +223,10 @@ function energyOf(db: ObnixeDatabase, current: Session, track: Track, processed:
 type RecordingPatch = Partial<NewRow<"recording">>;
 
 /** The recording columns a processing rewrites: the summary (`DAT-010`), the energy (`CAL-001`) and the masked preview (`PRV-010`). */
-function recordingPatchOf(db: ObnixeDatabase, current: Session, track: Track, processed: ProcessedTrack, mask: PrivacyMask): RecordingPatch {
-  const energy = energyOf(db, current, track, processed);
+function recordingPatchOf(db: ObnixeDatabase, saved: SessionRecording, track: Track, processed: ProcessedTrack, mask: PrivacyMask): RecordingPatch {
+  const energy = energyOf(db, saved.session, track, processed);
   return {
-    ...processed.summary,
+    ...(saved.recording.source === "import" ? importedSummary(processed.summary) : processed.summary),
     energyKcal: energy?.kcal ?? null,
     energyMethod: energy?.method ?? null,
     previewPolyline: maskedPreview(processed.series, mask),
@@ -229,7 +248,7 @@ function lapInserts(env: Environment, sessionId: Id, processed: ProcessedTrack):
 }
 
 /** The recording updated in place, or moved to the row `recordingId` whose track file is a new one. */
-function recordingMutations(live: LiveRecording, patch: RecordingPatch, recordingId: Id): readonly Mutation[] {
+function recordingMutations(live: SessionRecording, patch: RecordingPatch, recordingId: Id): readonly Mutation[] {
   if (recordingId === live.recording.id) return [{ kind: "update", table: "recording", key: recordingId, patch }];
   const { createdAt, updatedAt, ...row } = live.recording;
   return [
@@ -245,7 +264,7 @@ function recordingMutations(live: LiveRecording, patch: RecordingPatch, recordin
 function rewrite(
   db: ObnixeDatabase,
   env: Environment,
-  live: LiveRecording,
+  live: SessionRecording,
   track: Track,
   processed: ProcessedTrack,
   profile: ResolvedProfile,
@@ -256,13 +275,13 @@ function rewrite(
   const derived = sessionValuesFromRecording(live.session.values, processed.summary, profile);
   return [
     ...lapsOf(db, live.session.id).map((row): Mutation => ({ kind: "delete", table: "lap", key: row.id })),
-    ...recordingMutations(live, { ...recordingPatchOf(db, live.session, track, processed, activePrivacyMask(db)), ...extra }, recordingId),
+    ...recordingMutations(live, { ...recordingPatchOf(db, live, track, processed, activePrivacyMask(db)), ...extra }, recordingId),
     { kind: "update", table: "session", key: live.session.id, patch: { values: derived.values, pausedSeconds: derived.pausedSeconds + Math.round(processed.elapsed.startMs / 1000), ...sessionExtra } },
     ...lapInserts(env, live.session.id, processed),
   ];
 }
 
-function endOf(live: LiveRecording, track: Track, processed: ProcessedTrack): EpochMs {
+function endOf(live: SessionRecording, track: Track, processed: ProcessedTrack): EpochMs {
   return Math.max(track.startedAt + processed.elapsed.endMs, live.session.startedAt) as EpochMs;
 }
 
@@ -330,7 +349,7 @@ function storedTrim(row: Pick<Recording, "trimStartMs" | "trimEndMs">): TrackTri
 }
 
 /** Processing of a saved recording with its stored laps and the given trim and profile (`SUM-004`, `SUM-005`). */
-export function reprocessRecording(db: ObnixeDatabase, live: LiveRecording, track: Track, trim: TrackTrim, profile: ResolvedProfile): ProcessedTrack {
+export function reprocessRecording(db: ObnixeDatabase, live: SessionRecording, track: Track, trim: TrackTrim, profile: ResolvedProfile): ProcessedTrack {
   const laps = retrimmedLaps(lapsOf(db, live.session.id), storedTrim(live.recording), trim);
   return processTrack(track, profile, { laps: { kind: "given", laps }, trim });
 }
@@ -351,7 +370,7 @@ export interface RecordingRewrite {
  * The track file is never touched; `trim.endMs` stays null when the end is not trimmed.
  */
 export function planTrim(db: ObnixeDatabase, env: Environment, sessionId: Id, track: Track, trim: TrackTrim): RecordingRewrite {
-  const live = liveRecordingOf(db, sessionId);
+  const live = measuredRecordingOf(db, sessionId);
   const untrimmed = activityWindow(track.samples, track.marks, { startMs: 0, endMs: null });
   if (trim.startMs < 0 || (trim.endMs !== null && (trim.endMs <= trim.startMs || trim.endMs > untrimmed.endMs)) || (trim.endMs === null && trim.startMs >= untrimmed.endMs)) {
     throw new InvalidTrimError(trim);
@@ -396,8 +415,40 @@ export function planTrackReplacement(db: ObnixeDatabase, env: Environment, sessi
 
 /** `SUM-005`: the stored trim and laps processed with the current algorithm and the session's current profile. */
 export function planRecompute(db: ObnixeDatabase, env: Environment, sessionId: Id, track: Track): RecordingRewrite {
-  const live = liveRecordingOf(db, sessionId);
+  const live = measuredRecordingOf(db, sessionId);
   const profile = profileOfSession(live.session);
   const processed = reprocessRecording(db, live, track, storedTrim(live.recording), profile);
   return { processed, mutations: rewrite(db, env, live, track, processed, profile, {}, {}) };
+}
+
+export interface SportChange {
+  readonly sport: SportKey;
+  /** The values of the new sport the user chose, its `kind` first; the measured ones are derived again. */
+  readonly values: FieldValues;
+}
+
+function keptValues(values: FieldValues, sport: SportKey): FieldValues {
+  const keys = new Set(sportOf(sport).sessionFields.map((field) => field.key));
+  return Object.fromEntries(Object.entries(values).filter(([key]) => keys.has(key)));
+}
+
+/**
+ * `SUM-004`: another sport or variant, measured again with its profile in one undoable changeset. The gear and the program slot
+ * of another sport are detached; the values the new sport does not have are dropped.
+ */
+export function planSportChange(db: ObnixeDatabase, env: Environment, sessionId: Id, track: Track, change: SportChange): RecordingRewrite {
+  const saved = measuredRecordingOf(db, sessionId);
+  const profile = resolveProfile(change.sport, change.values);
+  if (profile === null) throw new NotRecordableError(change.sport);
+  const changed: Session = { ...saved.session, sport: change.sport, values: { ...keptValues(saved.session.values, change.sport), ...change.values } };
+  const live = { session: changed, recording: saved.recording };
+  const processed = reprocessRecording(db, live, track, storedTrim(saved.recording), profile);
+  const gearSport = saved.session.gearId === null ? null : (db.select({ sport: gear.sport }).from(gear).where(eq(gear.id, saved.session.gearId)).get()?.sport ?? null);
+  const slotSport = saved.session.slotId === null ? null : (db.select({ sport: programSlot.sport }).from(programSlot).where(eq(programSlot.id, saved.session.slotId)).get()?.sport ?? null);
+  const sessionExtra: Partial<NewRow<"session">> = {
+    sport: change.sport,
+    ...(gearSport !== null && gearSport !== change.sport ? { gearId: null } : {}),
+    ...(slotSport !== null && slotSport !== change.sport ? { slotId: null, variantId: null, countsInRotation: false } : {}),
+  };
+  return { processed, mutations: rewrite(db, env, live, track, processed, profile, {}, sessionExtra) };
 }

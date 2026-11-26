@@ -239,7 +239,7 @@ function exerciseSubjects(db: AppDatabase, today: LocalDate): Subject[] {
     });
 }
 
-function hasDistance(sport: SportDefinition): boolean {
+export function hasDistance(sport: SportDefinition): boolean {
   return sport.sessionFields.some((field) => field.key === "distance" && field.type === "quantity");
 }
 

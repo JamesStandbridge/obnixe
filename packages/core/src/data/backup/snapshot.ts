@@ -29,7 +29,7 @@ import type { SettingsValues } from "../../settings.ts";
 import { columnsOf } from "../foreignKeys.ts";
 import { trackDigest } from "../../tracking/codec/track.ts";
 
-export const backupSchemaVersion = 2;
+export const backupSchemaVersion = 3;
 
 export type TableRow<T extends JournaledTable> = InferSelectModel<(typeof journaled)[T]>;
 
@@ -132,6 +132,7 @@ const settingsSchema = z.object({
   mapCacheMegabytes: z.int().positive(),
   exportPrivacy: z.boolean(),
   hideTrackEndsMeters: z.int().min(0).max(1000),
+  maskInApp: z.boolean(),
   birthYear: z.int().min(1900).max(2100).nullable(),
   sex: z.enum(biologicalSexes).nullable(),
   maxHeartRate: z.int().min(120).max(230).nullable(),

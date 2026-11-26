@@ -23,9 +23,13 @@ interface EditSheetProps {
   readonly session: Session;
   readonly placeholder: string;
   readonly unit: MassUnit;
+  /** Values that come from the recorded track or that only « Changer de sport » edits (`SUM-004`): neither shown nor written. */
+  readonly locked?: ReadonlySet<string>;
   readonly onClose: () => void;
   readonly onSave: (patch: SessionPatch) => void;
 }
+
+const noLock: ReadonlySet<string> = new Set();
 
 interface QuantityScale {
   readonly unit: string;
@@ -78,10 +82,10 @@ function parseNumber(text: string): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-export function EditSheet({ open, session, placeholder, unit, onClose, onSave }: EditSheetProps) {
+export function EditSheet({ open, session, placeholder, unit, locked = noLock, onClose, onSave }: EditSheetProps) {
   const { colors } = useTheme();
   const definitions: readonly FieldDefinition[] = sports[session.sport].sessionFields;
-  const fields = definitions.filter((field) => field.retired !== true);
+  const fields = definitions.filter((field) => field.retired !== true && !locked.has(field.key));
   const [title, setTitle] = useState(session.title ?? "");
   const [note, setNote] = useState(session.note ?? "");
   const [values, setValues] = useState<FieldValues>(session.values);
@@ -190,7 +194,7 @@ export function EditSheet({ open, session, placeholder, unit, onClose, onSave }:
   };
 
   return (
-    <Sheet open={open} title="Corriger la saisie" onClose={onClose}>
+    <Sheet open={open} title="Corriger la saisie" {...(locked.size === 0 ? {} : { context: "Distance, D+ et fréquence cardiaque viennent de la trace" })} onClose={onClose}>
       <Question title="Titre">
         <TextField value={title} onChangeText={setTitle} placeholder={placeholder} accessibilityLabel="Titre" />
       </Question>

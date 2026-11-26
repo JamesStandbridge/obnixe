@@ -8,4 +8,5 @@ export * from "./reminders.ts";
 export * from "./series.ts";
 export * from "./sessions.ts";
 export * from "./today.ts";
+export * from "./totals.ts";
 export * from "./week.ts";

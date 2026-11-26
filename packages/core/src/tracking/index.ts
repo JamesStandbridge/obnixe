@@ -1,4 +1,6 @@
+export * from "./analysis.ts";
 export * from "./batch.ts";
+export * from "./charts.ts";
 export * from "./codec/journal.ts";
 export * from "./codec/polyline.ts";
 export * from "./codec/track.ts";
@@ -22,6 +24,7 @@ export * from "./privacyZones.ts";
 export * from "./profile.ts";
 export * from "./reconcile.ts";
 export * from "./recordAnnouncements.ts";
+export * from "./records.ts";
 export * from "./recorder.ts";
 export * from "./simplify.ts";
 export * from "./stages/altitude.ts";

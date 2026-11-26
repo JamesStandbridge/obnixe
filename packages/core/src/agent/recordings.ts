@@ -1,13 +1,12 @@
-import { and, asc, eq, inArray, isNull } from "drizzle-orm";
-import { bestEffort, lap, recording, session } from "@obnixe/schema";
+import { asc, inArray } from "drizzle-orm";
+import { bestEffort, lap, recording } from "@obnixe/schema";
 import type { BestEffort, BestEffortKey, FieldValues, Id, Lap, Recording, RecordingWeather, SportKey } from "@obnixe/schema";
 import type { ObnixeDatabase } from "../database.ts";
 import { resolveProfile } from "../tracking/profile.ts";
 import type { ResolvedProfile } from "../tracking/profile.ts";
+import { recordStandings } from "../tracking/records.ts";
+import type { RecordStanding } from "../tracking/records.ts";
 import type { Json } from "./environment.ts";
-
-/** Whether a best effort was a personal record when it was set, and whether it still is. */
-export type RecordStanding = "current" | "former" | null;
 
 export interface RecordedSession {
   readonly id: Id;
@@ -50,40 +49,6 @@ function weatherJson(weather: RecordingWeather): Json {
       windGustKmh: kmh(hour.windGustMmS / 1000),
     })),
   };
-}
-
-const isAscentEffort = (effort: BestEffortKey): boolean => effort.endsWith(":ascent_1h");
-
-/** Higher is better: the ascent of an `ascent_1h` effort, the opposite of the time of a distance effort. */
-function effortScore(row: Pick<BestEffort, "effort" | "elapsedMs" | "ascentMm">): number {
-  return isAscentEffort(row.effort) ? (row.ascentMm ?? 0) : -row.elapsedMs;
-}
-
-type Standings = ReadonlyMap<Id, ReadonlyMap<BestEffortKey, RecordStanding>>;
-
-/** Replays every effort of these kinds in start order over the kept sessions: a record beats every effort set before it. */
-function recordStandings(db: ObnixeDatabase, efforts: readonly BestEffortKey[]): Standings {
-  const standings = new Map<Id, Map<BestEffortKey, RecordStanding>>();
-  if (efforts.length === 0) return standings;
-  const rows = db
-    .select({ sessionId: bestEffort.sessionId, effort: bestEffort.effort, elapsedMs: bestEffort.elapsedMs, ascentMm: bestEffort.ascentMm })
-    .from(bestEffort)
-    .innerJoin(session, eq(bestEffort.sessionId, session.id))
-    .where(and(inArray(bestEffort.effort, [...new Set(efforts)]), isNull(session.deletedAt), eq(session.status, "completed")))
-    .orderBy(asc(bestEffort.effort), asc(session.startedAt), asc(session.id))
-    .all();
-  const best = new Map<BestEffortKey, { readonly sessionId: Id; readonly score: number }>();
-  for (const row of rows) {
-    const score = effortScore(row);
-    const previous = best.get(row.effort);
-    const record = previous === undefined || score > previous.score;
-    if (record && previous !== undefined) standings.get(previous.sessionId)?.set(row.effort, "former");
-    if (record) best.set(row.effort, { sessionId: row.sessionId, score });
-    const own = standings.get(row.sessionId) ?? new Map<BestEffortKey, RecordStanding>();
-    own.set(row.effort, record ? "current" : null);
-    standings.set(row.sessionId, own);
-  }
-  return standings;
 }
 
 function bestEffortJson(row: BestEffort, standing: RecordStanding): Json {

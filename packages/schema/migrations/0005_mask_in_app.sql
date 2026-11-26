@@ -1,0 +1,1 @@
+ALTER TABLE `settings` ADD `mask_in_app` integer DEFAULT false NOT NULL;

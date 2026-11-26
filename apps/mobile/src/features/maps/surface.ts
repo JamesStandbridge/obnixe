@@ -45,5 +45,7 @@ export interface MapSurfaceProps {
   /** Every frame of a camera move, for overlays drawn in screen space. */
   readonly onViewChanging?: (view: MapView) => void;
   readonly onViewChanged?: (view: MapView) => void;
+  /** A tap on the map, outside any gesture. */
+  readonly onPress?: (point: LngLat) => void;
   readonly ref?: Ref<MapSurfaceHandle>;
 }

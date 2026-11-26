@@ -21,20 +21,24 @@ function syncOverlays(map: maplibregl.Map, overlays: readonly MapOverlay[], appl
     if (map.getSource(id)) map.removeSource(id);
     applied.delete(id);
   }
-  for (const overlay of overlays) {
+  overlays.forEach((overlay, position) => {
     const previous = applied.get(overlay.id);
     const layers = JSON.stringify(overlay.layers);
     const source = map.getSource<GeoJSONSource>(overlay.id);
     if (source === undefined) map.addSource(overlay.id, { type: "geojson", data: JSON.parse(overlay.data), lineMetrics: overlay.lineMetrics });
     else if (previous?.data !== overlay.data) source.setData(JSON.parse(overlay.data));
     if (previous?.layers !== layers) {
+      const before = overlays
+        .slice(position + 1)
+        .flatMap((later) => later.layers)
+        .find((layer) => map.getLayer(layer.id) !== undefined)?.id;
       for (const layer of overlay.layers) {
         if (map.getLayer(layer.id)) map.removeLayer(layer.id);
-        map.addLayer(layer as AddLayerObject);
+        map.addLayer(layer as AddLayerObject, before);
       }
     }
     applied.set(overlay.id, { data: overlay.data, layers });
-  }
+  });
 }
 
 function viewOf(map: maplibregl.Map): MapView {
@@ -43,14 +47,14 @@ function viewOf(map: maplibregl.Map): MapView {
   return { center: [center.lng, center.lat], bounds: [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()], zoom: map.getZoom() };
 }
 
-export function MapSurface({ mapStyle, fallbackStyle, initialCamera, overlays = [], interactive = true, onUserGesture, onViewChanging, onViewChanged, ref }: MapSurfaceProps) {
+export function MapSurface({ mapStyle, fallbackStyle, initialCamera, overlays = [], interactive = true, onUserGesture, onViewChanging, onViewChanged, onPress, ref }: MapSurfaceProps) {
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
   const applied = useRef(new Map<string, AppliedOverlay>());
   const styleReady = useRef(false);
   const shownStyle = useRef(mapStyle);
-  const latest = useRef({ overlays, onUserGesture, onViewChanging, onViewChanged, fallbackStyle });
-  latest.current = { overlays, onUserGesture, onViewChanging, onViewChanged, fallbackStyle };
+  const latest = useRef({ overlays, onUserGesture, onViewChanging, onViewChanged, onPress, fallbackStyle });
+  latest.current = { overlays, onUserGesture, onViewChanging, onViewChanged, onPress, fallbackStyle };
 
   useImperativeHandle(ref, () => ({
     moveTo: ({ center, zoom, bearing, durationMs }) =>
@@ -94,6 +98,7 @@ export function MapSurface({ mapStyle, fallbackStyle, initialCamera, overlays = 
     instance.once("load", viewChanged);
     instance.on("move", () => latest.current.onViewChanging?.(viewOf(instance)));
     instance.on("moveend", viewChanged);
+    instance.on("click", (event) => latest.current.onPress?.([event.lngLat.lng, event.lngLat.lat]));
     return () => {
       instance.remove();
       map.current = null;

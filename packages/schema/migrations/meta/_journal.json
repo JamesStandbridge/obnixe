@@ -36,6 +36,13 @@
       "when": 1795711829765,
       "tag": "0004_recording_derivation",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1795714650348,
+      "tag": "0005_mask_in_app",
+      "breakpoints": true
     }
   ]
 }
