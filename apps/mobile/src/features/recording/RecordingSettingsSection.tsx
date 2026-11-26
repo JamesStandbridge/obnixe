@@ -27,7 +27,7 @@ export function RecordingSettingsSection({ preferences }: RecordingSettingsSecti
           <Row
             key={sport}
             title={sports[sport].label}
-            detail={settingsSummary(stored ?? defaultRecordingSettings(profile))}
+            detail={settingsSummary(profile, stored ?? defaultRecordingSettings(profile))}
             trailing={<Chevron />}
             onPress={() => router.push({ pathname: "/settings/recording/[sport]", params: { sport } })}
           />

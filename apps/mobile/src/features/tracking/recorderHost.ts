@@ -75,6 +75,7 @@ import type { FollowedRoute } from "@/features/routes/routeData";
 import { feedOf, journalTrackOf } from "@/features/tracking/journalFeed";
 import type { FeedItem } from "@/features/tracking/journalFeed";
 import { notificationOf, timerBaseOf } from "@/features/tracking/notification";
+import { bluetoothSensorsOf, sensorLostIssueOf, sensorRoleOfIssue } from "@/features/tracking/sensorDevices";
 import { availableBytes, deleteJournal, journalUri, readJournalFile, writeTrack } from "@/features/tracking/trackStore";
 import { formatNumber } from "@/format/numbers";
 import type { SampleBatch, TrackerIssue, TrackerIssueKind, TrackerMarkEvent, TrackerModule, TrackerPower, TrackerReplay } from "../../../modules/obnixe-tracker";
@@ -693,7 +694,7 @@ export class RecorderHost {
       journalPath: journalUri(active.sessionId),
       journal: create ? "create" : "continue",
       power: active.power,
-      sensors: { barometer: true, pedometer: active.profile.cadence === "steps", heartRateDevice: active.settings.heartRateDevice?.id ?? null },
+      sensors: { barometer: true, pedometer: active.profile.cadence === "steps", bluetooth: bluetoothSensorsOf(active.profile, active.settings) },
       batchIntervalMs: 1000,
       backgroundBatchIntervalMs: active.workout === null ? 5000 : 1000,
       notification: notificationOf(active.profile, active.state, active.live.snapshot(active.lastT), active.startedAt, null, active.runner?.view(active.lastT) ?? null),
@@ -874,7 +875,8 @@ export class RecorderHost {
 
   private async onIssue(active: Active, kind: TrackerIssueKind): Promise<void> {
     active.issues.add(kind);
-    if (kind === "heart_rate_lost") this.signal(active, active.monitor.heartRateSource(false));
+    const role = sensorRoleOfIssue(kind);
+    if (role !== null) this.signal(active, active.monitor.sensorSource(role, false));
     this.publish(true);
     if (kind === "storage_full") void this.dispatch({ type: "stop", reason: "storage_full", t: active.lastT }, "live").catch(this.options.feedback.report);
   }
@@ -914,9 +916,9 @@ export class RecorderHost {
       active.issues.delete("permission_lost");
       active.issues.delete("provider_disabled");
     }
-    if (sample.type === "heart_rate") {
-      active.issues.delete("heart_rate_lost");
-      if (mode === "live") this.signal(active, active.monitor.heartRateSource(true));
+    if (sample.type === "heart_rate" || sample.type === "cadence" || sample.type === "power") {
+      active.issues.delete(sensorLostIssueOf(sample.type));
+      if (mode === "live") this.signal(active, active.monitor.sensorSource(sample.type, true));
     }
     for (const event of active.live.push(sample)) {
       switch (event.type) {

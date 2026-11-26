@@ -235,6 +235,8 @@ export function ZonesSection({ zones }: ZonesSectionProps) {
 
 function energyMethodText(method: EnergyMethod): string {
   switch (method) {
+    case "power":
+      return "d'après la puissance mesurée";
     case "heart_rate":
       return "d'après la fréquence cardiaque";
     case "mechanical":
@@ -376,8 +378,11 @@ export function QualitySection({ activity }: ActivityProps) {
     { title: "Trous de signal", value: gaps.length === 0 ? "Aucun" : elapsedText(gapMs), ...(gaps.length === 0 ? {} : { detail: `${formatInteger(gaps.length)} interruption${gaps.length > 1 ? "s" : ""}` }) },
     { title: "Points écartés", value: formatInteger(rejected), detail: `sur ${formatInteger(summary.pointCount)} enregistrés` },
     { title: "Altitude", value: elevationSourceText(summary.elevationSource) },
-    { title: "Cadence", value: sensorText(summary.cadenceSource) },
+    { title: "Cadence", value: sensorText(summary.cadenceSource), ...(summary.cadenceSource !== "sensor" || saved.recording.cadenceDevice === null ? {} : { detail: saved.recording.cadenceDevice }) },
     { title: "Fréquence cardiaque", value: sensorText(summary.heartRateSource), ...(saved.recording.heartRateDevice === null ? {} : { detail: saved.recording.heartRateDevice }) },
+    ...(summary.powerAvg === null && saved.recording.powerDevice === null
+      ? []
+      : [{ title: "Puissance", value: sensorText(saved.recording.source === "live" ? "sensor" : "file"), ...(saved.recording.powerDevice === null ? {} : { detail: saved.recording.powerDevice }) }]),
   ];
   if (summary.simulated) rows.unshift({ title: "Activité simulée", value: "Hors records" });
   return (

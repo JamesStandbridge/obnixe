@@ -1,7 +1,8 @@
 import { heartRateZones } from "@obnixe/core";
-import type { AlertGoal, RangeStatus, RecordingAlertEvent, ResolvedProfile, RouteRejoin, WorkoutStepRun } from "@obnixe/core";
+import type { AlertGoal, RangeStatus, RecordingAlertEvent, ResolvedProfile, RouteRejoin, SensorRole, WorkoutStepRun } from "@obnixe/core";
 import type { HeartRateRange, PaceRange, WorkoutTarget } from "@obnixe/schema";
 import { lapFigures } from "@/features/recording/metrics";
+import { sensorTextsOf } from "@/features/recording/sensorTexts";
 import { targetLabel } from "@/features/recording/target";
 import { intentLabels, paceRangeText, workoutDurationText, workoutTargetText } from "@/features/workouts/format";
 import { formatClock, formatLongClock } from "@/format/durations";
@@ -166,7 +167,9 @@ function goalDetail(goal: AlertGoal): string {
   return `Objectif ${targetLabel(goal)} atteint`;
 }
 
-export function alertNotice(event: RecordingAlertEvent, profile: Pick<ResolvedProfile, "primary" | "pacePerMeters">): AlertNotice {
+const sensorBackDetails: Readonly<Record<SensorRole, string>> = { heart_rate: "La fréquence cardiaque reprend", cadence: "La cadence reprend", power: "La puissance reprend" };
+
+export function alertNotice(event: RecordingAlertEvent, profile: Pick<ResolvedProfile, "primary" | "pacePerMeters" | "cadence">): AlertNotice {
   switch (event.kind) {
     case "lap": {
       const figures = lapFigures(event.lap, profile);
@@ -202,10 +205,10 @@ export function alertNotice(event: RecordingAlertEvent, profile: Pick<ResolvedPr
       return event.change === "lost"
         ? { title: "Signal GPS perdu", detail: "La distance reprend au retour du signal", tone: "warn" }
         : { title: "Signal GPS retrouvé", detail: "La trace continue", tone: "mark" };
-    case "sensor":
-      return event.change === "lost"
-        ? { title: "Capteur cardiaque perdu", detail: "Reconnexion en cours", tone: "warn" }
-        : { title: "Capteur cardiaque reconnecté", detail: "La fréquence cardiaque reprend", tone: "mark" };
+    case "sensor": {
+      const title = sensorTextsOf(event.sensor, profile).title;
+      return event.change === "lost" ? { title: `${title} perdu`, detail: "Reconnexion en cours", tone: "warn" } : { title: `${title} reconnecté`, detail: sensorBackDetails[event.sensor], tone: "mark" };
+    }
     case "battery":
       return event.level === "low"
         ? { title: "Batterie faible", detail: "Moins de 15 % : le mode économie espace les points GPS", tone: "warn" }

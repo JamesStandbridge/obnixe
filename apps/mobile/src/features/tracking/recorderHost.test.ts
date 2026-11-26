@@ -21,7 +21,7 @@ class TrackerError extends Error {
 
 /** Writes real `.ojr` batches to the in-memory file system and echoes them like the native module. */
 class FakeTracker implements TrackerPort {
-  readonly listeners: Listeners = { onSamples: new Set(), onMark: new Set(), onIssue: new Set(), onHeartRateDevice: new Set(), onWarmupFix: new Set() };
+  readonly listeners: Listeners = { onSamples: new Set(), onMark: new Set(), onIssue: new Set(), onSensorDevice: new Set(), onWarmupFix: new Set() };
   readonly notifications: TrackerNotification[] = [];
   readonly powers: TrackerPower[] = [];
   readonly requests: TrackerStartRequest[] = [];
@@ -53,7 +53,7 @@ class FakeTracker implements TrackerPort {
     this.cancellations += 1;
   }
 
-  async start(request: TrackerStartRequest): Promise<{ startedAt: EpochMs; sources: { location: "replay"; barometer: false; pedometer: false; heartRate: false } }> {
+  async start(request: TrackerStartRequest): Promise<{ startedAt: EpochMs; sources: { location: "replay"; barometer: false; pedometer: false; heartRate: false; cadence: false; power: false } }> {
     this.requests.push(request);
     this.path = request.journalPath;
     this.state = { state: "recording", sessionId: request.sessionId };
@@ -72,7 +72,7 @@ class FakeTracker implements TrackerPort {
     }
     this.stopped = false;
     this.paused = false;
-    return { startedAt: this.startedAt, sources: { location: "replay", barometer: false, pedometer: false, heartRate: false } };
+    return { startedAt: this.startedAt, sources: { location: "replay", barometer: false, pedometer: false, heartRate: false, cadence: false, power: false } };
   }
 
   mark(kind: "pause" | "resume" | "lap"): void {
@@ -476,15 +476,26 @@ describe("alerts and sensors", () => {
     tracker.write([{ type: "heart_rate", t: tracker.now(), bpm: 142, contact: "contact", rrInterval: null }], null, 0);
     await settle();
     expect(recordingOf(host).issues).not.toContain("heart_rate_lost");
-    expect(feedback.calls.filter((call) => call.startsWith("alert:"))).toEqual(["alert:gps", "alert:gps", "alert:battery", "alert:sensor", "alert:sensor"]);
+    tracker.issue("power_lost");
+    await settle();
+    expect(recordingOf(host).alert?.event).toEqual({ kind: "sensor", sensor: "power", change: "lost" });
+    tracker.write([{ type: "power", t: tracker.now(), watts: 251, cadence: null }], null, 0);
+    await settle();
+    expect(recordingOf(host).issues).not.toContain("power_lost");
+    expect(recordingOf(host).alert?.event).toEqual({ kind: "sensor", sensor: "power", change: "back" });
+    expect(feedback.calls.filter((call) => call.startsWith("alert:"))).toEqual(["alert:gps", "alert:gps", "alert:battery", "alert:sensor", "alert:sensor", "alert:sensor", "alert:sensor"]);
   });
 
-  it("connects the paired heart-rate source by its address and names it on the recording (SPT-007)", async () => {
-    runSettings({ heartRateDevice: { id: "C4:7D:2A:10:9E:01", name: "Venu 3S" } });
+  it("connects the paired sources by their address and service and names them on the recording (SPT-007, SPT-008)", async () => {
+    runSettings({ heartRateDevice: { id: "C4:7D:2A:10:9E:01", name: "Venu 3S" }, cadenceDevice: { id: "D0:5F:11:22:33:44", name: "Stryd" }, powerDevice: { id: "D0:5F:11:22:33:44", name: "Stryd" } });
     const host = newHost();
     const sessionId = await started(host);
-    expect(tracker.requests[0]?.sensors.heartRateDevice).toBe("C4:7D:2A:10:9E:01");
-    expect(recordingRow(sessionId)?.heartRateDevice).toBe("Venu 3S");
+    expect(tracker.requests[0]?.sensors.bluetooth).toEqual([
+      { service: "heart_rate", id: "C4:7D:2A:10:9E:01" },
+      { service: "running_speed_cadence", id: "D0:5F:11:22:33:44" },
+      { service: "cycling_power", id: "D0:5F:11:22:33:44" },
+    ]);
+    expect(recordingRow(sessionId)).toMatchObject({ heartRateDevice: "Venu 3S", cadenceDevice: "Stryd", powerDevice: "Stryd" });
     expect(recordingOf(host).settings.heartRateDevice).toEqual({ id: "C4:7D:2A:10:9E:01", name: "Venu 3S" });
   });
 

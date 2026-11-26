@@ -21,6 +21,7 @@ import { estimateEnergy } from "./energy.ts";
 import type { EnergyEstimate } from "./energy.ts";
 import { resolveProfile } from "./profile.ts";
 import type { ResolvedProfile } from "./profile.ts";
+import { pairedSensorOf } from "./sensors.ts";
 import { importedSummary, sessionValuesFromRecording } from "./summary.ts";
 import type { LapBounds } from "./stages/derive.ts";
 import { trackingAlgorithmVersion } from "./version.ts";
@@ -166,10 +167,10 @@ export function recordingStartMutations(plan: RecordingStartPlan, started: Start
         steps: null,
         heartRateAvg: null,
         heartRateMax: null,
-        heartRateDevice: plan.settings.heartRateDevice?.name ?? null,
-        cadenceDevice: plan.settings.cadenceDevice?.name ?? null,
+        heartRateDevice: pairedSensorOf(plan.profile, plan.settings, "heart_rate")?.name ?? null,
+        cadenceDevice: pairedSensorOf(plan.profile, plan.settings, "cadence")?.name ?? null,
         powerAvg: null,
-        powerDevice: plan.settings.powerDevice?.name ?? null,
+        powerDevice: pairedSensorOf(plan.profile, plan.settings, "power")?.name ?? null,
         energyKcal: null,
         energyMethod: null,
         importedEnergyKcal: null,

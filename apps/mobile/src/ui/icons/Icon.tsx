@@ -94,6 +94,17 @@ const glyphs = {
       </>
     ),
   },
+  cadence: {
+    viewBox: 22,
+    render: (color) => (
+      <>
+        <Circle cx={11} cy={11} r={7.5} {...stroke(color, 1.7)} />
+        <Circle cx={11} cy={11} r={1.6} fill={color} />
+        <Path d="M11 11 15.6 6.4" {...stroke(color, 1.8)} />
+      </>
+    ),
+  },
+  power: { viewBox: 22, render: (color) => <Path d="M12.5 3.5 5.5 12.5h5l-1 6 7-9h-5z" {...stroke(color, 1.7)} /> },
   more: {
     viewBox: 22,
     render: (color) => (

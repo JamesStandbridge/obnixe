@@ -1,6 +1,7 @@
 import { isAscentEffort } from "@obnixe/core";
 import type { RecordingSummary, ResolvedProfile, TrackClimb, TrackDescent, TrackDetails } from "@obnixe/core";
 import type { BestEffortKey, MetricKey } from "@obnixe/schema";
+import { cadenceUnit } from "@/features/recording/metrics";
 import { effortLabel } from "@/features/recording/records";
 import type { FigureText } from "@/features/stats/format";
 import { capitalize } from "@/format/labels";
@@ -92,7 +93,7 @@ function figure(key: MetricKey, input: SummaryInput): (FigureText & { readonly l
     case "vam":
       return labelled("VAM", details.vamMetersPerHour === null ? null : { value: formatInteger(details.vamMetersPerHour), unit: "m/h" });
     case "cadence":
-      return labelled("Cadence", summary.cadenceAvg === null ? null : { value: formatInteger(summary.cadenceAvg), unit: "pas/min" });
+      return labelled("Cadence", summary.cadenceAvg === null ? null : { value: formatInteger(summary.cadenceAvg), unit: cadenceUnit(profile) });
     case "steps":
       return labelled("Pas", summary.steps === null ? null : { value: formatInteger(summary.steps), unit: "" });
     case "heart_rate_avg":

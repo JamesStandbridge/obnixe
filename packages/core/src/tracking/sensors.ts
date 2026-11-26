@@ -1,4 +1,4 @@
-import type { RecordingProfile, SportKey } from "@obnixe/schema";
+import type { RecordingProfile, RecordingSettings, SensorDeviceChoice, SportKey } from "@obnixe/schema";
 import type { ResolvedProfile } from "./profile.ts";
 import { absentValue } from "./types.ts";
 import type { PowerColumns, SampleColumns } from "./types.ts";
@@ -26,6 +26,17 @@ export function sensorRolesOf(profile: Pick<ResolvedProfile, "sport" | "metrics"
       }
     }
   });
+}
+
+const sensorDeviceKeys = { heart_rate: "heartRateDevice", cadence: "cadenceDevice", power: "powerDevice" } as const satisfies Record<SensorRole, keyof RecordingSettings>;
+
+/** The source memorized for `role`; `null` when the profile does not pair it, whatever the settings hold. */
+export function pairedSensorOf(profile: Pick<ResolvedProfile, "sport" | "metrics">, settings: RecordingSettings, role: SensorRole): SensorDeviceChoice | null {
+  return sensorRolesOf(profile).includes(role) ? settings[sensorDeviceKeys[role]] : null;
+}
+
+export function withSensorDevice(settings: RecordingSettings, role: SensorRole, device: SensorDeviceChoice | null): RecordingSettings {
+  return { ...settings, [sensorDeviceKeys[role]]: device };
 }
 
 /** A Bluetooth reading holds until the next one, at most this long: a dropout is never filled with an invented value (`SPT-008`). */

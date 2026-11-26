@@ -1,14 +1,34 @@
 import { describe, expect, it } from "vitest";
 import type { FieldValues, SportKey } from "@obnixe/schema";
 import type { LiveSnapshot } from "./live.ts";
+import { defaultRecordingSettings } from "./plans.ts";
 import { resolveProfile } from "./profile.ts";
-import { cadenceReadings, cadenceStepsPerCycle, forEachSensorSpan, powerReadings, sensorAverage, sensorMaxBetween, sensorMeanOver, sensorReader, sensorRolesOf } from "./sensors.ts";
+import type { ResolvedProfile } from "./profile.ts";
+import {
+  cadenceReadings,
+  cadenceStepsPerCycle,
+  forEachSensorSpan,
+  pairedSensorOf,
+  powerReadings,
+  sensorAverage,
+  sensorMaxBetween,
+  sensorMeanOver,
+  sensorReader,
+  sensorRolesOf,
+  withSensorDevice,
+} from "./sensors.ts";
 import type { SensorReadings, SensorRole } from "./sensors.ts";
 import { coreScenarios } from "./testing/scenarios.ts";
 import type { Scenario } from "./testing/scenarios.ts";
 import { runBatch, runLive } from "./testing/run.ts";
 import { absentValue, toSampleColumns } from "./types.ts";
 import type { CadenceSample, PowerSample, Sample } from "./types.ts";
+
+function profileOf(sport: SportKey, values: FieldValues = {}): ResolvedProfile {
+  const profile = resolveProfile(sport, values);
+  if (profile === null) throw new Error(`${sport} records no track`);
+  return profile;
+}
 
 const readings = (pairs: readonly (readonly [number, number])[]): SensorReadings => ({
   length: pairs.length,
@@ -69,16 +89,23 @@ describe("sensor readings (SPT-008)", () => {
   });
 
   it("pair the sources each profile shows: no sensor for a swim, the heart rate alone on snow, water and skates (SPT-008)", () => {
-    const rolesOf = (sport: SportKey, values: FieldValues = {}): readonly SensorRole[] | undefined => {
-      const profile = resolveProfile(sport, values);
-      return profile === null ? undefined : sensorRolesOf(profile);
-    };
+    const rolesOf = (sport: SportKey, values: FieldValues = {}): readonly SensorRole[] => sensorRolesOf(profileOf(sport, values));
     expect(rolesOf("run")).toEqual(["heart_rate", "cadence", "power"]);
     expect(rolesOf("trail")).toEqual(["heart_rate", "cadence", "power"]);
     expect(rolesOf("bike", { kind: "mtb" })).toEqual(["heart_rate", "cadence", "power"]);
     expect(rolesOf("hike")).toEqual(["heart_rate", "cadence"]);
     expect(rolesOf("swim", { water: "open_water" })).toEqual([]);
     for (const sport of ["ski_touring", "nordic_ski", "alpine_ski", "paddle", "inline_skate"] as const) expect(rolesOf(sport)).toEqual(["heart_rate"]);
+  });
+
+  it("ignore a memorized source the profile does not pair", () => {
+    const strap = { id: "C4:7D:2A:10:9E:01", name: "HRM-Pro" };
+    const settings = withSensorDevice(withSensorDevice(defaultRecordingSettings(profileOf("run")), "heart_rate", strap), "power", { id: "D1", name: "Stryd" });
+    expect(settings).toMatchObject({ heartRateDevice: strap, cadenceDevice: null, powerDevice: { name: "Stryd" } });
+    expect(pairedSensorOf(profileOf("run"), settings, "power")?.name).toBe("Stryd");
+    expect(pairedSensorOf(profileOf("swim", { water: "open_water" }), settings, "heart_rate")).toBeNull();
+    expect(pairedSensorOf(profileOf("paddle"), settings, "power")).toBeNull();
+    expect(pairedSensorOf(profileOf("paddle"), settings, "heart_rate")).toEqual(strap);
   });
 
   it("give a ride its power and crank cadence averages, live and in batch, coasting and dropout included", () => {

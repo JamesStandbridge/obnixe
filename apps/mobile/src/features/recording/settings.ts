@@ -1,3 +1,4 @@
+import { pairedSensorOf, sensorRolesOf } from "@obnixe/core";
 import type { HeartRateZone, ResolvedProfile } from "@obnixe/core";
 import { autoLapDurationsMs, autoLapMeters, sportKeys } from "@obnixe/schema";
 import type { HeartRateRange, PaceRange, RecordingAlert, RecordingSettings, SportKey } from "@obnixe/schema";
@@ -17,7 +18,7 @@ export interface AlertLabel {
 }
 
 /** `REC-075`: each alert type the sport can switch off, in the order of the settings screen. */
-export function alertLabel(alert: RecordingAlert, profile: Pick<ResolvedProfile, "splitMeters">): AlertLabel {
+export function alertLabel(alert: RecordingAlert, profile: Pick<ResolvedProfile, "splitMeters" | "sport" | "metrics">): AlertLabel {
   switch (alert) {
     case "lap":
       return { title: "Tours", detail: "Manuels et automatiques" };
@@ -34,7 +35,7 @@ export function alertLabel(alert: RecordingAlert, profile: Pick<ResolvedProfile,
     case "gps":
       return { title: "Signal GPS", detail: "Perdu puis retrouvé" };
     case "sensor":
-      return { title: "Capteur cardiaque", detail: "Perdu puis reconnecté" };
+      return sensorRolesOf(profile).length > 1 ? { title: "Capteurs Bluetooth", detail: "Cardio, cadence ou puissance perdu puis reconnecté" } : { title: "Capteur cardiaque", detail: "Perdu puis reconnecté" };
     case "battery":
       return { title: "Batterie", detail: "Sous 15 %, puis sous 5 %" };
     default: {
@@ -174,12 +175,13 @@ export function withZoneEnd(range: HeartRateRange, end: "lowest" | "highest", zo
 }
 
 /** One line under the sport in the settings: what departs from the defaults. */
-export function settingsSummary(settings: RecordingSettings): string {
+export function settingsSummary(profile: Pick<ResolvedProfile, "sport" | "metrics">, settings: RecordingSettings): string {
+  const devices = new Set(sensorRolesOf(profile).flatMap((role) => pairedSensorOf(profile, settings, role)?.name ?? []));
   const parts = [
     settings.autoPause ? "pause auto" : "sans pause auto",
     ...(settings.autoLap === null ? [] : [`tours ${autoLapLabel(settings.autoLap).toLowerCase()}`]),
     ...(settings.alerts.disabled.length === 0 ? [] : [`${settings.alerts.disabled.length} alerte${settings.alerts.disabled.length > 1 ? "s" : ""} coupée${settings.alerts.disabled.length > 1 ? "s" : ""}`]),
-    ...(settings.heartRateDevice === null ? [] : [settings.heartRateDevice.name]),
+    ...devices,
   ];
   return parts.join(" · ");
 }

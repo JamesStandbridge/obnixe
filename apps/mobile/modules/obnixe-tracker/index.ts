@@ -31,11 +31,20 @@ export interface TrackerNotification {
   readonly progress: TrackerNotificationProgress | null;
 }
 
+/** The GATT services of the Bluetooth sources: heart rate, cycling speed and cadence, cycling power, running speed and cadence. */
+export type SensorService = "heart_rate" | "cycling_speed_cadence" | "cycling_power" | "running_speed_cadence";
+
+export interface BluetoothSensor {
+  readonly service: SensorService;
+  /** As reported by `onSensorDevice`: its Bluetooth address on Android, its Core Bluetooth UUID on iOS. */
+  readonly id: string;
+}
+
 export interface TrackerSensors {
   readonly barometer: boolean;
   readonly pedometer: boolean;
-  /** Identifier of the heart rate source, as reported by `onHeartRateDevice`: its Bluetooth address on Android, its Core Bluetooth UUID on iOS. */
-  readonly heartRateDevice: string | null;
+  /** At most one per measured role; one device may appear under several services. */
+  readonly bluetooth: readonly BluetoothSensor[];
 }
 
 /** Development source (DEC-08): replays a GPX file as simulated fixes, `speed` times faster (1 to 50). */
@@ -70,6 +79,8 @@ export interface TrackerSources {
   readonly barometer: boolean;
   readonly pedometer: boolean;
   readonly heartRate: boolean;
+  readonly cadence: boolean;
+  readonly power: boolean;
 }
 
 export interface TrackerStarted {
@@ -106,14 +117,15 @@ export interface TrackerMarkEvent {
 }
 
 /** `storage_full` means the module stopped the recording itself; `stop()` then returns how it ended. */
-export type TrackerIssueKind = "permission_lost" | "provider_disabled" | "storage_low" | "storage_full" | "heart_rate_lost";
+export type TrackerIssueKind = "permission_lost" | "provider_disabled" | "storage_low" | "storage_full" | "heart_rate_lost" | "cadence_lost" | "power_lost";
 
 export interface TrackerIssue {
   readonly sessionId: string;
   readonly kind: TrackerIssueKind;
 }
 
-export interface HeartRateDevice {
+export interface SensorDevice {
+  readonly service: SensorService;
   readonly id: string;
   readonly name: string;
   readonly rssi: number;
@@ -145,7 +157,7 @@ export type TrackerEvents = {
   onSamples: (batch: SampleBatch) => void;
   onMark: (mark: TrackerMarkEvent) => void;
   onIssue: (issue: TrackerIssue) => void;
-  onHeartRateDevice: (device: HeartRateDevice) => void;
+  onSensorDevice: (device: SensorDevice) => void;
   /** Fixes received while preparing; `t` counts from the call to `prepare`. */
   onWarmupFix: (fix: Fix) => void;
 };
@@ -163,8 +175,8 @@ declare class ObnixeTrackerModule extends NativeModule<TrackerEvents> {
   mark(kind: TrackerControlMark): void;
   setPower(power: TrackerPower): void;
   setNotification(notification: TrackerNotification): void;
-  /** Reports Heart Rate service advertisers through `onHeartRateDevice` until the timeout or `stopScan`. */
-  scanHeartRate(timeoutMs: number): Promise<void>;
+  /** Reports the advertisers of `service` through `onSensorDevice` until the timeout or `stopScan`. */
+  scanSensors(service: SensorService, timeoutMs: number): Promise<void>;
   stopScan(): void;
   stop(): Promise<TrackerStopped>;
 }
