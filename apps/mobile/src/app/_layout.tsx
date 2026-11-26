@@ -16,6 +16,7 @@ import { hideAsync, preventAutoHideAsync } from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { DatabaseGate } from "@/data/DatabaseGate";
 import { useAppLaunch } from "@/features/data/launch";
+import { MapCacheHost } from "@/features/maps/MapCacheHost";
 import { RemoteAccessHost } from "@/features/remote/RemoteAccessHost";
 import { configureRestAlerts } from "@/features/training/workout/restAlert";
 import { BrandIntro } from "@/ui/illustrations/BrandIntro";
@@ -48,6 +49,7 @@ function Navigator() {
           <Stack.Screen name="agent/scan" options={{ presentation: "fullScreenModal", animation: "slide_from_bottom" }} />
         </Stack>
         <RemoteAccessHost />
+        <MapCacheHost />
       </SnackbarHost>
       <BrandIntro />
     </>
