@@ -27,7 +27,8 @@ function photoFile(file: string): File {
   return file.startsWith("file:") ? new File(file) : new File(Paths.document, file);
 }
 
-export async function pickBackupFile(): Promise<PickedFile | null> {
+/** Any type: phones label `.obnixe`, `.fit` and `.tcx` files inconsistently, so the content decides. */
+async function pickFile(): Promise<PickedFile | null> {
   const result = await getDocumentAsync({ type: "*/*", copyToCacheDirectory: true, multiple: false });
   if (result.canceled) return null;
   const [asset] = result.assets;
@@ -35,6 +36,28 @@ export async function pickBackupFile(): Promise<PickedFile | null> {
   const file = new File(asset.uri);
   const bytes = await file.bytes();
   return { name: asset.name, size: asset.size ?? bytes.length, bytes };
+}
+
+export async function pickBackupFile(): Promise<PickedFile | null> {
+  return pickFile();
+}
+
+export async function pickActivityFile(): Promise<PickedFile | null> {
+  return pickFile();
+}
+
+/** A file shared to the app or opened with it (`IO-051`): an Android `content://` grant or an iOS `file://` inbox copy. */
+export async function readOpenedFile(uri: string): Promise<PickedFile> {
+  const file = new File(uri);
+  const bytes = await file.bytes();
+  return { name: file.name, size: bytes.length, bytes };
+}
+
+/** iOS copies every opened file into `Documents/Inbox`, where nothing else removes it. */
+export function releaseOpenedFile(uri: string): void {
+  if (!uri.startsWith(`${new Directory(Paths.document, "Inbox").uri}/`)) return;
+  const file = new File(uri);
+  if (file.exists) file.delete();
 }
 
 export async function shareFile(shared: SharedFile): Promise<void> {

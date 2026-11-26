@@ -228,15 +228,35 @@ function lapInserts(env: Environment, sessionId: Id, processed: ProcessedTrack):
   );
 }
 
+/** The recording updated in place, or moved to the row `recordingId` whose track file is a new one. */
+function recordingMutations(live: LiveRecording, patch: RecordingPatch, recordingId: Id): readonly Mutation[] {
+  if (recordingId === live.recording.id) return [{ kind: "update", table: "recording", key: recordingId, patch }];
+  const { createdAt, updatedAt, ...row } = live.recording;
+  return [
+    { kind: "delete", table: "recording", key: live.recording.id },
+    { kind: "insert", table: "recording", row: { ...row, ...patch, id: recordingId } },
+  ];
+}
+
 /**
  * Old laps go first so a shorter recording never sees a lap beyond its end; the new ones follow it. The session keeps its
  * start, so a trimmed start counts as paused time and the active time stays the moving time.
  */
-function rewrite(db: ObnixeDatabase, env: Environment, live: LiveRecording, track: Track, processed: ProcessedTrack, profile: ResolvedProfile, extra: RecordingPatch, sessionExtra: Partial<NewRow<"session">>): readonly Mutation[] {
+function rewrite(
+  db: ObnixeDatabase,
+  env: Environment,
+  live: LiveRecording,
+  track: Track,
+  processed: ProcessedTrack,
+  profile: ResolvedProfile,
+  extra: RecordingPatch,
+  sessionExtra: Partial<NewRow<"session">>,
+  recordingId: Id = live.recording.id,
+): readonly Mutation[] {
   const derived = sessionValuesFromRecording(live.session.values, processed.summary, profile);
   return [
     ...lapsOf(db, live.session.id).map((row): Mutation => ({ kind: "delete", table: "lap", key: row.id })),
-    { kind: "update", table: "recording", key: live.recording.id, patch: { ...recordingPatchOf(db, live.session, track, processed, activePrivacyMask(db)), ...extra } },
+    ...recordingMutations(live, { ...recordingPatchOf(db, live.session, track, processed, activePrivacyMask(db)), ...extra }, recordingId),
     { kind: "update", table: "session", key: live.session.id, patch: { values: derived.values, pausedSeconds: derived.pausedSeconds + Math.round(processed.elapsed.startMs / 1000), ...sessionExtra } },
     ...lapInserts(env, live.session.id, processed),
   ];
@@ -339,6 +359,39 @@ export function planTrim(db: ObnixeDatabase, env: Environment, sessionId: Id, tr
   const profile = profileOfSession(live.session);
   const processed = reprocessRecording(db, live, track, trim, profile);
   return { processed, mutations: rewrite(db, env, live, track, processed, profile, { trimStartMs: trim.startMs, trimEndMs: trim.endMs }, { endedAt: endOf(live, track, processed) }) };
+}
+
+/** A saved recording moved onto another track: a new row, so its own track file stays as it was for an undo. */
+export interface TrackReplacement {
+  readonly recordingId: Id;
+  readonly track: Track;
+  readonly stored: StoredTrack;
+  /** Columns the new track changes beyond its summary, such as the heart-rate source of a merged file. */
+  readonly patch: RecordingPatch;
+}
+
+/** `IO-052`: the stored trim and laps processed on the new track, everything derived from it recomputed in one changeset. */
+export function planTrackReplacement(db: ObnixeDatabase, env: Environment, sessionId: Id, replacement: TrackReplacement): RecordingRewrite {
+  const live = liveRecordingOf(db, sessionId);
+  if (live.session.status !== "completed") throw new SessionStateError(live.session.id, "completed");
+  const profile = profileOfSession(live.session);
+  const trim = storedTrim(live.recording);
+  const processed = reprocessRecording(db, live, replacement.track, trim, profile);
+  const { stored } = replacement;
+  return {
+    processed,
+    mutations: rewrite(
+      db,
+      env,
+      live,
+      replacement.track,
+      processed,
+      profile,
+      { ...replacement.patch, trackFile: stored.file, trackSha256: stored.sha256, trackBytes: stored.bytes },
+      { endedAt: endOf(live, replacement.track, processed) },
+      replacement.recordingId,
+    ),
+  };
 }
 
 /** `SUM-005`: the stored trim and laps processed with the current algorithm and the session's current profile. */

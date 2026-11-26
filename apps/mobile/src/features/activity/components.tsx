@@ -290,7 +290,8 @@ export interface SportChoice {
 
 interface SportStripProps {
   readonly items: readonly SportChoice[];
-  readonly value: SportKey;
+  /** `null` while no sport is chosen yet. */
+  readonly value: SportKey | null;
   readonly onChange: (value: SportKey | "catalogue") => void;
 }
 

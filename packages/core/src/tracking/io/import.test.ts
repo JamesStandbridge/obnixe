@@ -14,6 +14,7 @@ import type { TestContext } from "../../testing.ts";
 import { commit } from "../../writer.ts";
 import { decodeTrack } from "../codec/track.ts";
 import { decodePolyline } from "../codec/polyline.ts";
+import { countsInRecords, recordsMinGoodFixPermille } from "../derived.ts";
 import { newPrivacyZone } from "../privacyZones.ts";
 import type { ImportedActivity } from "./activity.ts";
 import { AlreadyImportedError, computeImport, findImportDuplicate, planImport, ReplacedSessionNotFoundError } from "./import.ts";
@@ -126,6 +127,22 @@ describe("planImport (IO-010)", () => {
       [1, "import", 451_000, 618_000],
     ]);
     expect(context.db.select({ author: changeset.author }).from(changeset).all().at(-1)).toEqual({ author: "import" });
+  });
+
+  it("makes positioned files without accuracies count in records, and pool swims not (PR-002, PR-003)", () => {
+    const eligible = (computation: ImportComputation): boolean => {
+      const plan = importFile(computation);
+      const row = context.db.select().from(recording).where(eq(recording.id, plan.recordingId)).get();
+      if (row === undefined) throw new Error("No recording");
+      return countsInRecords(row, computation.sport.sport, computation.values);
+    };
+    for (const name of ["venu3s-run.fit", "garmin-connect-run.gpx", "strava-ride.gpx", "garmin-run.tcx"]) {
+      const computation = computed(name);
+      expect(computation.summary.goodFixPermille, name).toBeGreaterThanOrEqual(recordsMinGoodFixPermille);
+      expect(eligible(computation), name).toBe(true);
+    }
+    expect(eligible(computeImport(activityOf("komoot-hike.gpx"), { sport: "hike", values: {} }))).toBe(true);
+    expect(eligible(computed("venu3s-pool-swim.fit"))).toBe(false);
   });
 
   it("imports a pool swim, which records no track, as a swim session with the file values", () => {

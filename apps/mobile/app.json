@@ -61,6 +61,7 @@
       ],
       "expo-secure-store",
       "./modules/obnixe-tracker/app.plugin.js",
+      "./modules/obnixe-intake/app.plugin.js",
       [
         "expo-camera",
         {
