@@ -125,10 +125,10 @@ export function ImportActivityScreen({ openedFile }: ImportActivityScreenProps) 
   const [replaceAltitude, setReplaceAltitude] = useState(false);
   const measuring = useRef(0);
 
-  const measure = (file: ChosenFile): void => {
+  const measure = (file: ChosenFile, error: string | null = null): void => {
     const token = (measuring.current += 1);
     const sport = file.sport;
-    setStage({ kind: "chosen", file, measured: null, error: null });
+    setStage({ kind: "chosen", file, measured: null, error });
     if (sport === null) return;
     setTimeout(() => {
       if (token !== measuring.current) return;
@@ -136,7 +136,7 @@ export function ImportActivityScreen({ openedFile }: ImportActivityScreenProps) 
       const match = matchImport(computation);
       setResolution(defaultResolution(match));
       setReplaceAltitude(false);
-      setStage({ kind: "chosen", file, measured: { computation, match, matched: matchedSession(match, file.activity.startedAt), path: previewPath(computation) }, error: null });
+      setStage({ kind: "chosen", file, measured: { computation, match, matched: matchedSession(match, file.activity.startedAt), path: previewPath(computation) }, error });
     }, 0);
   };
 
@@ -198,7 +198,7 @@ export function ImportActivityScreen({ openedFile }: ImportActivityScreenProps) 
       result = await commitImport(measured.computation, decision);
     } catch (error) {
       const message = importError(error);
-      setStage({ kind: "chosen", file, measured, error: message ?? interrupted });
+      measure(file, message ?? interrupted);
       if (message === null) throw error;
       return;
     }
