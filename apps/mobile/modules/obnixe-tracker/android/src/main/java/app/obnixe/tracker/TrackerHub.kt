@@ -89,7 +89,7 @@ internal object TrackerHub : Recording.Listener {
         JournalMode.CREATE -> Recording.create(context, config, replay, handler, this)
         JournalMode.CONTINUE -> {
           val kept = RecordingStore.load(context)?.takeIf { it.config.sessionId == config.sessionId }
-          Recording.open(context, config, kept?.stepBaseline, handler, this)
+          Recording.open(context, config, kept?.stepBaseline, reopen = true, handler, this)
         }
       }
     } catch (error: IOException) {
@@ -103,7 +103,7 @@ internal object TrackerHub : Recording.Listener {
       return@confined promise.reject(TrackerException.foregroundStart(error))
     }
     val sources = recording.startSources(screenInteractive = true)
-    promise.resolve(mapOf("startedAt" to recording.startedAt.toDouble(), "paused" to recording.paused, "sources" to sources.toBridge()))
+    promise.resolve(mapOf("startedAt" to recording.startedAt.toDouble(), "sources" to sources.toBridge()))
   }
 
   fun mark(kind: MarkKind) = confined { recording?.mark(kind) }
@@ -164,7 +164,7 @@ internal object TrackerHub : Recording.Listener {
       return@confined
     }
     try {
-      val restored = Recording.open(context, kept.config, kept.stepBaseline, handler, this)
+      val restored = Recording.open(context, kept.config, kept.stepBaseline, reopen = false, handler, this)
       recording = restored
       restored.startSources(screenInteractive)
       refreshNotification(restored)

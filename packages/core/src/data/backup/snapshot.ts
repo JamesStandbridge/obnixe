@@ -27,6 +27,7 @@ import { keyColumnsOf } from "../../keys.ts";
 import { readSettings } from "../../settings.ts";
 import type { SettingsValues } from "../../settings.ts";
 import { columnsOf } from "../foreignKeys.ts";
+import { trackDigest } from "../../tracking/codec/track.ts";
 
 export const backupSchemaVersion = 2;
 
@@ -37,6 +38,12 @@ export type SnapshotTables = { readonly [T in JournaledTable]: readonly TableRow
 
 export interface PhotoFile {
   readonly photoId: Id;
+  readonly bytes: Uint8Array;
+}
+
+/** The `.otrk` file of a recording (`DAT-030`), checked against `recording.track_sha256` before it is restored. */
+export interface TrackFile {
+  readonly recordingId: Id;
   readonly bytes: Uint8Array;
 }
 
@@ -55,6 +62,7 @@ export interface Snapshot {
   readonly tables: SnapshotTables;
   readonly settings: SettingsValues;
   readonly photos: readonly PhotoFile[];
+  readonly tracks: readonly TrackFile[];
 }
 
 export class CorruptedBackupError extends Error {
@@ -83,7 +91,7 @@ export function keepLocalAccess(incoming: SettingsValues, local: SettingsValues)
   };
 }
 
-export function buildSnapshot(db: ObnixeDatabase, createdAt: EpochMs, photos: readonly PhotoFile[] = []): Snapshot {
+export function buildSnapshot(db: ObnixeDatabase, createdAt: EpochMs, photos: readonly PhotoFile[] = [], tracks: readonly TrackFile[] = []): Snapshot {
   const tables: Partial<Record<JournaledTable, readonly RowImage[]>> = {};
   for (const table of journaledTables) {
     const target = journaled[table] as SQLiteTable;
@@ -91,7 +99,17 @@ export function buildSnapshot(db: ObnixeDatabase, createdAt: EpochMs, photos: re
     const order = keyColumnsOf(table).map((name) => asc(columns[name] as SQLiteColumn));
     tables[table] = db.select().from(target).orderBy(...order).all() as RowImage[];
   }
-  return { schemaVersion: backupSchemaVersion, catalogVersion, createdAt, tables: tables as unknown as SnapshotTables, settings: readSettings(db), photos };
+  return { schemaVersion: backupSchemaVersion, catalogVersion, createdAt, tables: tables as unknown as SnapshotTables, settings: readSettings(db), photos, tracks };
+}
+
+/** Track files of the snapshot whose bytes match their recording row (`DAT-030`), limited to `recordingIds` when given. */
+export function restorableTracks(snapshot: Pick<Snapshot, "tables" | "tracks">, recordingIds: ReadonlySet<Id> | null): readonly TrackFile[] {
+  const rows = new Map(snapshot.tables.recording.map((row) => [row.id, row]));
+  return snapshot.tracks.filter((track) => {
+    const row = rows.get(track.recordingId);
+    if (row === undefined || row.trackFile === null || (recordingIds !== null && !recordingIds.has(row.id))) return false;
+    return trackDigest(track.bytes) === row.trackSha256;
+  });
 }
 
 const settingsSchema = z.object({

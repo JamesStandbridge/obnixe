@@ -105,11 +105,14 @@ export interface PurgePlan {
   readonly releases: readonly PurgeRelease[];
   readonly deletions: readonly PurgeTarget[];
   readonly photoFiles: readonly string[];
+  readonly trackFiles: readonly string[];
 }
 
 export interface PurgeResult {
   readonly purgedRows: number;
   readonly photoFiles: readonly string[];
+  /** `INT-031`: deleted after the rows; a file left behind is swept at the next launch. */
+  readonly trackFiles: readonly string[];
 }
 
 const tableOrder = new Map<JournaledTable, number>(journaledTables.map((table, index) => [table, index]));
@@ -178,7 +181,8 @@ export function planTrashPurge(db: ObnixeDatabase, now: EpochMs): PurgePlan {
   }
   const deletions = [...deletes.values()].sort((left, right) => (tableOrder.get(right.table) ?? 0) - (tableOrder.get(left.table) ?? 0));
   const photoFiles = deletions.filter((target) => target.table === "photo").map((target) => String(target.row.file));
-  return { releases: [...releases].filter(([key]) => !deletes.has(key)).map(([, release]) => release), deletions, photoFiles };
+  const trackFiles = deletions.flatMap((target) => (target.table === "recording" && typeof target.row.trackFile === "string" ? [target.row.trackFile] : []));
+  return { releases: [...releases].filter(([key]) => !deletes.has(key)).map(([, release]) => release), deletions, photoFiles, trackFiles };
 }
 
 /**
@@ -189,7 +193,7 @@ export function planTrashPurge(db: ObnixeDatabase, now: EpochMs): PurgePlan {
  */
 export function purgeExpiredTrash(db: ObnixeDatabase, env: Environment): PurgeResult {
   const plan = planTrashPurge(db, env.now());
-  if (plan.deletions.length === 0) return { purgedRows: 0, photoFiles: [] };
+  if (plan.deletions.length === 0) return { purgedRows: 0, photoFiles: [], trackFiles: [] };
   const now = env.now();
   db.transaction((tx) => {
     for (const release of plan.releases) {
@@ -204,7 +208,7 @@ export function purgeExpiredTrash(db: ObnixeDatabase, env: Environment): PurgeRe
     }
     forgetHistory(tx, plan.deletions);
   });
-  return { purgedRows: plan.deletions.length, photoFiles: plan.photoFiles };
+  return { purgedRows: plan.deletions.length, photoFiles: plan.photoFiles, trackFiles: plan.trackFiles };
 }
 
 function forgetHistory(db: ObnixeDatabase, targets: readonly PurgeTarget[]): void {
@@ -231,4 +235,13 @@ export function replacedSnapshots(db: ObnixeDatabase): readonly Backup[] {
 
 export function expiredReplacedSnapshots(db: ObnixeDatabase, now: EpochMs): readonly Backup[] {
   return replacedSnapshots(db).filter((row) => row.createdAt < now - trashRetentionMs);
+}
+
+/** `DAT-033`: the database copies taken before a migration are kept 30 days. */
+export function expiredSafetyCopies(db: ObnixeDatabase, now: EpochMs): readonly Backup[] {
+  return db
+    .select()
+    .from(backup)
+    .where(and(eq(backup.kind, "pre_migration"), isNotNull(backup.snapshotFile), lt(backup.createdAt, (now - trashRetentionMs) as EpochMs)))
+    .all();
 }

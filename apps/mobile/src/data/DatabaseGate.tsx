@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { useMigrations } from "drizzle-orm/expo-sqlite/migrator";
 import migrations from "@obnixe/schema/migrations";
-import { ensureSettings, eraseDatabase, openDatabase, setDatabaseAside } from "@/data/database";
-import type { AppDatabase } from "@/data/database";
+import { ensureSettings, eraseDatabase, openDatabase, pendingSafetyCopy, recordSafetyCopy, safetyCopyFile, setDatabaseAside } from "@/data/database";
+import type { AppDatabase, SafetyCopy } from "@/data/database";
+import { shareFile } from "@/features/data/files";
 import { LinkButton } from "@/ui/Button";
 import { MenuItem } from "@/ui/Inputs";
 import { StartupError } from "@/ui/StartupError";
@@ -63,11 +64,18 @@ function Migrated({ database, recovery, children }: MigratedProps) {
   useEffect(() => {
     if (!success) return;
     ensureSettings();
+    recordSafetyCopy();
     setReady(true);
   }, [success]);
 
   if (error !== undefined) return <UnreadableDatabase error={error} recovery={recovery} />;
   return ready ? children : null;
+}
+
+/** `DAT-033`: the database as it was before the failed migration, the data the user can still take away. */
+async function shareSafetyCopy(copy: SafetyCopy): Promise<void> {
+  const bytes = await safetyCopyFile(copy.name).bytes();
+  await shareFile({ name: copy.name, bytes, mimeType: "application/vnd.sqlite3" });
 }
 
 interface UnreadableDatabaseProps {
@@ -79,6 +87,13 @@ function UnreadableDatabase({ error, recovery }: UnreadableDatabaseProps) {
   const [confirming, setConfirming] = useState(false);
   const [erasing, setErasing] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
+  const [shareFailure, setShareFailure] = useState<string | null>(null);
+  const copy = pendingSafetyCopy();
+
+  const share = (target: SafetyCopy): void => {
+    setShareFailure(null);
+    shareSafetyCopy(target).catch((reason: unknown) => setShareFailure(asError(reason).message));
+  };
 
   const run = (action: () => Promise<void>): void => {
     setErasing(true);
@@ -110,7 +125,15 @@ function UnreadableDatabase({ error, recovery }: UnreadableDatabaseProps) {
           <LinkButton label="Garder les données" disabled={erasing} onPress={() => setConfirming(false)} />
         </>
       ) : (
-        <LinkButton label="Repartir de zéro" onPress={() => setConfirming(true)} />
+        <>
+          {copy === null ? null : <MenuItem label="Exporter la copie d'avant la mise à jour" onPress={() => share(copy)} />}
+          {shareFailure === null ? null : (
+            <Text variant="small" tone="secondary" selectable>
+              Export impossible : {shareFailure}
+            </Text>
+          )}
+          <LinkButton label="Repartir de zéro" onPress={() => setConfirming(true)} />
+        </>
       )}
     </StartupError>
   );

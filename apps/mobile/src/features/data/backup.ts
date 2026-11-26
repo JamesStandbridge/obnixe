@@ -6,6 +6,7 @@ import {
   backupFileExtension,
   buildSnapshot,
   expiredReplacedSnapshots,
+  expiredSafetyCopies,
   localDataSummary,
   mergeSnapshot,
   openSnapshot,
@@ -13,18 +14,20 @@ import {
   purgeExpiredTrash,
   readBackupHeader,
   replaceWithSnapshot,
+  restorableTracks,
   sealSnapshot,
   summarizeSnapshot,
   unpackSnapshot,
 } from "@obnixe/core";
-import type { BackupHeader, MergeCounts, PhotoFile, Snapshot, SnapshotUpgrader, TableRow } from "@obnixe/core";
+import type { BackupHeader, MergeCounts, PhotoFile, Snapshot, SnapshotUpgrader, TableRow, TrackFile } from "@obnixe/core";
 import { backup, schema } from "@obnixe/schema";
 import migrations from "@obnixe/schema/migrations";
 import type { Backup, BackupKind, EpochMs, Id } from "@obnixe/schema";
-import { db, environment } from "@/data/database";
+import { db, deleteSafetyCopy, environment } from "@/data/database";
 import { deleteKept, deletePhoto, readKept, readPhoto, shareFile, writeKept, writePhoto } from "@/features/data/files";
 import type { PickedFile } from "@/features/data/files";
 import { fileStamp } from "@/features/data/format";
+import { deleteTrack, readTrack, writeTrack } from "@/features/tracking/trackStore";
 
 const fillRandom = (bytes: Uint8Array): void => {
   getRandomValues(bytes);
@@ -57,6 +60,20 @@ async function readPhotos(rows: readonly TableRow<"photo">[]): Promise<PhotoFile
   return files;
 }
 
+async function readTracks(rows: readonly TableRow<"recording">[]): Promise<TrackFile[]> {
+  const files: TrackFile[] = [];
+  for (const row of rows) {
+    const bytes = row.trackFile === null ? null : await readTrack(row.trackFile);
+    if (bytes !== null) files.push({ recordingId: row.id, bytes });
+  }
+  return files;
+}
+
+async function currentSnapshot(now: EpochMs, includePhotos: boolean): Promise<Snapshot> {
+  const base = buildSnapshot(db(), now);
+  return { ...base, photos: includePhotos ? await readPhotos(base.tables.photo) : [], tracks: await readTracks(base.tables.recording) };
+}
+
 function record(kind: BackupKind, snapshot: Snapshot, includesPhotos: boolean, sizeBytes: number, snapshotFile: string | null, createdAt: EpochMs): void {
   const summary = summarizeSnapshot(snapshot);
   db()
@@ -78,8 +95,7 @@ function record(kind: BackupKind, snapshot: Snapshot, includesPhotos: boolean, s
 
 export async function exportBackup(request: ExportRequest): Promise<ExportResult> {
   const now = environment.now();
-  const base = buildSnapshot(db(), now);
-  const snapshot: Snapshot = { ...base, photos: request.includePhotos ? await readPhotos(base.tables.photo) : [] };
+  const snapshot = await currentSnapshot(now, request.includePhotos);
   const sealed = await sealSnapshot(snapshot, {
     passphrase: request.passphrase,
     fillRandom,
@@ -121,9 +137,13 @@ async function writePhotos(snapshot: Snapshot, photoIds: ReadonlySet<Id> | null)
   }
 }
 
+/** Track files are written after the commit; a track whose write fails is rebuilt or reported « Trace indisponible » at the next launch. */
+async function writeTracks(snapshot: Snapshot, recordingIds: ReadonlySet<Id> | null): Promise<void> {
+  for (const track of restorableTracks(snapshot, recordingIds)) await writeTrack(track.recordingId, track.bytes);
+}
+
 async function keepCurrent(now: EpochMs): Promise<{ readonly snapshot: Snapshot; readonly name: string; readonly size: number }> {
-  const base = buildSnapshot(db(), now);
-  const snapshot: Snapshot = { ...base, photos: await readPhotos(base.tables.photo) };
+  const snapshot = await currentSnapshot(now, true);
   const packed = packSnapshot(snapshot);
   const name = `replaced-${environment.newId()}.bin`;
   await writeKept(name, packed);
@@ -136,6 +156,7 @@ export async function importBackup(snapshot: Snapshot, mode: ImportMode): Promis
     case "merge": {
       const result = mergeSnapshot(db(), environment, snapshot);
       await writePhotos(snapshot, new Set(result.photoIds));
+      await writeTracks(snapshot, new Set(result.recordingIds));
       record("import_merge", snapshot, snapshot.photos.length > 0, 0, null, now);
       return { mode, changesetId: result.changesetId, counts: result.counts };
     }
@@ -143,9 +164,12 @@ export async function importBackup(snapshot: Snapshot, mode: ImportMode): Promis
       const kept = localDataSummary(db()).hasData ? await keepCurrent(now) : null;
       const changesetId = replaceWithSnapshot(db(), environment, snapshot);
       await writePhotos(snapshot, null);
+      await writeTracks(snapshot, null);
       if (kept !== null) {
         const remaining = new Set(snapshot.tables.photo.map((row) => row.file));
         for (const row of kept.snapshot.tables.photo) if (!remaining.has(row.file)) deletePhoto(row.file);
+        const remainingTracks = new Set(snapshot.tables.recording.map((row) => row.trackFile));
+        for (const row of kept.snapshot.tables.recording) if (row.trackFile !== null && !remainingTracks.has(row.trackFile)) await deleteTrack(row.trackFile);
       }
       record("import_replace", kept?.snapshot ?? snapshot, snapshot.photos.length > 0, kept?.size ?? 0, kept?.name ?? null, now);
       return { mode, changesetId };
@@ -173,11 +197,17 @@ export async function restoreReplaced(row: Backup): Promise<void> {
   db().update(backup).set({ snapshotFile: null }).where(eq(backup.id, row.id)).run();
 }
 
-export function runHousekeeping(): void {
+/** `INT-031`: files of purged rows go after the rows; one left behind by a crash is swept by the launch reconciliation. */
+export async function runHousekeeping(): Promise<void> {
   const purged = purgeExpiredTrash(db(), environment);
   for (const file of purged.photoFiles) deletePhoto(file);
+  for (const file of purged.trackFiles) await deleteTrack(file);
   for (const row of expiredReplacedSnapshots(db(), environment.now())) {
     if (row.snapshotFile !== null) deleteKept(row.snapshotFile);
+    db().update(backup).set({ snapshotFile: null }).where(eq(backup.id, row.id)).run();
+  }
+  for (const row of expiredSafetyCopies(db(), environment.now())) {
+    if (row.snapshotFile !== null) deleteSafetyCopy(row.snapshotFile);
     db().update(backup).set({ snapshotFile: null }).where(eq(backup.id, row.id)).run();
   }
 }

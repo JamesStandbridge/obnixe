@@ -285,6 +285,20 @@ final class JournalWriterTests: XCTestCase {
     XCTAssertThrowsError(try JournalWriter.resume(at: url))
   }
 
+  func testReopeningAStoppedJournalAppendsAfterItUntilAStartMarkClearsTheStop() throws {
+    _ = try writeSession(stop: true)
+    let resumed = try JournalWriter.resume(at: url, afterStop: true)
+    XCTAssertTrue(resumed.stopped)
+    XCTAssertTrue(resumed.paused)
+    XCTAssertEqual(resumed.lastT, 2_600)
+    _ = try resumed.writer.flush(mark: Mark(t: 9_000, kind: .start))
+    resumed.writer.close()
+    let tail = try JournalScanner.scan(try bytes())
+    XCTAssertFalse(tail.stopped)
+    XCTAssertFalse(tail.paused)
+    XCTAssertEqual(tail.nextSequence, 5)
+  }
+
   func testScanningStopsAtABatchWhoseChecksumDoesNotMatch() throws {
     let ends = try writeSession(stop: false)
     var bytes = try bytes()

@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 import { check, index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 import type { SportKey } from "../catalog/sports.ts";
-import { id, ref, tracked, trashable } from "../columns.ts";
+import { id, ref, timestamp, tracked, trashable } from "../columns.ts";
 import { cadenceSources, elevationSources, energyMethods, importFormats, lapTriggers, recordingSources, segmentFamilies, sensorSources } from "../enums.ts";
 import type { BoundingBoxE7, RecordingWeather } from "../recording.ts";
 import { session } from "./sessions.ts";
@@ -113,6 +113,42 @@ export const bestEffort = sqliteTable(
     check("best_effort_ascent_kind", sql`(${t.effort} LIKE '%:ascent_1h') = (${t.ascentMm} IS NOT NULL)`),
   ],
 );
+
+/**
+ * What the derived rows of a live recording were last computed from, outside the journal: its `best_effort` rows
+ * (`DAT-012`, `PR-003`) and its stored preview (`PRV-010`) are current while its session and recording rows, the
+ * algorithm and the masking inputs are unchanged. Also keeps the raw ends of the track for the zone proposal (`PRV-014`).
+ */
+export const recordingDerivation = sqliteTable(
+  "recording_derivation",
+  {
+    sessionId: ref("session_id")
+      .primaryKey()
+      .references(() => session.id, { onDelete: "cascade" }),
+    sessionUpdatedAt: timestamp("session_updated_at").notNull(),
+    recordingUpdatedAt: timestamp("recording_updated_at").notNull(),
+    algorithmVersion: integer("algorithm_version").notNull(),
+    maskKey: text("mask_key").notNull(),
+    startLatitudeE7: integer("start_latitude_e7"),
+    startLongitudeE7: integer("start_longitude_e7"),
+    endLatitudeE7: integer("end_latitude_e7"),
+    endLongitudeE7: integer("end_longitude_e7"),
+  },
+  (t) => [
+    check(
+      "recording_derivation_ends",
+      sql`(${t.startLatitudeE7} IS NULL) = (${t.startLongitudeE7} IS NULL) AND (${t.startLatitudeE7} IS NULL) = (${t.endLatitudeE7} IS NULL) AND (${t.startLatitudeE7} IS NULL) = (${t.endLongitudeE7} IS NULL)`,
+    ),
+  ],
+);
+
+/** Recurring places already offered as a privacy zone, accepted or not: each place is proposed only once (`PRV-014`). */
+export const zoneProposal = sqliteTable("zone_proposal", {
+  id: id(),
+  latitudeE7: integer("latitude_e7").notNull(),
+  longitudeE7: integer("longitude_e7").notNull(),
+  proposedAt: timestamp("proposed_at").notNull(),
+});
 
 export const segment = sqliteTable(
   "segment",

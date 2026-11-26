@@ -53,7 +53,7 @@ export function upgradeSnapshot(packed: PackedSnapshot, upgrader: SnapshotUpgrad
     applyMigrations(db, upgrader.migrations, entries.slice(0, split));
     insertSnapshot(db, packed);
     applyMigrations(db, upgrader.migrations, entries.slice(split));
-    const upgraded = buildSnapshot(db, packed.createdAt, packed.photos);
+    const upgraded = buildSnapshot(db, packed.createdAt, packed.photos, packed.tracks);
     return { ...upgraded, settings: parseSnapshotSettings(upgraded.settings), tables: parseSnapshotTables(upgraded.tables) };
   } finally {
     scratch.close();

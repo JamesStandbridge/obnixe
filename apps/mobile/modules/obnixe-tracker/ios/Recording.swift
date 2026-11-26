@@ -313,16 +313,28 @@ final class Recording: HeartRateLinkListener {
     return recording
   }
 
-  /// Continues the journal of an interrupted session with its pause state.
+  /// Continues the journal of an interrupted session, or of one resumed from its stop summary.
+  /// A stop mark at the last record (unless the journal already ends with one) and a start mark now turn the gap into a pause (`REC-081`).
   static func open(config: RecordingConfig, queue: DispatchQueue, listener: RecordingListener) throws -> Recording {
-    let resumed = try JournalWriter.resume(at: config.journalURL)
+    let resumed = try JournalWriter.resume(at: config.journalURL, afterStop: true)
     let header = resumed.writer.header
     guard header.sessionId == config.sessionId else {
       resumed.writer.close()
       throw JournalFormatError("Journal belongs to session \(header.sessionId)")
     }
     let clock = TrackerClock.continuing(startedAt: header.startedAt, originNs: header.monotonicOriginNs)
-    return Recording(config: config, journal: resumed.writer, clock: clock, replay: nil, queue: queue, listener: listener, paused: resumed.paused)
+    let batches: [JournalBatch]
+    do {
+      let stop = resumed.stopped ? nil : try resumed.writer.flush(mark: Mark(t: resumed.lastT, kind: .stop))
+      let start = try resumed.writer.flush(mark: Mark(t: clock.now(), kind: .start))
+      batches = [stop, start].compactMap { $0 }
+    } catch {
+      resumed.writer.close()
+      throw error
+    }
+    let recording = Recording(config: config, journal: resumed.writer, clock: clock, replay: nil, queue: queue, listener: listener, paused: false)
+    for batch in batches { listener.recording(recording, didWrite: batch) }
+    return recording
   }
 
   /// The hardware model, such as `Apple iPhone17,1`.

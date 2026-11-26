@@ -298,6 +298,20 @@ class JournalWriterTest {
   }
 
   @Test
+  fun `reopening a stopped journal appends after it until a start mark clears the stop`() {
+    writeSession(stop = true)
+    val resumed = JournalWriter.resume(path, afterStop = true)
+    assertTrue(resumed.stopped)
+    assertTrue(resumed.paused)
+    assertEquals(2_600L, resumed.lastT)
+    resumed.writer.use { writer -> writer.flush(Mark(9_000, MarkKind.START)) }
+    val tail = JournalScanner.scan(path.readBytes())
+    assertFalse(tail.stopped)
+    assertFalse(tail.paused)
+    assertEquals(5L, tail.nextSequence)
+  }
+
+  @Test
   fun `scanning stops at a batch whose checksum does not match`() {
     val ends = writeSession(stop = false)
     val bytes = path.readBytes()

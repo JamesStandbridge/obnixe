@@ -20,7 +20,8 @@ import java.util.zip.CRC32
 /** One batch as written: the samples in arrival order, then at most one mark, which always closes its batch. */
 data class JournalBatch(val sequence: Long, val samples: List<Sample>, val mark: Mark?)
 
-data class ResumedJournal(val writer: JournalWriter, val paused: Boolean, val lastStepCount: Long)
+/** [lastT] is the latest `t` of any record; [stopped] is only true for a journal reopened after its stop mark. */
+data class ResumedJournal(val writer: JournalWriter, val paused: Boolean, val stopped: Boolean, val lastT: Long, val lastStepCount: Long)
 
 /**
  * Append-only writer of the raw journal (annex C, `REC-080`). Samples accumulate in memory until [flush] writes them
@@ -148,8 +149,11 @@ class JournalWriter private constructor(
       return JournalWriter(file, header, 0, RecordType.newClockArray())
     }
 
-    /** Reopens a journal after a process restart, cutting any torn or invalid tail so new batches stay readable. */
-    fun resume(path: File): ResumedJournal {
+    /**
+     * Reopens a journal after a process restart, cutting any torn or invalid tail so new batches stay readable.
+     * A stopped journal is only reopened when [afterStop] is set, for a recording resumed from its stop summary.
+     */
+    fun resume(path: File, afterStop: Boolean = false): ResumedJournal {
       val file = RandomAccessFile(path, "rw")
       try {
         val length = file.length()
@@ -157,11 +161,11 @@ class JournalWriter private constructor(
         val bytes = ByteArray(length.toInt())
         file.readFully(bytes)
         val tail = JournalScanner.scan(bytes)
-        if (tail.stopped) throw JournalFormatException("Journal already stopped")
+        if (tail.stopped && !afterStop) throw JournalFormatException("Journal already stopped")
         file.channel.truncate(tail.validLength.toLong())
         file.channel.position(tail.validLength.toLong())
         file.channel.force(true)
-        return ResumedJournal(JournalWriter(file, tail.header, tail.nextSequence, tail.lastT), tail.paused, tail.lastStepCount)
+        return ResumedJournal(JournalWriter(file, tail.header, tail.nextSequence, tail.lastT), tail.paused, tail.stopped, tail.lastT.max(), tail.lastStepCount)
       } catch (error: IOException) {
         file.close()
         throw error
@@ -232,7 +236,11 @@ internal object JournalScanner {
               MarkKind.PAUSE -> batchPaused = true
               MarkKind.RESUME -> batchPaused = false
               MarkKind.STOP -> batchStopped = true
-              MarkKind.START, MarkKind.LAP, null -> Unit
+              MarkKind.START -> {
+                batchStopped = false
+                batchPaused = false
+              }
+              MarkKind.LAP, null -> Unit
             }
             kind != null
           }

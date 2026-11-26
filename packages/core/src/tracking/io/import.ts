@@ -1,5 +1,3 @@
-import { bytesToHex } from "@noble/hashes/utils.js";
-import { sha256 } from "@noble/hashes/sha2.js";
 import { and, between, eq, isNull } from "drizzle-orm";
 import { recording, session } from "@obnixe/schema";
 import type { CadenceSource, ElevationSource, EpochMs, FieldValue, FieldValues, Id, SensorSource } from "@obnixe/schema";
@@ -13,7 +11,7 @@ import { readSettings } from "../../settings.ts";
 import type { CommitRequest, Mutation } from "../../writer.ts";
 import { activityWindow, processTrack } from "../batch.ts";
 import type { ProcessedTrack } from "../batch.ts";
-import { encodeTrack, trackFilePath } from "../codec/track.ts";
+import { encodeTrack, trackDigest, trackFilePath } from "../codec/track.ts";
 import type { Track } from "../codec/track.ts";
 import { estimateEnergy } from "../energy.ts";
 import type { EnergyEstimate } from "../energy.ts";
@@ -324,7 +322,7 @@ export function planImport(db: ObnixeDatabase, env: Environment, draft: ImportDr
   const sessionId = env.newId();
   const recordingId = env.newId();
   const bytes = hasSamples(computation.track) ? encodeTrack(computation.track) : null;
-  const track = bytes === null ? null : { path: trackFilePath(recordingId), bytes, sha256: bytesToHex(sha256(bytes)) };
+  const track = bytes === null ? null : { path: trackFilePath(recordingId), bytes, sha256: trackDigest(bytes) };
   const energy = energyOf(db, computation);
   const device = activity.device ?? formatDevices[activity.format];
   mutations.push(

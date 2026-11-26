@@ -120,7 +120,7 @@ final class TrackerHub: RecordingListener {
       let sources = recording.startSources(foreground: self.foreground)
       self.activity.start(sessionId: recording.sessionId, state: recording.activityState)
       self.publishStatus()
-      promise.resolve(["startedAt": Double(recording.startedAt), "paused": recording.paused, "sources": sources.bridge])
+      promise.resolve(["startedAt": Double(recording.startedAt), "sources": sources.bridge])
     }
   }
 

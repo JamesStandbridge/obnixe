@@ -24,7 +24,7 @@ export function useFirstLaunch(): boolean {
 export function useAppLaunch(): AppLaunch {
   const firstLaunch = useFirstLaunch();
   useEffect(() => {
-    runHousekeeping();
+    runHousekeeping().catch((error: unknown) => ErrorUtils.getGlobalHandler()(error, false));
     sweepExports();
   }, []);
   return { firstLaunch };

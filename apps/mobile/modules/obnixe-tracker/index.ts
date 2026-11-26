@@ -35,7 +35,10 @@ export interface TrackerStartRequest {
   /** UUID of the session; the journal header carries it. */
   readonly sessionId: string;
   readonly journalPath: string;
-  /** `continue` appends to the journal of an interrupted session (REC-081) instead of creating a new one. */
+  /**
+   * `continue` appends to the journal of an interrupted session (REC-081) or of one resumed from its stop summary,
+   * instead of creating a new one: a stop mark at its last record, unless it ends with one, then a start mark now.
+   */
   readonly journal: "create" | "continue";
   readonly power: TrackerPower;
   readonly sensors: TrackerSensors;
@@ -57,8 +60,6 @@ export interface TrackerSources {
 export interface TrackerStarted {
   /** `t0` of the journal: the instant `t = 0`. */
   readonly startedAt: EpochMs;
-  /** True when a continued journal ended paused. */
-  readonly paused: boolean;
   readonly sources: TrackerSources;
 }
 
@@ -125,7 +126,7 @@ export type TrackerErrorCode =
   | "ERR_TRACKER_JOURNAL"
   | "ERR_TRACKER_FOREGROUND_START";
 
-type TrackerEvents = {
+export type TrackerEvents = {
   onSamples: (batch: SampleBatch) => void;
   onMark: (mark: TrackerMarkEvent) => void;
   onIssue: (issue: TrackerIssue) => void;
@@ -152,6 +153,8 @@ declare class ObnixeTrackerModule extends NativeModule<TrackerEvents> {
   stopScan(): void;
   stop(): Promise<TrackerStopped>;
 }
+
+export type TrackerModule = ObnixeTrackerModule;
 
 /** The tracker module, or null where the app was built without it (web). */
 export const tracker: ObnixeTrackerModule | null = requireOptionalNativeModule<ObnixeTrackerModule>("ObnixeTracker");

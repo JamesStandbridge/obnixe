@@ -23,7 +23,7 @@ import { dialRelay } from "@/features/agent/relay";
 import type { RelayDial } from "@/features/agent/relay";
 import { openDirectSocket } from "@/features/agent/socket";
 import type { LinkSocket } from "@/features/agent/socket";
-import { readTrackFile } from "@/features/agent/trackFiles";
+import { readTrackFile } from "@/features/tracking/trackStore";
 import {
   deleteForgottenNotice,
   deletePairing,

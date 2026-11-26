@@ -35,12 +35,14 @@ export interface MergePlan {
   readonly counts: MergeCounts;
   readonly settings: SettingsValues | null;
   readonly photoIds: readonly Id[];
+  readonly recordingIds: readonly Id[];
 }
 
 export interface MergeResult {
   readonly changesetId: Id | null;
   readonly counts: MergeCounts;
   readonly photoIds: readonly Id[];
+  readonly recordingIds: readonly Id[];
 }
 
 export class UnknownUniqueIndexError extends Error {
@@ -395,6 +397,11 @@ function emit(state: MergeState): MergePlan {
   const deletes: Mutation[] = [];
   const writes: Mutation[] = [];
   const photoIds: Id[] = [];
+  const recordingIds: Id[] = [];
+  const written = (table: JournaledTable, row: RowImage): void => {
+    if (table === "photo") photoIds.push(row.id as Id);
+    if (table === "recording") recordingIds.push(row.id as Id);
+  };
   let inserted = 0;
   let updated = 0;
   const removed = new Map<JournaledTable, ReadonlySet<string>>(
@@ -433,11 +440,11 @@ function emit(state: MergeState): MergePlan {
     }
     for (const [key, row] of updates) {
       writes.push({ kind: "update", table, key, patch: patchOf(table, row) } as Mutation);
-      if (table === "photo") photoIds.push(row.id as Id);
+      written(table, row);
     }
     for (const [, row] of orderBySelfReference(inserts, keys.filter((key) => key.target === table))) {
       writes.push({ kind: "insert", table, row: withoutManaged(row) } as Mutation);
-      if (table === "photo") photoIds.push(row.id as Id);
+      written(table, row);
     }
     inserted += inserts.length;
     updated += updates.length;
@@ -449,7 +456,7 @@ function emit(state: MergeState): MergePlan {
       deleted += 1;
     }
   }
-  return { mutations: [...preliminary, ...deletes, ...writes], counts: { inserted, updated, deleted }, settings: null, photoIds };
+  return { mutations: [...preliminary, ...deletes, ...writes], counts: { inserted, updated, deleted }, settings: null, photoIds, recordingIds };
 }
 
 /** `DAT-031`: an incoming session whose recording has an `external_id` held locally by another session is the same import, and stays out with its rows. */
@@ -480,7 +487,7 @@ export function mergeSnapshot(db: ObnixeDatabase, env: Environment, incoming: Sn
     if (plan.mutations.length > 0) changesetId = commit(tx, env, { actor: importActor, summary: mergeSummary, revertsId: null, mutations: plan.mutations });
     if (plan.settings !== null) applySettings(tx, plan.settings, env);
   });
-  return { changesetId, counts: plan.counts, photoIds: plan.photoIds };
+  return { changesetId, counts: plan.counts, photoIds: plan.photoIds, recordingIds: plan.recordingIds };
 }
 
 function applySettings(db: ObnixeDatabase, next: SettingsValues, env: Environment): void {

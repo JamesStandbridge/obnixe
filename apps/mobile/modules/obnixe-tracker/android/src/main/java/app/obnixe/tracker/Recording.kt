@@ -338,11 +338,13 @@ class Recording private constructor(
     }
 
     /**
-     * Continues the journal of an interrupted session, or of the kept recording after the system restarted the
-     * service, with its pause state. [stepBaseline] is the step counter reading at the start of this boot, if known.
+     * Continues the journal of the kept recording after the system restarted the service, with its pause state, or,
+     * with [reopen], of a session the app resumes after an interruption or from its stop summary: a stop mark at the
+     * last record (unless the journal already ends with one) and a start mark now turn the gap into a pause (`REC-081`).
+     * [stepBaseline] is the step counter reading at the start of this boot, if known.
      */
-    fun open(context: Context, config: RecordingConfig, stepBaseline: Long?, handler: Handler, listener: Listener): Recording {
-      val resumed = JournalWriter.resume(File(config.journalPath))
+    fun open(context: Context, config: RecordingConfig, stepBaseline: Long?, reopen: Boolean, handler: Handler, listener: Listener): Recording {
+      val resumed = JournalWriter.resume(File(config.journalPath), afterStop = reopen)
       val header = resumed.writer.header
       if (header.sessionId != config.sessionId) {
         resumed.writer.close()
@@ -350,7 +352,21 @@ class Recording private constructor(
       }
       val clock = TrackerClock.continuing(header.startedAt, header.monotonicOriginNs)
       val baseline = if (clock.reanchored) null else stepBaseline
-      val recording = Recording(context, config, resumed.writer, clock, null, handler, listener, resumed.paused, baseline, resumed.lastStepCount)
+      val batches = if (reopen) {
+        try {
+          listOfNotNull(
+            if (resumed.stopped) null else resumed.writer.flush(Mark(resumed.lastT, MarkKind.STOP)),
+            resumed.writer.flush(Mark(clock.now(), MarkKind.START)),
+          )
+        } catch (error: IOException) {
+          resumed.writer.close()
+          throw error
+        }
+      } else {
+        emptyList()
+      }
+      val recording = Recording(context, config, resumed.writer, clock, null, handler, listener, resumed.paused && !reopen, baseline, resumed.lastStepCount)
+      batches.forEach { listener.onBatch(recording, it) }
       recording.persist()
       return recording
     }

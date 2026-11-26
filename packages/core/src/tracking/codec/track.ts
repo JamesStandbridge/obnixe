@@ -1,3 +1,5 @@
+import { sha256 } from "@noble/hashes/sha2.js";
+import { bytesToHex } from "@noble/hashes/utils.js";
 import { deflateSync, inflateSync } from "fflate";
 import type { EpochMs, Id } from "@obnixe/schema";
 import { absentValue, toSampleColumns } from "../types.ts";
@@ -26,9 +28,18 @@ export interface Track {
   readonly marks: readonly TrackerMark[];
 }
 
+/** The folder of every track file, relative to the document directory. */
+export const trackDirectory = "tracks";
+export const trackFileExtension = ".otrk";
+
 /** `recording.track_file`: the track of a recording, relative to the document directory. */
 export function trackFilePath(recordingId: Id): string {
-  return `tracks/${recordingId}.otrk`;
+  return `${trackDirectory}/${recordingId}${trackFileExtension}`;
+}
+
+/** `recording.track_sha256`: lowercase hexadecimal SHA-256 of the `.otrk` bytes. */
+export function trackDigest(bytes: Uint8Array): string {
+  return bytesToHex(sha256(bytes));
 }
 
 export class TrackDecodeError extends Error {
