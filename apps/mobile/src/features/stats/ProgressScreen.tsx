@@ -3,6 +3,8 @@ import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { addDays, exerciseVersionMarkers, painSamples, suspensionPeriods, trend, zonePainHistory } from "@obnixe/core";
 import type { GradePyramid } from "@obnixe/core";
+import { sports } from "@obnixe/schema";
+import type { SportKey } from "@obnixe/schema";
 import { db } from "@/data/database";
 import { PainMark, Segmented } from "@/ui/Controls";
 import { Icon } from "@/ui/icons/Icon";
@@ -17,7 +19,8 @@ import { deviceTimeZone } from "@/format/dates";
 import { capitalize, lowerFirst, zoneLabel } from "@/format/labels";
 import { useLiveValue, useLocalNow } from "@/features/stats/live";
 import { JournalHeader } from "@/features/stats/parts";
-import { loadProgress } from "@/features/stats/progress";
+import { PeriodTotals } from "@/features/stats/PeriodTotals";
+import { hasDistance, loadProgress } from "@/features/stats/progress";
 import type { ChartPoint, PointLink, ProgressCatalog, Series, Subject } from "@/features/stats/progress";
 import { contextWithin, isSuspendedOn, ProgressChart, Sparkline, SuspensionKey, VersionKey } from "@/features/stats/ProgressChart";
 import type { PainStrip, ProgramContext } from "@/features/stats/ProgressChart";
@@ -76,6 +79,10 @@ function initialSubject(catalog: ProgressCatalog, exercise: string | undefined, 
     if (catalog.subjects.some((subject) => subject.id === `sport:${sport}`)) return `sport:${sport}`;
   }
   return null;
+}
+
+function totalsSport(subject: Subject): SportKey | null {
+  return subject.icon !== null && subject.id === `sport:${subject.icon}` && hasDistance(sports[subject.icon]) ? subject.icon : null;
 }
 
 function tags(point: ChartPoint, program: ProgramContext | null): string[] {
@@ -161,6 +168,7 @@ export function ProgressScreen() {
   const group = catalog.groups.find((item) => item.key === subject.group);
   const subjectMeta = `${group?.label ?? ""}${subject.subgroup === null ? "" : ` · ${lowerFirst(subject.subgroup)}`}`;
   const pains = strip === null ? [] : strip.events.filter((event) => event.localDate >= from);
+  const sportTotals = totalsSport(subject);
 
   return (
     <>
@@ -288,6 +296,7 @@ export function ProgressScreen() {
             </Section>
           </>
         )}
+        {sportTotals === null ? null : <PeriodTotals sport={sportTotals} today={today} />}
       </Screen>
       <SubjectsSheet open={sheetOpen} catalog={catalog} current={subject.id} onPick={pickSubject} onClose={() => setSheetOpen(false)} />
     </>

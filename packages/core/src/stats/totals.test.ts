@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { EpochMs, FieldValues, Id, LocalDate } from "@obnixe/schema";
 import type { RecordingDigest, SessionSummary } from "./sessions.ts";
-import { periodTotals } from "./totals.ts";
+import { orderSessions, periodTotals } from "./totals.ts";
 
 function summary(localDate: string, values: FieldValues, durationSeconds: number, recording: RecordingDigest | null = null): SessionSummary {
   return {
@@ -11,7 +11,7 @@ function summary(localDate: string, values: FieldValues, durationSeconds: number
     slotName: null,
     variantName: null,
     localDate: localDate as LocalDate,
-    startedAt: 0 as EpochMs,
+    startedAt: Date.parse(`${localDate}T08:00:00Z`) as EpochMs,
     timeZone: "Europe/Paris",
     durationSeconds,
     values,
@@ -53,5 +53,21 @@ describe("period totals (SUM-011, CAL-005)", () => {
       ["2025-01-01", "2025-12-31", 1],
       ["2026-01-01", "2026-12-31", 3],
     ]);
+  });
+});
+
+describe("journal order (SUM-012)", () => {
+  const sessions = [
+    summary("2026-11-02", { distance: 8000, elevation_gain: 40 }, 2700),
+    summary("2026-11-05", { distance: 10_250 }, 3100, recorded),
+    summary("2026-11-20", {}, 1500),
+  ];
+  const ids = (order: Parameters<typeof orderSessions>[1]): readonly string[] => orderSessions(sessions, order).map((item) => item.id);
+
+  it("sorts by date, then by the measured or logged value, largest first", () => {
+    expect(ids("date")).toEqual(["2026-11-20", "2026-11-05", "2026-11-02"]);
+    expect(ids("distance")).toEqual(["2026-11-05", "2026-11-02", "2026-11-20"]);
+    expect(ids("duration")).toEqual(["2026-11-05", "2026-11-02", "2026-11-20"]);
+    expect(ids("ascent")).toEqual(["2026-11-05", "2026-11-02", "2026-11-20"]);
   });
 });

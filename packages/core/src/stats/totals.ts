@@ -59,7 +59,7 @@ function previousStart(bounds: PeriodBounds, period: TotalsPeriod): LocalDate {
   }
 }
 
-interface ActivityTotals {
+export interface ActivityTotals {
   readonly distanceMeters: number;
   readonly movingSeconds: number;
   readonly ascentMeters: number;
@@ -67,7 +67,7 @@ interface ActivityTotals {
 }
 
 /** The measured totals of a recorded activity, the logged values otherwise (`values.distance`, the duration, `values.elevation_gain`). */
-function totalsOf(summary: SessionSummary): ActivityTotals {
+export function activityTotals(summary: SessionSummary): ActivityTotals {
   const measured = summary.recording;
   if (measured !== null) {
     return { distanceMeters: measured.distanceMm / 1000, movingSeconds: measured.movingMs / 1000, ascentMeters: (measured.ascentMm ?? 0) / 1000, energyKcal: measured.energyKcal };
@@ -93,7 +93,7 @@ export function periodTotals(sessions: readonly SessionSummary[], period: Totals
     let withoutEnergy = 0;
     for (const summary of sessions) {
       if (summary.localDate < from || summary.localDate > to) continue;
-      const totals = totalsOf(summary);
+      const totals = activityTotals(summary);
       count += 1;
       distanceMeters += totals.distanceMeters;
       movingSeconds += totals.movingSeconds;
@@ -103,4 +103,31 @@ export function periodTotals(sessions: readonly SessionSummary[], period: Totals
     }
     return { from, to, count, distanceMeters, movingSeconds, ascentMeters, energyKcal, withoutEnergy };
   });
+}
+
+/** `SUM-012`: the journal by date, or by the largest distance, moving time or ascent. */
+export const journalOrders = ["date", "distance", "duration", "ascent"] as const;
+export type JournalOrder = (typeof journalOrders)[number];
+
+function orderValue(totals: ActivityTotals, order: Exclude<JournalOrder, "date">): number {
+  switch (order) {
+    case "distance":
+      return totals.distanceMeters;
+    case "duration":
+      return totals.movingSeconds;
+    case "ascent":
+      return totals.ascentMeters;
+    default: {
+      const unreachable: never = order;
+      return unreachable;
+    }
+  }
+}
+
+/** Sessions in `order`, largest first; ties and the sessions without the value keep the most recent first. */
+export function orderSessions(sessions: readonly SessionSummary[], order: JournalOrder): readonly SessionSummary[] {
+  const recent = [...sessions].sort((left, right) => right.startedAt - left.startedAt);
+  if (order === "date") return recent;
+  const values = new Map(recent.map((summary) => [summary.id, orderValue(activityTotals(summary), order)]));
+  return recent.sort((left, right) => (values.get(right.id) ?? 0) - (values.get(left.id) ?? 0));
 }

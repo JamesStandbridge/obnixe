@@ -17,10 +17,11 @@ function hideEndsLabel(meters: number): string {
 interface PrivacySettingsSectionProps {
   readonly hideTrackEndsMeters: number;
   readonly exportPrivacy: boolean;
+  readonly maskInApp: boolean;
 }
 
-/** Zones, hidden track ends and the export default of `PRV-010` to `PRV-012`. */
-export function PrivacySettingsSection({ hideTrackEndsMeters, exportPrivacy }: PrivacySettingsSectionProps) {
+/** Zones, hidden track ends, the export default and the in-app mask of `PRV-010` to `PRV-012` and `Q-18`. */
+export function PrivacySettingsSection({ hideTrackEndsMeters, exportPrivacy, maskInApp }: PrivacySettingsSectionProps) {
   const zones = usePrivacyZones();
   const [endsOpen, setEndsOpen] = useState(false);
 
@@ -40,6 +41,7 @@ export function PrivacySettingsSection({ hideTrackEndsMeters, exportPrivacy }: P
         trailing={<Chevron />}
         onPress={() => setEndsOpen(true)}
       />
+      <SwitchRow title="Masquer aussi dans l'app" detail="zones et extrémités retirées de la carte des activités" value={maskInApp} onChange={(value) => updateSettings({ maskInApp: value })} />
       <SwitchRow title="Appliquer les zones à l'export" detail="choix proposé à chaque export" value={exportPrivacy} onChange={(value) => updateSettings({ exportPrivacy: value })} />
       <Sheet open={endsOpen} title="Début et fin de trace" context="Masqués dans les exports, les aperçus et pour l'agent, sur cette distance" onClose={() => setEndsOpen(false)}>
         <Choices

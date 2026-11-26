@@ -11,7 +11,7 @@ function viewOf(state: ViewStateChangeEvent): MapView {
   return { center: state.center, bounds: state.bounds, zoom: state.zoom };
 }
 
-export function MapSurface({ mapStyle, fallbackStyle, initialCamera, overlays = [], interactive = true, onUserGesture, onViewChanging, onViewChanged, ref }: MapSurfaceProps) {
+export function MapSurface({ mapStyle, fallbackStyle, initialCamera, overlays = [], interactive = true, onUserGesture, onViewChanging, onViewChanged, onPress, ref }: MapSurfaceProps) {
   const camera = useRef<CameraRef>(null);
   const [failedStyle, setFailedStyle] = useState<StyleSpecification | string | null>(null);
 
@@ -40,6 +40,7 @@ export function MapSurface({ mapStyle, fallbackStyle, initialCamera, overlays = 
       }}
       onRegionIsChanging={onViewChanging === undefined ? undefined : (event) => onViewChanging(viewOf(event.nativeEvent))}
       onRegionDidChange={(event) => onViewChanged?.(viewOf(event.nativeEvent))}
+      onPress={onPress === undefined ? undefined : (event) => onPress(event.nativeEvent.lngLat)}
     >
       <Camera ref={camera} initialViewState={{ center: [initialCamera.center[0], initialCamera.center[1]], zoom: initialCamera.zoom }} />
       <Images images={overlayImages} />

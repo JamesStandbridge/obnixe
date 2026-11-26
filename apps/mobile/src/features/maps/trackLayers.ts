@@ -13,10 +13,10 @@ export const pointsSourceId = "obnixe-points";
 export const headingImage = "obnixe-heading";
 
 /** Rim in the map's ground tone (near black on dark, white in sunlight) so the track reads over any ground (MAP-008). */
-const rims: Readonly<Record<PaletteName, string>> = { dark: "#0b0e11", sunlight: "#ffffff" };
+export const rims: Readonly<Record<PaletteName, string>> = { dark: "#0b0e11", sunlight: "#ffffff" };
 
-const trackWidth: ExpressionSpecification = ["interpolate", ["exponential", 1.5], ["zoom"], 8, 2.5, 13, 4.5, 17, 8];
-const rimWidth: ExpressionSpecification = ["interpolate", ["exponential", 1.5], ["zoom"], 8, 4.5, 13, 7.5, 17, 12];
+export const trackWidth: ExpressionSpecification = ["interpolate", ["exponential", 1.5], ["zoom"], 8, 2.5, 13, 4.5, 17, 8];
+export const rimWidth: ExpressionSpecification = ["interpolate", ["exponential", 1.5], ["zoom"], 8, 4.5, 13, 7.5, 17, 12];
 
 /** Gradient track, casing and dashed interruptions, for a GeoJSON source with `lineMetrics`. */
 export function trackLayers(colors: TrackColors, variant: PaletteName): LayerSpecification[] {

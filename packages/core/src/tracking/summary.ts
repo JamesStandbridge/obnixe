@@ -162,6 +162,9 @@ export interface SessionValuesUpdate {
 
 type RecordingValues = Pick<RecordingSummary, "elapsedMs" | "movingMs" | "distanceMm" | "ascentMm" | "heartRateAvg">;
 
+/** The session values a recording measures: never edited by hand (`SUM-004`, `INT-042`). */
+export const recordedValueKeys = ["distance", "elevation_gain", "heart_rate_avg"] as const;
+
 /**
  * The session values derived from the `recording` row (`SPT-003`), at the stop and after any trim or recomputation:
  * `distance`, `elevation_gain` when the profile shows the ascent, `heart_rate_avg`, and `paused_seconds = elapsed - moving`.

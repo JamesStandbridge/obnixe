@@ -1,5 +1,6 @@
 import { router } from "expo-router";
 import type { SessionSummary } from "@obnixe/core";
+import { TrackPreview } from "@/features/recordings/TrackPreview";
 import { SportIcon } from "@/ui/icons/SportIcon";
 import { Row } from "@/ui/Layout";
 import { rowDay } from "@/features/stats/format";
@@ -7,6 +8,7 @@ import { sessionTitle, zoneLabel } from "@/format/labels";
 import { DetailLine } from "@/features/stats/parts";
 import type { DetailPart } from "@/features/stats/parts";
 import { sessionFigure, sportLabel } from "@/features/stats/presentation";
+import { useTheme } from "@/ui/theme";
 
 export function openSession(sessionId: string): void {
   router.push({ pathname: "/session/[id]", params: { id: sessionId } });
@@ -34,7 +36,9 @@ interface SessionRowProps {
 }
 
 export function SessionRow({ summary, withDate, last = false }: SessionRowProps) {
+  const { colors } = useTheme();
   const { figure } = sessionFigure(summary);
+  const preview = summary.recording?.previewPolyline ?? null;
   const parts = sessionDetailParts(summary, withDate);
   return (
     <Row
@@ -42,6 +46,7 @@ export function SessionRow({ summary, withDate, last = false }: SessionRowProps)
       title={sessionTitle(summary)}
       detail={parts.length === 0 ? undefined : <DetailLine parts={parts} />}
       {...(figure === null ? {} : { value: figure.value, valueDetail: figure.unit === "" ? " " : figure.unit })}
+      {...(preview === null ? {} : { trailing: <TrackPreview polyline={preview} color={colors.sport[summary.sport]} width={44} height={32} /> })}
       onPress={() => openSession(summary.id)}
       last={last}
     />

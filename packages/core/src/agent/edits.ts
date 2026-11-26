@@ -9,6 +9,7 @@ import type { ExerciseInput, ExerciseIssue } from "../programs/exercises.ts";
 import { exerciseUsage, latestVersion } from "../programs/queries.ts";
 import { planActivate, planArchive } from "../programs/status.ts";
 import { resolveProfile } from "../tracking/profile.ts";
+import { recordedValueKeys } from "../tracking/summary.ts";
 import type { StatusRefusal } from "../programs/status.ts";
 import { commit } from "../writer.ts";
 import type { Actor, Mutation, NewRow } from "../writer.ts";
@@ -109,8 +110,6 @@ function itemMutations(db: ObnixeDatabase, env: AgentEnvironment, sessionId: Id,
   return { release, insert: [...insert, ...reanchor] };
 }
 
-const trackValueKeys = ["distance", "elevation_gain", "heart_rate_avg"] as const;
-
 /** A recorded activity keeps its timing and the values measured on its track (`INT-042`, `SPT-003`). */
 function guardRecordedSession(db: ObnixeDatabase, current: Session, input: ToolInput<"update_session">): void {
   const attached = db.select({ source: recording.source }).from(recording).where(eq(recording.sessionId, current.id)).get();
@@ -122,9 +121,9 @@ function guardRecordedSession(db: ObnixeDatabase, current: Session, input: ToolI
   if (attached.source === "live" && resolveProfile(current.sport, input.values) === null) {
     throw new ToolInputError(`Session '${current.id}' was recorded with GPS, so its values must keep a ${current.sport} kind that records a track.`);
   }
-  const changed = trackValueKeys.filter((key) => !sameValue(input.values?.[key], current.values[key]));
+  const changed = recordedValueKeys.filter((key) => !sameValue(input.values?.[key], current.values[key]));
   if (changed.length === 0) return;
-  const expected = Object.fromEntries(trackValueKeys.filter((key) => current.values[key] !== undefined).map((key) => [key, current.values[key]]));
+  const expected = Object.fromEntries(recordedValueKeys.filter((key) => current.values[key] !== undefined).map((key) => [key, current.values[key]]));
   throw new ToolInputError(
     `Session '${current.id}' was recorded: the values ${changed.join(", ")} come from its track and cannot be changed. Send them unchanged (${JSON.stringify(expected)}, any other key left out); fix the track on the phone instead.`,
   );

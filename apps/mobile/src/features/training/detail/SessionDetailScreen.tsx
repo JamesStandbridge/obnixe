@@ -9,18 +9,35 @@ import {
   correctSetMutations,
   deleteSetMutations,
   DependentRowsError,
+  gearUsage,
   InvalidSetError,
+  InvalidTrimError,
   loadSessionReport,
   localDateOf,
+  newGear,
   nextSlot,
+  planRecompute,
+  planSportChange,
+  planTrim,
+  recordedValueKeys,
   RevertConflictError,
   sessionHistory,
+  trackingAlgorithmVersion,
 } from "@obnixe/core";
-import type { HistoryEntry, PainAnchor, SessionReport } from "@obnixe/core";
+import type { HistoryEntry, PainAnchor, RecordingRewrite, SessionReport, SportChange, TrackTrim } from "@obnixe/core";
 import { sports } from "@obnixe/schema";
 import type { Id, PainPhase, ProgramSlot, Session } from "@obnixe/schema";
 import { db, environment } from "@/data/database";
 import { undo, useUndoableWrite, write } from "@/data/write";
+import { gearLabel } from "@/features/activity/presentation";
+import { GearSheet } from "@/features/activity/LogSheets";
+import { loadRecorded, RecordedLeading, RecordedTrailing } from "@/features/recordings/RecordedActivityView";
+import type { RecordedData } from "@/features/recordings/RecordedActivityView";
+import { SportSheet } from "@/features/recordings/SportSheet";
+import { TrimSheet } from "@/features/recordings/TrimSheet";
+import { useRecordedActivity } from "@/features/recordings/useRecordedActivity";
+import type { RecordedActivityState } from "@/features/recordings/useRecordedActivity";
+import { useDerivedRebuildState } from "@/features/tracking/recorder";
 import { effortLabels, formatDay, formatLongDate, formatMass, formatTime, sensationPhrases } from "@/features/training/format";
 import { capitalize, lowerFirst, sessionTitle, zoneLabel } from "@/format/labels";
 import { formatClock } from "@/format/durations";
@@ -62,6 +79,7 @@ interface DetailData {
   readonly report: SessionReport;
   readonly history: readonly HistoryEntry[];
   readonly attachable: readonly PositionedSlot[];
+  readonly recorded: RecordedData | null;
 }
 
 function attachableFor(current: Session): readonly PositionedSlot[] {
@@ -73,7 +91,7 @@ function attachableFor(current: Session): readonly PositionedSlot[] {
 function loadDetail(sessionId: Id): DetailData | null {
   const report = loadSessionReport(db(), sessionId, environment.now());
   if (report === null) return null;
-  return { report, history: sessionHistory(db(), sessionId), attachable: attachableFor(report.data.session) };
+  return { report, history: sessionHistory(db(), sessionId), attachable: attachableFor(report.data.session), recorded: loadRecorded(sessionId) };
 }
 
 interface SessionDetailScreenProps {
@@ -100,7 +118,18 @@ export function SessionDetailScreen({ sessionId }: SessionDetailScreenProps) {
       />
     );
   }
-  return <Detail data={data} />;
+  if (data.recorded !== null) return <RecordedDetail data={data} recorded={data.recorded} />;
+  return <Detail data={data} recorded={null} />;
+}
+
+interface RecordedDetailProps {
+  readonly data: DetailData;
+  readonly recorded: RecordedData;
+}
+
+function RecordedDetail({ data, recorded }: RecordedDetailProps) {
+  const state = useRecordedActivity(recorded.saved, recorded.mask, recorded.revision);
+  return <Detail data={data} recorded={{ data: recorded, state }} />;
 }
 
 function phaseText(phase: PainPhase | null): string {
@@ -167,11 +196,17 @@ function feelingsParts(report: SessionReport): readonly FeelingPart[] {
   return parts;
 }
 
-interface DetailProps {
-  readonly data: DetailData;
+interface RecordedView {
+  readonly data: RecordedData;
+  readonly state: RecordedActivityState;
 }
 
-function Detail({ data }: DetailProps) {
+interface DetailProps {
+  readonly data: DetailData;
+  readonly recorded: RecordedView | null;
+}
+
+function Detail({ data, recorded }: DetailProps) {
   const { colors } = useTheme();
   const unit = useMassUnit();
   const notify = useSnackbar();
@@ -186,6 +221,10 @@ function Detail({ data }: DetailProps) {
   const [dating, setDating] = useState(false);
   const [attaching, setAttaching] = useState(false);
   const [setTarget, setSetTarget] = useState<SetTarget | null>(null);
+  const [trimming, setTrimming] = useState(false);
+  const [changingSport, setChangingSport] = useState(false);
+  const [choosingGear, setChoosingGear] = useState(false);
+  const rebuild = useDerivedRebuildState();
   const title = sessionTitle(titleSource(report));
   const sport = sports[session.sport];
   const completed = session.status === "completed";
@@ -195,9 +234,10 @@ function Detail({ data }: DetailProps) {
 
   const stats = heroStats(report, now, unit);
   const isContinuous = sport.archetype === "continuous";
+  const measured: ReadonlySet<string> = recorded === null ? new Set() : new Set<string>(recordedValueKeys);
   const details = isContinuous
     ? sport.sessionFields.flatMap((field) => {
-        if (stats.shownFields.has(field.key)) return [];
+        if (stats.shownFields.has(field.key) || measured.has(field.key)) return [];
         const text = fieldValueText(field, session.values[field.key], unit);
         return text === null ? [] : [{ key: field.key, label: field.label, text }];
       })
@@ -305,11 +345,68 @@ function Detail({ data }: DetailProps) {
     }
   };
 
+  const activity = recorded?.state.status === "ready" ? recorded.state.activity : null;
+  const locked: ReadonlySet<string> = recorded === null ? new Set() : new Set([...recordedValueKeys, ...(sport.recordingOverrides === null ? [] : [sport.recordingOverrides.field])]);
+
+  const rewrite = (plan: () => RecordingRewrite, summary: string, message: string): void => {
+    try {
+      undoableWrite({ summary, mutations: plan().mutations, message, ...placement });
+    } catch (error) {
+      if (error instanceof InvalidTrimError) {
+        notify({ text: "Rognage impossible", ...placement });
+        return;
+      }
+      throw error;
+    }
+  };
+
+  const trim = (bounds: TrackTrim): void => {
+    setTrimming(false);
+    if (activity === null) return;
+    rewrite(() => planTrim(db(), environment, session.id, activity.track, bounds), `Activité rognée : ${title}`, "Activité rognée");
+  };
+
+  const changeSport = (change: SportChange): void => {
+    setChangingSport(false);
+    if (activity === null) return;
+    rewrite(() => planSportChange(db(), environment, session.id, activity.track, change), `Sport changé : ${title} en ${sports[change.sport].label.toLowerCase()}`, `Recalculée en ${sports[change.sport].label.toLowerCase()}`);
+  };
+
+  const recompute = (): void => {
+    setMore(false);
+    if (activity === null) return;
+    rewrite(() => planRecompute(db(), environment, session.id, activity.track), `Recalcul : ${title}`, "Activité recalculée");
+  };
+
+  const chooseGear = (gearId: Id | null): void => {
+    setChoosingGear(false);
+    if (gearId === session.gearId) return;
+    undoableWrite({ summary: `Matériel modifié : ${title}`, mutations: [{ kind: "update", table: "session", key: session.id, patch: { gearId } }], message: "Matériel modifié", ...placement });
+  };
+
+  const createGear = (name: string): void => {
+    setChoosingGear(false);
+    const plan = newGear(environment, session.sport, name);
+    undoableWrite({
+      summary: `Matériel ajouté : ${name.trim()}`,
+      mutations: [plan.mutation, { kind: "update", table: "session", key: session.id, patch: { gearId: plan.gearId } }],
+      message: "Matériel ajouté",
+      ...placement,
+    });
+  };
+
   const correct = (): void => {
     setMore(false);
     if (session.sport === "climb") router.push({ pathname: "/climb/[id]", params: { id: session.id } });
     else setEditing(true);
   };
+
+  const heroBlock = (
+    <BevelView fill={colors.surface} cut={bevels.tile} style={styles.stats}>
+      <StatRow stats={stats.primary} size="large" />
+      {stats.secondary.length === 0 ? null : <StatRow stats={stats.secondary} style={[styles.secondaryStats, { borderTopColor: colors.line }]} />}
+    </BevelView>
+  );
 
   return (
     <>
@@ -346,11 +443,19 @@ function Detail({ data }: DetailProps) {
               ))}
             </View>
           )}
-          <BevelView fill={colors.surface} cut={bevels.tile} style={styles.stats}>
-            <StatRow stats={stats.primary} size="large" />
-            {stats.secondary.length === 0 ? null : <StatRow stats={stats.secondary} style={[styles.secondaryStats, { borderTopColor: colors.line }]} />}
-          </BevelView>
-          {completed ? null : <ControlButton label="Reprendre la séance" onPress={resume} style={styles.resume} />}
+          {recorded === null ? (
+            heroBlock
+          ) : (
+            <RecordedLeading
+              state={recorded.state}
+              recorded={recorded.data}
+              fallback={heroBlock}
+              rebuilding={rebuild.running}
+              onRecompute={recompute}
+              onGear={() => setChoosingGear(true)}
+            />
+          )}
+          {completed || recorded !== null ? null : <ControlButton label="Reprendre la séance" onPress={resume} style={styles.resume} />}
         </View>
 
         {session.sport === "strength" && report.exercises.length > 0 ? (
@@ -422,6 +527,8 @@ function Detail({ data }: DetailProps) {
           </Section>
         )}
 
+        {recorded === null ? null : <RecordedTrailing state={recorded.state} />}
+
         {history.length === 0 ? null : (
           <Section title="Historique">
             {history.map((entry, index) => (
@@ -454,7 +561,28 @@ function Detail({ data }: DetailProps) {
       <Sheet open={more} title={`${shortTitle(report)} · ${formatDay(session.localDate)}`} onClose={() => setMore(false)}>
         <View style={styles.menu}>
           <MenuItem label="Corriger la saisie" onPress={correct} />
-          {completed ? (
+          {activity === null ? null : (
+            <>
+              <MenuItem
+                label="Rogner le début ou la fin"
+                detail="le fichier de la trace reste intact"
+                onPress={() => {
+                  setMore(false);
+                  setTrimming(true);
+                }}
+              />
+              <MenuItem
+                label="Changer de sport"
+                detail={sport.label}
+                onPress={() => {
+                  setMore(false);
+                  setChangingSport(true);
+                }}
+              />
+              {activity.saved.recording.algorithmVersion < trackingAlgorithmVersion ? <MenuItem label="Recalculer avec la dernière version" onPress={recompute} /> : null}
+            </>
+          )}
+          {completed && recorded === null ? (
             <MenuItem
               label="Changer la date ou l'heure"
               onPress={() => {
@@ -485,7 +613,24 @@ function Detail({ data }: DetailProps) {
           {session.slotId === null ? null : <MenuItem label="Hors programme" detail="Ne compte plus dans la rotation" onPress={() => attachTo(null)} />}
         </View>
       </Sheet>
-      <EditSheet open={editing} session={session} placeholder={title} unit={unit} onClose={() => setEditing(false)} onSave={saveFields} />
+      <EditSheet open={editing} session={session} placeholder={title} unit={unit} locked={locked} onClose={() => setEditing(false)} onSave={saveFields} />
+      {activity === null ? null : (
+        <>
+          <TrimSheet open={trimming} activity={activity} onClose={() => setTrimming(false)} onSave={trim} />
+          <SportSheet open={changingSport} session={session} onClose={() => setChangingSport(false)} onSave={changeSport} />
+        </>
+      )}
+      {recorded === null ? null : (
+        <GearSheet
+          open={choosingGear}
+          title={gearLabel(session.sport)}
+          items={choosingGear ? gearUsage(db(), session.sport) : []}
+          selected={session.gearId}
+          onSelect={chooseGear}
+          onCreate={createGear}
+          onClose={() => setChoosingGear(false)}
+        />
+      )}
       {completed ? <DateSheet open={dating} session={session} onClose={() => setDating(false)} onSave={saveTiming} /> : null}
       <SetSheet target={setTarget} unit={unit} onClose={() => setSetTarget(null)} onSave={saveSet} onDelete={deleteSet} />
     </>

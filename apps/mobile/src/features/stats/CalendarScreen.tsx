@@ -74,7 +74,7 @@ export function CalendarScreen() {
         settings: database.select().from(settings).get() ?? null,
       };
     },
-    ["session", "session_item", "strength_set", "pain_report", "check_in", "weigh_in", "program", "program_version", "program_slot", "program_variant", "rotation_skip", "settings", "changeset"],
+    ["session", "session_item", "strength_set", "pain_report", "check_in", "weigh_in", "program", "program_version", "program_slot", "program_variant", "rotation_skip", "settings", "changeset", "recording"],
     [month.year, month.month],
   );
 

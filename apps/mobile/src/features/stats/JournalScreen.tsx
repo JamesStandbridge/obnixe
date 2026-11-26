@@ -1,10 +1,10 @@
 import { useMemo, useState } from "react";
 import { FlatList, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { completedSessions, currentProgram, dateParts, mondayOf, regularity } from "@obnixe/core";
-import type { RegularityWeek, SessionSummary } from "@obnixe/core";
+import { completedSessions, currentProgram, dateParts, mondayOf, orderSessions, regularity } from "@obnixe/core";
+import type { JournalOrder, RegularityWeek, SessionSummary } from "@obnixe/core";
 import { exerciseNameKey, sports } from "@obnixe/schema";
-import type { LocalDate, SportKey } from "@obnixe/schema";
+import type { FieldDefinition, LocalDate, SportKey } from "@obnixe/schema";
 import { db } from "@/data/database";
 import { EmptyScene } from "@/ui/illustrations/scenes";
 import { IconButton, TextField } from "@/ui/Inputs";
@@ -30,6 +30,41 @@ export function sportFilterOptions(sessions: readonly Pick<SessionSummary, "spor
   for (const item of sessions) counts.set(item.sport, (counts.get(item.sport) ?? 0) + 1);
   const ordered = [...counts.entries()].sort((left, right) => right[1] - left[1]).map(([sport]) => sport);
   return [{ value: "all", label: "Tout" }, ...ordered.map((sport) => ({ value: sport, label: sportLabel(sport), sport }))];
+}
+
+const allVariants = "";
+
+/** `SUM-012`: the `kind` options of the chosen sport that some session has. */
+export function variantFilterOptions(sport: SportFilter, sessions: readonly Pick<SessionSummary, "sport" | "values">[]): ChipOption<string>[] {
+  if (sport === "all") return [];
+  const fields: readonly FieldDefinition[] = sports[sport].sessionFields;
+  const field = fields.find((candidate) => candidate.key === "kind");
+  if (field === undefined || field.type !== "choice") return [];
+  const used = new Set(sessions.filter((item) => item.sport === sport).map((item) => item.values.kind));
+  const options = field.options.filter((option) => used.has(option.key)).map((option) => ({ value: option.key, label: option.label }));
+  return options.length < 2 ? [] : [{ value: allVariants, label: "Toutes" }, ...options];
+}
+
+const orderOptions: readonly ChipOption<JournalOrder>[] = [
+  { value: "date", label: "Date" },
+  { value: "distance", label: "Distance" },
+  { value: "duration", label: "Durée" },
+  { value: "ascent", label: "D+" },
+];
+
+type JournalItem = { readonly kind: "week"; readonly week: WeekGroup } | { readonly kind: "session"; readonly summary: SessionSummary };
+
+function itemKey(item: JournalItem): string {
+  switch (item.kind) {
+    case "week":
+      return item.week.monday;
+    case "session":
+      return item.summary.id;
+    default: {
+      const unreachable: never = item;
+      return unreachable;
+    }
+  }
 }
 
 interface SportTime {
@@ -123,20 +158,31 @@ export function JournalScreen() {
   const { today } = useLocalNow();
   const massUnit = useMassUnit();
   const [filter, setFilter] = useState<SportFilter>("all");
+  const [variant, setVariant] = useState<string>(allVariants);
+  const [order, setOrder] = useState<JournalOrder>("date");
   const [searching, setSearching] = useState(false);
   const [query, setQuery] = useState("");
   const data = useLiveValue(
     () => ({ sessions: completedSessions(db()), sessionsPerWeek: currentProgram(db())?.version.sessionsPerWeek ?? null }),
-    ["session", "session_item", "strength_set", "pain_report", "program", "program_version", "program_slot", "program_variant", "changeset"],
+    ["session", "session_item", "strength_set", "pain_report", "program", "program_version", "program_slot", "program_variant", "changeset", "recording"],
     [],
   );
   const options = useMemo(() => sportFilterOptions(data.sessions), [data.sessions]);
+  const variants = useMemo(() => variantFilterOptions(filter, data.sessions), [filter, data.sessions]);
+  const chosenVariant = variants.some((option) => option.value === variant) ? variant : allVariants;
   const normalizedQuery = exerciseNameKey(query);
   const visible = useMemo(
-    () => data.sessions.filter((item) => (filter === "all" || item.sport === filter) && matchesQuery(item, normalizedQuery)),
-    [data.sessions, filter, normalizedQuery],
+    () =>
+      data.sessions.filter(
+        (item) => (filter === "all" || item.sport === filter) && (chosenVariant === allVariants || item.values.kind === chosenVariant) && matchesQuery(item, normalizedQuery),
+      ),
+    [data.sessions, filter, chosenVariant, normalizedQuery],
   );
-  const weeks = useMemo(() => groupByWeek(visible), [visible]);
+  const items = useMemo(
+    (): readonly JournalItem[] =>
+      order === "date" ? groupByWeek(visible).map((week) => ({ kind: "week", week })) : orderSessions(visible, order).map((summary) => ({ kind: "session", summary })),
+    [visible, order],
+  );
   const regular = useMemo(() => regularity(today, visible, 8, filter === "all" ? data.sessionsPerWeek : null), [today, visible, filter, data.sessionsPerWeek]);
   const currentMonday = mondayOf(today);
   const maxStack = Math.max(1, ...regular.weeks.map((week) => week.done + week.planned));
@@ -151,6 +197,16 @@ export function JournalScreen() {
           <FilterChips<SportFilter> label="Filtrer par sport" options={options} value={filter} onChange={setFilter} />
         </View>
       ) : null}
+      {variants.length === 0 ? null : (
+        <View style={styles.filters}>
+          <FilterChips<string> label="Filtrer par variante" options={variants} value={chosenVariant} onChange={setVariant} />
+        </View>
+      )}
+      {data.sessions.length === 0 ? null : (
+        <View style={styles.filters}>
+          <FilterChips<JournalOrder> label="Trier" options={orderOptions} value={order} onChange={setOrder} />
+        </View>
+      )}
       {data.sessions.length === 0 ? null : (
         <View style={styles.regularity} accessible accessibilityLabel={`Régularité sur 8 semaines : ${formatNumber(regular.averagePerWeek)} séances par semaine`}>
           <View style={styles.regularityHead}>
@@ -191,8 +247,8 @@ export function JournalScreen() {
     <FlatList
       style={{ backgroundColor: colors.bg }}
       contentContainerStyle={{ paddingTop: insets.top + 14, paddingHorizontal: layout.gutter, paddingBottom: insets.bottom + 32 }}
-      data={weeks}
-      keyExtractor={(week) => week.monday}
+      data={items}
+      keyExtractor={itemKey}
       ListHeaderComponent={header}
       initialNumToRender={4}
       windowSize={7}
@@ -209,14 +265,29 @@ export function JournalScreen() {
           </Text>
         </View>
       }
-      renderItem={({ item }) => (
-        <View style={styles.week}>
-          <WeekHeader week={item} current={item.monday === currentMonday} />
-          {item.sessions.map((summary) => (
-            <ActivityCard key={summary.id} summary={summary} massUnit={massUnit} />
-          ))}
-        </View>
-      )}
+      renderItem={({ item }) => {
+        switch (item.kind) {
+          case "week":
+            return (
+              <View style={styles.week}>
+                <WeekHeader week={item.week} current={item.week.monday === currentMonday} />
+                {item.week.sessions.map((summary) => (
+                  <ActivityCard key={summary.id} summary={summary} massUnit={massUnit} />
+                ))}
+              </View>
+            );
+          case "session":
+            return (
+              <View style={styles.ranked}>
+                <ActivityCard summary={item.summary} massUnit={massUnit} />
+              </View>
+            );
+          default: {
+            const unreachable: never = item;
+            return unreachable;
+          }
+        }
+      }}
     />
   );
 }
@@ -239,6 +310,7 @@ const styles = StyleSheet.create({
   emptyArt: { alignItems: "center", marginBottom: 10 },
   weekTitle: { flexDirection: "row", alignItems: "center", gap: 8, flexShrink: 1 },
   week: { marginTop: 28, gap: 8 },
+  ranked: { marginTop: 8 },
   weekHead: { gap: 8, marginBottom: 4 },
   weekTitleLine: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between", gap: 12 },
   weekBar: { flexDirection: "row", height: 5, gap: 3 },

@@ -43,14 +43,14 @@ function viewOf(map: maplibregl.Map): MapView {
   return { center: [center.lng, center.lat], bounds: [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()], zoom: map.getZoom() };
 }
 
-export function MapSurface({ mapStyle, fallbackStyle, initialCamera, overlays = [], interactive = true, onUserGesture, onViewChanging, onViewChanged, ref }: MapSurfaceProps) {
+export function MapSurface({ mapStyle, fallbackStyle, initialCamera, overlays = [], interactive = true, onUserGesture, onViewChanging, onViewChanged, onPress, ref }: MapSurfaceProps) {
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
   const applied = useRef(new Map<string, AppliedOverlay>());
   const styleReady = useRef(false);
   const shownStyle = useRef(mapStyle);
-  const latest = useRef({ overlays, onUserGesture, onViewChanging, onViewChanged, fallbackStyle });
-  latest.current = { overlays, onUserGesture, onViewChanging, onViewChanged, fallbackStyle };
+  const latest = useRef({ overlays, onUserGesture, onViewChanging, onViewChanged, onPress, fallbackStyle });
+  latest.current = { overlays, onUserGesture, onViewChanging, onViewChanged, onPress, fallbackStyle };
 
   useImperativeHandle(ref, () => ({
     moveTo: ({ center, zoom, bearing, durationMs }) =>
@@ -94,6 +94,7 @@ export function MapSurface({ mapStyle, fallbackStyle, initialCamera, overlays = 
     instance.once("load", viewChanged);
     instance.on("move", () => latest.current.onViewChanging?.(viewOf(instance)));
     instance.on("moveend", viewChanged);
+    instance.on("click", (event) => latest.current.onPress?.([event.lngLat.lng, event.lngLat.lat]));
     return () => {
       instance.remove();
       map.current = null;

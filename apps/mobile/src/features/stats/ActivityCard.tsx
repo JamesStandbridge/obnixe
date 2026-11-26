@@ -4,6 +4,7 @@ import { climbBreakdown, gramsToMass, indicatorOver, parseGrade } from "@obnixe/
 import type { SessionSummary, StrengthDigest, StrengthDigestExercise } from "@obnixe/core";
 import { efforts, sports } from "@obnixe/schema";
 import type { Effort, FieldValues, MassUnit, SportDefinition } from "@obnixe/schema";
+import { TrackPreview } from "@/features/recordings/TrackPreview";
 import { SportIcon } from "@/ui/icons/SportIcon";
 import { usePressScale } from "@/ui/motion";
 import { BevelView } from "@/ui/Shapes";
@@ -23,6 +24,7 @@ import { openSession, sessionFlagParts } from "@/features/stats/SessionRow";
 import { formatMass, perLoadLabel } from "@/features/training/format";
 
 const shownExercises = 3;
+const previewSize = { width: 76, height: 46 } as const;
 const shownClimbs = 14;
 
 function durationStat(summary: SessionSummary): StatValue | null {
@@ -262,6 +264,7 @@ export function ActivityCard({ summary, massUnit }: ActivityCardProps) {
   const stats = cardStats(summary, massUnit);
   const flags = sessionFlagParts(summary);
   const date = archetype !== "continuous" && summary.effort !== null ? `${cardDate(summary)} · ${effortLabel(summary.effort)}` : cardDate(summary);
+  const preview = summary.recording?.previewPolyline ?? null;
   return (
     <Animated.View style={press.style}>
       <Pressable accessibilityRole="button" accessibilityLabel={cardLabel(summary, stats)} onPress={() => openSession(summary.id)} onPressIn={press.onPressIn} onPressOut={press.onPressOut}>
@@ -277,6 +280,7 @@ export function ActivityCard({ summary, massUnit }: ActivityCardProps) {
                   {date}
                 </Text>
               </View>
+              {preview === null ? null : <TrackPreview polyline={preview} color={tone} width={previewSize.width} height={previewSize.height} />}
             </View>
             {stats.length === 0 ? null : <StatRow stats={stats} />}
             {archetype === "strength" && summary.strength !== null ? <StrengthSignature digest={summary.strength} unit={massUnit} tone={tone} /> : null}
