@@ -90,7 +90,7 @@ export const outdoorPalettes: Readonly<Record<PaletteName, OutdoorPalette>> = {
     shadow: "#000000",
     highlight: "rgba(206, 222, 234, 0.3)",
     accent: "rgba(3, 7, 10, 0.5)",
-    contour: "#8a7458",
+    contour: "#c4a77c",
     relief: [0.32, 0.46, 0.32],
   },
   sunlight: {
@@ -622,8 +622,8 @@ export function contourLayers(variant: PaletteName, source: string): LayerSpecif
       layout: { "line-join": "round" },
       paint: {
         "line-color": palette.contour,
-        "line-width": ["interpolate", ["exponential", 1.4], ["zoom"], 12, ["case", master, 0.8, 0.4], 16, ["case", master, 1.4, 0.8]],
-        "line-opacity": zoomRamp(1, [[12, 0.35], [14, 0.6]]),
+        "line-width": ["interpolate", ["exponential", 1.4], ["zoom"], 12, ["case", master, 1, 0.5], 16, ["case", master, 1.8, 1]],
+        "line-opacity": zoomRamp(1, [[12, 0.5], [14, 0.8]]),
       },
     },
     {
