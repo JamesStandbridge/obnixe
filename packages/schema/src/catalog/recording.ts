@@ -65,6 +65,8 @@ export interface RecordingProfile {
   readonly readout: Readout;
   readonly bestEffortMeters: readonly number[];
   readonly bestAscentWindowMs: number | null;
+  /** Least D+ of a detected climb (`GPS-062`); null for the sports without climbs. */
+  readonly climbMinimumAscentMeters: number | null;
 }
 
 /** Overrides keyed by an option of the choice field `field`; a `null` override disables GPS recording for that option. */
@@ -97,6 +99,7 @@ export const runProfile: RecordingProfile = {
   readout: { main: "pace_now", secondary: ["distance", "moving", "pace_avg", "cadence"] },
   bestEffortMeters: runningDistances,
   bestAscentWindowMs: null,
+  climbMinimumAscentMeters: null,
 };
 
 export const trailProfile: RecordingProfile = {
@@ -120,6 +123,7 @@ export const trailProfile: RecordingProfile = {
   readout: { main: "distance", secondary: ["moving", "ascent", "vertical_speed", "pace_now"] },
   bestEffortMeters: runningDistances,
   bestAscentWindowMs: oneHourMs,
+  climbMinimumAscentMeters: 50,
 };
 
 export const walkProfile: RecordingProfile = {
@@ -143,6 +147,7 @@ export const walkProfile: RecordingProfile = {
   readout: { main: "moving", secondary: ["distance", "pace_now", "steps"] },
   bestEffortMeters: [1000, 5000, 10000, 21097.5],
   bestAscentWindowMs: null,
+  climbMinimumAscentMeters: null,
 };
 
 export const hikeProfile: RecordingProfile = {
@@ -166,6 +171,7 @@ export const hikeProfile: RecordingProfile = {
   readout: { main: "elapsed", secondary: ["distance", "ascent", "altitude", "vam"] },
   bestEffortMeters: [],
   bestAscentWindowMs: null,
+  climbMinimumAscentMeters: 50,
 };
 
 export const bikeProfile: RecordingProfile = {
@@ -189,6 +195,7 @@ export const bikeProfile: RecordingProfile = {
   readout: { main: "speed_now", secondary: ["distance", "moving", "speed_avg", "ascent"] },
   bestEffortMeters: [10000, 20000, 40000, 50000, 100000, 160934],
   bestAscentWindowMs: oneHourMs,
+  climbMinimumAscentMeters: 30,
 };
 
 export const mountainBikeMotion: MotionThresholds = {

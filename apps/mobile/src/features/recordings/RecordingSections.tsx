@@ -2,7 +2,7 @@ import { Linking, StyleSheet, View } from "react-native";
 import { router } from "expo-router";
 import type { ActivityWeather, EffortRank, HeartRateZone, HeartRateZoneReport, SplitSummary } from "@obnixe/core";
 import type { BestEffortKey, CadenceSource, ElevationSource, EnergyMethod, Recording, SensorSource, Session } from "@obnixe/schema";
-import { distanceText, effortFigure, effortTitle, elapsedText, paceFigure, paceSeconds, rateFigure } from "@/features/recordings/format";
+import { climbText, distanceText, effortFigure, effortTitle, elapsedText, paceFigure, paceSeconds, rateFigure } from "@/features/recordings/format";
 import { trackPalettes } from "@/features/recordings/palette";
 import type { RecordedActivity } from "@/features/recordings/useRecordedActivity";
 import { weatherText } from "@/features/recordings/weatherText";
@@ -113,6 +113,20 @@ export function LapsSection({ activity }: ActivityProps) {
             last={index === processed.laps.length - 1}
           />
         );
+      })}
+    </Section>
+  );
+}
+
+/** `GPS-062`: the climbs of the sports that detect them, in track order. */
+export function ClimbsSection({ activity }: ActivityProps) {
+  const climbs = activity.processed.climbs;
+  if (climbs.length === 0) return null;
+  return (
+    <Section title="Montées">
+      {climbs.map((climb, index) => {
+        const text = climbText(climb);
+        return <Row key={climb.startDistanceMm} title={`Montée ${index + 1}`} detail={text.detail} value={text.ascent} valueDetail={text.effort} last={index === climbs.length - 1} />;
       })}
     </Section>
   );

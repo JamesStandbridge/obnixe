@@ -1,5 +1,5 @@
 import { isAscentEffort } from "@obnixe/core";
-import type { RecordingSummary, ResolvedProfile, TrackDetails } from "@obnixe/core";
+import type { RecordingSummary, ResolvedProfile, TrackClimb, TrackDetails } from "@obnixe/core";
 import type { BestEffortKey, MetricKey } from "@obnixe/schema";
 import { effortLabel } from "@/features/recording/records";
 import type { FigureText } from "@/features/stats/format";
@@ -146,4 +146,25 @@ export interface EffortFigureInput {
 /** The elapsed time of a distance effort (`DEC-05`), the ascent of a one-hour effort. */
 export function effortFigure(row: EffortFigureInput): FigureText {
   return isAscentEffort(row.effort) ? { value: formatInteger((row.ascentMm ?? 0) / 1000), unit: "m" } : { value: elapsedText(row.elapsedMs), unit: "" };
+}
+
+export interface ClimbText {
+  readonly detail: string;
+  readonly ascent: string;
+  readonly effort: string;
+}
+
+function gradeText(grade: number): string {
+  return `${formatNumber(grade * 100, 1)} %`;
+}
+
+/** `GPS-062`: where the climb starts, its length and grades, its D+, then its moving time and VAM. */
+export function climbText(climb: TrackClimb): ClimbText {
+  const length = distanceText(climb.distanceMm);
+  const vam = climb.vamMetersPerHour === null ? "" : ` · ${formatInteger(climb.vamMetersPerHour)} m/h`;
+  return {
+    detail: `Au km ${formatNumber(climb.startDistanceMm / 1_000_000, 1)} · ${length.value} ${length.unit} à ${gradeText(climb.gradeAvg)} · max ${gradeText(climb.gradeMax)}`,
+    ascent: `+${formatInteger(climb.ascentMm / 1000)} m`,
+    effort: `${elapsedText(climb.movingMs)}${vam}`,
+  };
 }

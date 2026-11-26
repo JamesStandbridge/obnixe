@@ -557,6 +557,142 @@ export function bestEffortsOf(series: TrackSeries, pauses: readonly TimeSpan[], 
   return efforts;
 }
 
+/** `GPS-062`, on top of the profile's minimum D+. */
+export const trackClimbRules = {
+  minimumGrade: 0.03,
+  /** Climbs separated by less flat than this are one climb. */
+  mergeMeters: 300,
+  /** A flat between two climbs loses at most this altitude, otherwise it is a descent and keeps them apart. */
+  flatDropMeters: 10,
+  edgeRunMeters: 5,
+  /** The altitude is resampled at this step of counted distance: each step climbs or not, and climbs start and end on steps. */
+  stepMeters: 50,
+  /** The maximum grade is the steepest mean over this length, so a single noisy step does not make it. */
+  maxGradeMeters: 100,
+} as const;
+
+/** A climb of an activity (`GPS-062`). */
+export interface TrackClimb {
+  /** Counted distance from the activity start to the foot of the climb. */
+  readonly startDistanceMm: number;
+  readonly distanceMm: number;
+  /** From the hysteresis automaton, like the activity's D+ (`ELE-010`). */
+  readonly ascentMm: number;
+  /** Net altitude gain over the length, as a fraction. */
+  readonly gradeAvg: number;
+  readonly gradeMax: number;
+  readonly movingMs: number;
+  /** D+ over the moving time, m/h; null without moving time. */
+  readonly vamMetersPerHour: number | null;
+}
+
+interface StepRun {
+  /** Step indices of the foot and the top. */
+  readonly from: number;
+  readonly to: number;
+}
+
+/** The smoothed altitude every `stepMeters` of counted distance, `NaN` before the first known altitude. */
+function resampledAltitude(series: TrackSeries): Float64Array {
+  const { length, distance, altitude } = series;
+  const heights = new Float64Array(Math.floor((distance[length - 1] ?? 0) / trackClimbRules.stepMeters) + 1).fill(Number.NaN);
+  const known = (index: number): boolean => !Number.isNaN(altitude[index] ?? Number.NaN);
+  let low = -1;
+  let high = 0;
+  for (let step = 0; step < heights.length; step += 1) {
+    const target = step * trackClimbRules.stepMeters;
+    for (; high < length && (!known(high) || (distance[high] ?? 0) < target); high += 1) if (known(high)) low = high;
+    if (high >= length) break;
+    const highDistance = distance[high] ?? 0;
+    const highAltitude = altitude[high] ?? 0;
+    if (highDistance === target) heights[step] = highAltitude;
+    else if (low >= 0) {
+      const lowDistance = distance[low] ?? 0;
+      const lowAltitude = altitude[low] ?? 0;
+      heights[step] = lowAltitude + ((highAltitude - lowAltitude) * (target - lowDistance)) / (highDistance - lowDistance);
+    }
+  }
+  return heights;
+}
+
+function isFlatBetween(heights: Float64Array, before: StepRun, after: StepRun): boolean {
+  if ((after.from - before.to) * trackClimbRules.stepMeters >= trackClimbRules.mergeMeters) return false;
+  const top = heights[before.to] ?? Number.NaN;
+  let lowest = top;
+  for (let step = before.to; step <= after.from; step += 1) lowest = Math.min(lowest, heights[step] ?? Number.NaN);
+  return top - lowest <= trackClimbRules.flatDropMeters;
+}
+
+const gainOf = (heights: Float64Array, run: StepRun): number => (heights[run.to] ?? 0) - (heights[run.from] ?? 0);
+
+/**
+ * Runs of climbing steps, merged across short flats that lose little altitude. A merged climb does not start or end with a run
+ * gaining less than `edgeRunMeters`: that is altitude noise on the flat around it.
+ */
+function climbingRuns(heights: Float64Array): readonly StepRun[] {
+  const runs: StepRun[] = [];
+  for (let step = 0; step + 1 < heights.length; step += 1) {
+    const rise = (heights[step + 1] ?? Number.NaN) - (heights[step] ?? Number.NaN);
+    if (!(rise >= trackClimbRules.minimumGrade * trackClimbRules.stepMeters)) continue;
+    const previous = runs.at(-1);
+    if (previous !== undefined && previous.to === step) runs[runs.length - 1] = { from: previous.from, to: step + 1 };
+    else runs.push({ from: step, to: step + 1 });
+  }
+  const groups: StepRun[][] = [];
+  for (const run of runs) {
+    const group = groups.at(-1);
+    const last = group?.at(-1);
+    if (group !== undefined && last !== undefined && isFlatBetween(heights, last, run)) group.push(run);
+    else groups.push([run]);
+  }
+  return groups.map((group) => {
+    const gains = group.map((run) => gainOf(heights, run));
+    let first = 0;
+    let last = group.length - 1;
+    while (first < last && (gains[first] ?? 0) < trackClimbRules.edgeRunMeters) first += 1;
+    while (last > first && (gains[last] ?? 0) < trackClimbRules.edgeRunMeters) last -= 1;
+    return { from: group[first]?.from ?? 0, to: group[last]?.to ?? 0 };
+  });
+}
+
+function steepestGrade(heights: Float64Array, run: StepRun): number {
+  const span = Math.min(Math.round(trackClimbRules.maxGradeMeters / trackClimbRules.stepMeters), run.to - run.from);
+  let steepest = Number.NEGATIVE_INFINITY;
+  for (let step = run.from; step + span <= run.to; step += 1) steepest = Math.max(steepest, ((heights[step + span] ?? 0) - (heights[step] ?? 0)) / (span * trackClimbRules.stepMeters));
+  return steepest;
+}
+
+/**
+ * `GPS-062`: stretches of mean grade at least 3 % and D+ at least `minimumAscentMeters`, climbs separated by less than
+ * 300 m of flat merged, measured on the series columns at their interpolated bounds (`GPS-060`). O(n).
+ */
+export function trackClimbsOf(series: TrackSeries, minimumAscentMeters: number): readonly TrackClimb[] {
+  const heights = resampledAltitude(series);
+  const climbs: TrackClimb[] = [];
+  let from = 0;
+  for (const run of climbingRuns(heights)) {
+    const meters = (run.to - run.from) * trackClimbRules.stepMeters;
+    const gradeAvg = ((heights[run.to] ?? 0) - (heights[run.from] ?? 0)) / meters;
+    if (gradeAvg < trackClimbRules.minimumGrade) continue;
+    const start = locate(series.distance, run.from * trackClimbRules.stepMeters, from);
+    const end = locate(series.distance, run.to * trackClimbRules.stepMeters, start);
+    from = end;
+    const ascent = valueAt(series.ascent, end) - valueAt(series.ascent, start);
+    if (ascent < minimumAscentMeters) continue;
+    const movingMs = valueAt(series.moving, end) - valueAt(series.moving, start);
+    climbs.push({
+      startDistanceMm: millimeters(run.from * trackClimbRules.stepMeters),
+      distanceMm: millimeters(meters),
+      ascentMm: millimeters(ascent),
+      gradeAvg,
+      gradeMax: Math.max(steepestGrade(heights, run), gradeAvg),
+      movingMs: Math.round(movingMs),
+      vamMetersPerHour: movingMs > 0 ? Math.round((ascent * 3_600_000) / movingMs) : null,
+    });
+  }
+  return climbs;
+}
+
 /** Highest mean of the smoothed speed over a centered 3 s window of counted intervals (`speed_max`), O(n). */
 export function maxWindowSpeed(series: Pick<TrackSeries, "length" | "t" | "speed" | "interval">): number | null {
   const { t, speed, interval, length } = series;
