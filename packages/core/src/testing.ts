@@ -19,8 +19,10 @@ export interface TestContext {
 const require = createRequire(import.meta.url);
 const migrationsFolder = join(dirname(require.resolve("@obnixe/schema/package.json")), "migrations");
 
-export function createTestContext(): TestContext {
+/** `initialSql` loads a database written by an older app version (an `.dump` of it) before the migrations run. */
+export function createTestContext(initialSql?: string): TestContext {
   const sqlite = new Database(":memory:");
+  if (initialSql !== undefined) sqlite.exec(initialSql);
   sqlite.pragma("foreign_keys = ON");
   const db = drizzle({ client: sqlite, schema });
   migrate(db, { migrationsFolder });
