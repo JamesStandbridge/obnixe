@@ -30,7 +30,7 @@ import { BackButton, BottomPanel, NoticeMark, SwitchRow } from "@/features/data/
 import { TrackWriteError } from "@/features/tracking/trackStore";
 import { formatLongClock } from "@/format/durations";
 import { formatInteger, formatNumber } from "@/format/numbers";
-import { PrimaryButton } from "@/ui/Button";
+import { LinkButton, PrimaryButton } from "@/ui/Button";
 import { Segmented } from "@/ui/Controls";
 import { AppBar, Screen, Section } from "@/ui/Layout";
 import { goBack } from "@/ui/navigation";
@@ -144,6 +144,7 @@ export function ImportActivityScreen({ openedFile }: ImportActivityScreenProps) 
     const reading = readActivity(picked.bytes);
     switch (reading.kind) {
       case "refused":
+        measuring.current += 1;
         setStage({ kind: "empty", error: reading.message });
         return;
       case "read":
@@ -244,7 +245,7 @@ export function ImportActivityScreen({ openedFile }: ImportActivityScreenProps) 
         )}
 
         {file === null ? null : (
-          <Section title="Sport">
+          <Section title="Sport" action={<LinkButton label="Autre fichier" disabled={stage.kind === "importing"} onPress={() => void choose()} style={styles.sectionLink} />}>
             <SportStrip
               items={importSports(file.activity.sport).map((key) => ({ key, label: sports[key].label }))}
               value={file.sport?.sport ?? null}
@@ -369,6 +370,7 @@ const styles = StyleSheet.create({
   file: { fontFamily: fonts.figure700, fontSize: 19, lineHeight: 25 },
   fileDetail: { fontFamily: fonts.figure600 },
   hint: { marginTop: 6 },
+  sectionLink: { marginVertical: -12, marginRight: -10 },
   sportHint: { marginTop: 8 },
   stats: { marginTop: 14 },
   choice: { marginTop: 10 },
