@@ -35,14 +35,16 @@ export interface MergePlan {
   readonly counts: MergeCounts;
   readonly settings: SettingsValues | null;
   readonly photoIds: readonly Id[];
-  readonly recordingIds: readonly Id[];
+  /** Recordings and routes written by the merge, whose track files are restored. */
+  readonly trackRowIds: readonly Id[];
 }
 
 export interface MergeResult {
   readonly changesetId: Id | null;
   readonly counts: MergeCounts;
   readonly photoIds: readonly Id[];
-  readonly recordingIds: readonly Id[];
+  /** Recordings and routes written by the merge, whose track files are restored. */
+  readonly trackRowIds: readonly Id[];
 }
 
 export class UnknownUniqueIndexError extends Error {
@@ -397,10 +399,10 @@ function emit(state: MergeState): MergePlan {
   const deletes: Mutation[] = [];
   const writes: Mutation[] = [];
   const photoIds: Id[] = [];
-  const recordingIds: Id[] = [];
+  const trackRowIds: Id[] = [];
   const written = (table: JournaledTable, row: RowImage): void => {
     if (table === "photo") photoIds.push(row.id as Id);
-    if (table === "recording") recordingIds.push(row.id as Id);
+    if (table === "recording" || table === "route") trackRowIds.push(row.id as Id);
   };
   let inserted = 0;
   let updated = 0;
@@ -456,7 +458,7 @@ function emit(state: MergeState): MergePlan {
       deleted += 1;
     }
   }
-  return { mutations: [...preliminary, ...deletes, ...writes], counts: { inserted, updated, deleted }, settings: null, photoIds, recordingIds };
+  return { mutations: [...preliminary, ...deletes, ...writes], counts: { inserted, updated, deleted }, settings: null, photoIds, trackRowIds };
 }
 
 /** `DAT-031`: an incoming session whose recording has an `external_id` held locally by another session is the same import, and stays out with its rows. */
@@ -487,7 +489,7 @@ export function mergeSnapshot(db: ObnixeDatabase, env: Environment, incoming: Sn
     if (plan.mutations.length > 0) changesetId = commit(tx, env, { actor: importActor, summary: mergeSummary, revertsId: null, mutations: plan.mutations });
     if (plan.settings !== null) applySettings(tx, plan.settings, env);
   });
-  return { changesetId, counts: plan.counts, photoIds: plan.photoIds, recordingIds: plan.recordingIds };
+  return { changesetId, counts: plan.counts, photoIds: plan.photoIds, trackRowIds: plan.trackRowIds };
 }
 
 function applySettings(db: ObnixeDatabase, next: SettingsValues, env: Environment): void {

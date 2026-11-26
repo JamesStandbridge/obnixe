@@ -29,7 +29,7 @@ import type { SettingsValues } from "../../settings.ts";
 import { columnsOf } from "../foreignKeys.ts";
 import { trackDigest } from "../../tracking/codec/track.ts";
 
-export const backupSchemaVersion = 3;
+export const backupSchemaVersion = 4;
 
 export type TableRow<T extends JournaledTable> = InferSelectModel<(typeof journaled)[T]>;
 
@@ -41,9 +41,13 @@ export interface PhotoFile {
   readonly bytes: Uint8Array;
 }
 
-/** The `.otrk` file of a recording (`DAT-030`), checked against `recording.track_sha256` before it is restored. */
+export const trackFileKinds = ["recording", "route"] as const;
+export type TrackFileKind = (typeof trackFileKinds)[number];
+
+/** The `.otrk` file of a recording or a route (`DAT-030`), checked against the `track_sha256` of its row before it is restored. */
 export interface TrackFile {
-  readonly recordingId: Id;
+  readonly kind: TrackFileKind;
+  readonly rowId: Id;
   readonly bytes: Uint8Array;
 }
 
@@ -102,13 +106,26 @@ export function buildSnapshot(db: ObnixeDatabase, createdAt: EpochMs, photos: re
   return { schemaVersion: backupSchemaVersion, catalogVersion, createdAt, tables: tables as unknown as SnapshotTables, settings: readSettings(db), photos, tracks };
 }
 
-/** Track files of the snapshot whose bytes match their recording row (`DAT-030`), limited to `recordingIds` when given. */
-export function restorableTracks(snapshot: Pick<Snapshot, "tables" | "tracks">, recordingIds: ReadonlySet<Id> | null): readonly TrackFile[] {
-  const rows = new Map(snapshot.tables.recording.map((row) => [row.id, row]));
+/** Track files of the snapshot whose bytes match their recording or route row (`DAT-030`), limited to the rows of `rowIds` when given. */
+export function restorableTracks(snapshot: Pick<Snapshot, "tables" | "tracks">, rowIds: ReadonlySet<Id> | null): readonly TrackFile[] {
+  const recordings = new Map(snapshot.tables.recording.map((row) => [row.id, row.trackSha256]));
+  const routes = new Map(snapshot.tables.route.map((row) => [row.id, row.trackSha256]));
+  const digestOf = (track: TrackFile): string | null | undefined => {
+    switch (track.kind) {
+      case "recording":
+        return recordings.get(track.rowId);
+      case "route":
+        return routes.get(track.rowId);
+      default: {
+        const unreachable: never = track.kind;
+        throw new Error(`Unhandled track kind ${String(unreachable)}`);
+      }
+    }
+  };
   return snapshot.tracks.filter((track) => {
-    const row = rows.get(track.recordingId);
-    if (row === undefined || row.trackFile === null || (recordingIds !== null && !recordingIds.has(row.id))) return false;
-    return trackDigest(track.bytes) === row.trackSha256;
+    const digest = digestOf(track);
+    if (digest === undefined || digest === null || (rowIds !== null && !rowIds.has(track.rowId))) return false;
+    return trackDigest(track.bytes) === digest;
   });
 }
 

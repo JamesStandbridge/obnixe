@@ -37,7 +37,15 @@ export function trackFilePath(recordingId: Id): string {
   return `${trackDirectory}/${recordingId}${trackFileExtension}`;
 }
 
-/** `recording.track_sha256`: lowercase hexadecimal SHA-256 of the `.otrk` bytes. */
+/** The folder of every route file (`DEC-11`), relative to the document directory. */
+export const routeDirectory = "routes";
+
+/** `route.track_file`: the path of a route, relative to the document directory. */
+export function routeFilePath(routeId: Id): string {
+  return `${routeDirectory}/${routeId}${trackFileExtension}`;
+}
+
+/** `recording.track_sha256` and `route.track_sha256`: lowercase hexadecimal SHA-256 of the `.otrk` bytes. */
 export function trackDigest(bytes: Uint8Array): string {
   return bytesToHex(sha256(bytes));
 }

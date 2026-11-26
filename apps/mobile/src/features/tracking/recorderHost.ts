@@ -889,6 +889,9 @@ export class RecorderHost {
         case "lap":
           void this.dispatch({ type: "lap", t: event.t }, mode).catch(this.options.feedback.report);
           break;
+        case "off_route":
+        case "back_on_route":
+          break;
         default: {
           const unreachable: never = event;
           throw new Error(`Unhandled live event ${JSON.stringify(unreachable)}`);

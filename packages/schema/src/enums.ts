@@ -71,6 +71,7 @@ export const journaledTables = [
   "check_in",
   "pain_report",
   "zone_tracking",
+  "route",
   "recording",
   "lap",
   "privacy_zone",

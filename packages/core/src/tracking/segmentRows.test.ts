@@ -45,7 +45,7 @@ beforeEach(() => {
 });
 
 function saved(sport: "run" | "bike" = "run"): Id {
-  const plan = planRecordingStart(context.db, context.env, { sport, values: {}, gearId: null, slot: null, timeZone: "Europe/Paris" });
+  const plan = planRecordingStart(context.db, context.env, { sport, values: {}, gearId: null, slot: null, timeZone: "Europe/Paris", routeId: null });
   make.write(recordingStartMutations(plan, { startedAt: context.env.now(), device: "Pixel 9 Pro" }));
   const bytes = encodeTrack(track);
   make.write(planRecordingSave(context.db, context.env, { sessionId: plan.sessionId, track, processed, stored: { file: `tracks/${plan.recordingId}.otrk`, sha256: trackDigest(bytes), bytes: bytes.length }, pains: [] }));

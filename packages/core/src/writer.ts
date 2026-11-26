@@ -216,6 +216,7 @@ function validateSportValues(db: ObnixeDatabase, table: JournaledTable, row: Row
     case "zone_tracking":
     case "privacy_zone":
     case "segment":
+    case "route":
       return;
     default: {
       const unreachable: never = table;

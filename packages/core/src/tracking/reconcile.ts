@@ -1,5 +1,5 @@
 import { and, eq, isNotNull, isNull, ne } from "drizzle-orm";
-import { recording, session } from "@obnixe/schema";
+import { recording, route, session } from "@obnixe/schema";
 import type { Id, Recording } from "@obnixe/schema";
 import type { ObnixeDatabase } from "../database.ts";
 import type { Mutation } from "../writer.ts";
@@ -32,10 +32,11 @@ export function openLiveRecording(db: ObnixeDatabase): SessionRecording | null {
   );
 }
 
-/** Track files of every recording row, trashed sessions included: any other `.otrk` file is an orphan. */
+/** Track files of every recording and route row, trashed ones included: any other `.otrk` file is an orphan. */
 export function referencedTrackFiles(db: ObnixeDatabase): ReadonlySet<string> {
   const rows = db.select({ file: recording.trackFile }).from(recording).where(isNotNull(recording.trackFile)).all();
-  return new Set(rows.flatMap((row) => (row.file === null ? [] : [row.file])));
+  const routes = db.select({ file: route.trackFile }).from(route).all();
+  return new Set([...rows.flatMap((row) => (row.file === null ? [] : [row.file])), ...routes.map((row) => row.file)]);
 }
 
 /** « Trace reconstruite »: a saved recording whose track file was lost points to the one rebuilt from its journal. */

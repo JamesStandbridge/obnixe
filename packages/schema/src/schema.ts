@@ -27,6 +27,7 @@ export const journaled = {
   check_in: tables.checkIn,
   pain_report: tables.painReport,
   zone_tracking: tables.zoneTracking,
+  route: tables.route,
   recording: tables.recording,
   lap: tables.lap,
   privacy_zone: tables.privacyZone,
@@ -64,6 +65,7 @@ export type WeatherFetch = InferSelectModel<typeof tables.weatherFetch>;
 export type Segment = InferSelectModel<typeof tables.segment>;
 export type SegmentEffort = InferSelectModel<typeof tables.segmentEffort>;
 export type SegmentDerivation = InferSelectModel<typeof tables.segmentDerivation>;
+export type Route = InferSelectModel<typeof tables.route>;
 export type AgentConnection = InferSelectModel<typeof tables.agentConnection>;
 export type AgentCall = InferSelectModel<typeof tables.agentCall>;
 export type Changeset = InferSelectModel<typeof tables.changeset>;

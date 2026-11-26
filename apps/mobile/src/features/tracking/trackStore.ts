@@ -1,11 +1,11 @@
 import { Directory, File, Paths } from "expo-file-system";
-import { trackDigest, trackDirectory, trackFileExtension, trackFilePath } from "@obnixe/core";
+import { routeDirectory, routeFilePath, trackDigest, trackDirectory, trackFileExtension, trackFilePath } from "@obnixe/core";
 import type { StoredTrack } from "@obnixe/core";
 import type { Id } from "@obnixe/schema";
 
 /*
  * Raw journals live in `recordings/<sessionId>.ojr` under the document directory, track files at `trackFilePath`,
- * the relative path `recording.track_file` holds (annex C).
+ * the relative path `recording.track_file` holds (annex C), route files at `routeFilePath` (`DEC-11`).
  */
 
 const journalExtension = ".ojr";
@@ -19,6 +19,7 @@ export class TrackWriteError extends Error {
 
 const journals = (): Directory => new Directory(Paths.document, "recordings");
 const tracks = (): Directory => new Directory(Paths.document, trackDirectory);
+const routes = (): Directory => new Directory(Paths.document, routeDirectory);
 
 function ensure(directory: Directory): Directory {
   directory.create({ idempotent: true, intermediates: true });
@@ -53,9 +54,8 @@ export async function deleteJournal(sessionId: Id): Promise<void> {
  * `DAT-020`: written to a temporary file, read back and hashed, then renamed over the final name. expo-file-system
  * exposes no fsync; the read back is the durability check available to JavaScript.
  */
-export async function writeTrack(recordingId: Id, bytes: Uint8Array): Promise<StoredTrack> {
-  const file = trackFilePath(recordingId);
-  ensure(tracks());
+async function writeVerified(directory: Directory, file: string, bytes: Uint8Array): Promise<StoredTrack> {
+  ensure(directory);
   const temporary = new File(Paths.document, `${file}${temporaryExtension}`);
   if (temporary.exists) temporary.delete();
   temporary.create();
@@ -67,6 +67,14 @@ export async function writeTrack(recordingId: Id, bytes: Uint8Array): Promise<St
   }
   await temporary.move(new File(Paths.document, file), { overwrite: true });
   return { file, sha256, bytes: bytes.length };
+}
+
+export function writeTrack(recordingId: Id, bytes: Uint8Array): Promise<StoredTrack> {
+  return writeVerified(tracks(), trackFilePath(recordingId), bytes);
+}
+
+export function writeRouteTrack(routeId: Id, bytes: Uint8Array): Promise<StoredTrack> {
+  return writeVerified(routes(), routeFilePath(routeId), bytes);
 }
 
 /** Synchronous read for the agent tools, which answer within one call (`readTrack` of the agent environment). */
@@ -84,13 +92,14 @@ export async function deleteTrack(file: string): Promise<void> {
   if (target.exists) target.delete();
 }
 
+/** Track and route files on disk: one no row references is an orphan of the launch reconciliation. */
 export async function storedTrackFiles(): Promise<readonly string[]> {
-  return names(tracks(), trackFileExtension).map((name) => trackFilePath(name.slice(0, -trackFileExtension.length) as Id));
+  const idOf = (name: string): Id => name.slice(0, -trackFileExtension.length) as Id;
+  return [...names(tracks(), trackFileExtension).map((name) => trackFilePath(idOf(name))), ...names(routes(), trackFileExtension).map((name) => routeFilePath(idOf(name)))];
 }
 
 export async function sweepTemporaryTracks(): Promise<void> {
-  const directory = tracks();
-  for (const name of names(directory, temporaryExtension)) new File(directory, name).delete();
+  for (const directory of [tracks(), routes()]) for (const name of names(directory, temporaryExtension)) new File(directory, name).delete();
 }
 
 export async function availableBytes(): Promise<number> {

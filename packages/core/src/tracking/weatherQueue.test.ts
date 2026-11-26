@@ -53,7 +53,7 @@ const now = (): EpochMs => context.env.now();
 
 /** A saved live run started at `startedAt`, derived like the rebuild does unless `derived` is false. */
 function recorded(startedAt: EpochMs, derived = true): Id {
-  const plan = planRecordingStart(context.db, context.env, { sport: "run", values: {}, gearId: null, slot: null, timeZone: "Europe/Paris" });
+  const plan = planRecordingStart(context.db, context.env, { sport: "run", values: {}, gearId: null, slot: null, timeZone: "Europe/Paris", routeId: null });
   make.write(recordingStartMutations(plan, { startedAt, device: "Pixel 9 Pro" }));
   const track: Track = { startedAt, samples, marks: [{ kind: "start", t: 0 }, { kind: "stop", t: processed.elapsed.endMs }] };
   const bytes = encodeTrack(track);

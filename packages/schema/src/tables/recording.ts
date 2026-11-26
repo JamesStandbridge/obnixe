@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 import { check, index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 import type { SportKey } from "../catalog/sports.ts";
-import { id, ref, timestamp, tracked, trashable } from "../columns.ts";
+import { id, ref, sport, timestamp, tracked, trashable } from "../columns.ts";
 import { cadenceSources, elevationSources, energyMethods, importFormats, lapTriggers, recordingSources, segmentFamilies, sensorSources } from "../enums.ts";
 import type { BoundingBoxE7, RecordingWeather } from "../recording.ts";
 import { session } from "./sessions.ts";
@@ -42,6 +42,7 @@ export const recording = sqliteTable(
     energyMethod: text("energy_method", { enum: energyMethods }),
     importedEnergyKcal: integer("imported_energy_kcal"),
     weather: text("weather", { mode: "json" }).$type<RecordingWeather>(),
+    routeId: ref("route_id").references(() => route.id, { onDelete: "set null" }),
     goodFixPermille: integer("good_fix_permille").notNull(),
     bbox: text("bbox", { mode: "json" }).$type<BoundingBoxE7>(),
     previewPolyline: text("preview_polyline"),
@@ -205,4 +206,38 @@ export const segmentEffort = sqliteTable(
     algorithmVersion: integer("algorithm_version").notNull(),
   },
   (t) => [primaryKey({ columns: [t.segmentId, t.sessionId, t.occurrence] }), index("segment_effort_rank").on(t.segmentId, t.elapsedMs)],
+);
+
+/**
+ * A route to follow (`DEC-11`): its path is the immutable `track_file` (fix stream only), read backwards when `reversed`.
+ * Distance, D+ and D-, the box and the preview describe the route in the direction it is followed.
+ */
+export const route = sqliteTable(
+  "route",
+  {
+    id: id(),
+    name: text("name").notNull(),
+    sport: sport("sport").notNull(),
+    distanceMm: integer("distance_mm").notNull(),
+    ascentMm: integer("ascent_mm"),
+    descentMm: integer("descent_mm"),
+    elevationSource: text("elevation_source", { enum: elevationSources }).notNull(),
+    reversed: integer("reversed", { mode: "boolean" }).notNull(),
+    bbox: text("bbox", { mode: "json" }).$type<BoundingBoxE7>().notNull(),
+    previewPolyline: text("preview_polyline").notNull(),
+    trackFile: text("track_file").notNull(),
+    trackSha256: text("track_sha256").notNull(),
+    trackBytes: integer("track_bytes").notNull(),
+    pointCount: integer("point_count").notNull(),
+    sourceSessionId: ref("source_session_id").references(() => session.id, { onDelete: "set null" }),
+    lastUsedAt: timestamp("last_used_at"),
+    ...trashable(),
+  },
+  (t) => [
+    check("route_distance", sql`${t.distanceMm} > 0 AND ${t.pointCount} >= 2`),
+    check(
+      "route_elevation",
+      sql`(${t.ascentMm} IS NULL) = (${t.elevationSource} = 'none') AND (${t.ascentMm} IS NULL) = (${t.descentMm} IS NULL) AND (${t.ascentMm} IS NULL OR (${t.ascentMm} >= 0 AND ${t.descentMm} >= 0))`,
+    ),
+  ],
 );

@@ -68,7 +68,7 @@ beforeEach(() => {
 });
 
 function start(): RecordingStartPlan {
-  const plan = planRecordingStart(context.db, context.env, { sport: "run", values: {}, gearId: null, slot: null, timeZone: "Europe/Paris" });
+  const plan = planRecordingStart(context.db, context.env, { sport: "run", values: {}, gearId: null, slot: null, timeZone: "Europe/Paris", routeId: null });
   make.write(recordingStartMutations(plan, { startedAt, device: "Pixel 9 Pro" }));
   return plan;
 }
@@ -87,11 +87,11 @@ describe("recording start", () => {
     expect(sessionOf(plan.sessionId)).toMatchObject({ sport: "run", status: "in_progress", startedAt, endedAt: null, review: "pending" });
     expect(recordingOf(plan.sessionId)).toMatchObject({ source: "live", device: "Pixel 9 Pro", autoPause: true, trackFile: null, elapsedMs: 0 });
     expect(openLiveRecording(context.db)?.session.id).toBe(plan.sessionId);
-    expect(() => planRecordingStart(context.db, context.env, { sport: "run", values: {}, gearId: null, slot: null, timeZone: "Europe/Paris" })).toThrow(OpenSessionExistsError);
+    expect(() => planRecordingStart(context.db, context.env, { sport: "run", values: {}, gearId: null, slot: null, timeZone: "Europe/Paris", routeId: null })).toThrow(OpenSessionExistsError);
   });
 
   it("refuses a sport without a recording profile", () => {
-    expect(() => planRecordingStart(context.db, context.env, { sport: "strength", values: {}, gearId: null, slot: null, timeZone: "Europe/Paris" })).toThrow(NotRecordableError);
+    expect(() => planRecordingStart(context.db, context.env, { sport: "strength", values: {}, gearId: null, slot: null, timeZone: "Europe/Paris", routeId: null })).toThrow(NotRecordableError);
   });
 });
 
@@ -326,11 +326,12 @@ describe("track files in backups and trash", () => {
     const plan = start();
     save(plan);
     const bytes = encodeTrack(track);
-    const snapshot = buildSnapshot(context.db, context.env.now(), [], [{ recordingId: plan.recordingId as Id, bytes }]);
+    const snapshot = buildSnapshot(context.db, context.env.now(), [], [{ kind: "recording", rowId: plan.recordingId as Id, bytes }]);
     const unpacked = unpackSnapshot(packSnapshot(snapshot), testUpgrader);
-    expect(unpacked.tracks).toEqual([{ recordingId: plan.recordingId, bytes }]);
-    expect(restorableTracks(unpacked, null)).toEqual([{ recordingId: plan.recordingId, bytes }]);
-    expect(restorableTracks({ ...unpacked, tracks: [{ recordingId: plan.recordingId as Id, bytes: bytes.slice(1) }] }, null)).toEqual([]);
+    expect(unpacked.tracks).toEqual([{ kind: "recording", rowId: plan.recordingId, bytes }]);
+    expect(restorableTracks(unpacked, null)).toEqual([{ kind: "recording", rowId: plan.recordingId, bytes }]);
+    expect(restorableTracks({ ...unpacked, tracks: [{ kind: "recording", rowId: plan.recordingId as Id, bytes: bytes.slice(1) }] }, null)).toEqual([]);
+    expect(restorableTracks({ ...unpacked, tracks: [{ kind: "route", rowId: plan.recordingId as Id, bytes }] }, null)).toEqual([]);
     expect(restorableTracks(unpacked, new Set())).toEqual([]);
   });
 

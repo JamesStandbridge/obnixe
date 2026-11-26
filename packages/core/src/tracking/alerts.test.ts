@@ -23,6 +23,7 @@ function snapshot(t: number, fields: Partial<LiveSnapshot> = {}): LiveSnapshot {
     position: null,
     speed: 3,
     heartRate: null,
+    route: null,
     ...fields,
   };
 }

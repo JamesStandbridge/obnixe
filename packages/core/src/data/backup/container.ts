@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { EpochMs, Id } from "@obnixe/schema";
 import { decodeUtf8, encodeUtf8, InvalidUtf8Error } from "../utf8.ts";
-import { backupSchemaVersion, CorruptedBackupError, parseSnapshotSettings, parseSnapshotTables } from "./snapshot.ts";
+import { backupSchemaVersion, CorruptedBackupError, parseSnapshotSettings, parseSnapshotTables, trackFileKinds } from "./snapshot.ts";
 import type { PhotoFile, Snapshot, TrackFile } from "./snapshot.ts";
 import { upgradeSnapshot } from "./upgrade.ts";
 import type { SnapshotUpgrader } from "./upgrade.ts";
@@ -16,7 +16,7 @@ const documentSchema = z.object({
   settings: z.unknown(),
   tables: z.unknown(),
   photos: z.array(z.object({ photoId: z.string(), offset: z.int().nonnegative(), length: z.int().nonnegative() })),
-  tracks: z.array(z.object({ kind: z.literal("recording"), rowId: z.string(), offset: z.int().nonnegative(), length: z.int().nonnegative() })).default([]),
+  tracks: z.array(z.object({ kind: z.enum(trackFileKinds), rowId: z.string(), offset: z.int().nonnegative(), length: z.int().nonnegative() })).default([]),
 });
 
 export function packSnapshot(snapshot: Snapshot): Uint8Array {
@@ -27,7 +27,7 @@ export function packSnapshot(snapshot: Snapshot): Uint8Array {
     return entry;
   });
   const tracks = snapshot.tracks.map((file) => {
-    const entry = { kind: "recording", rowId: file.recordingId, offset, length: file.bytes.length };
+    const entry = { kind: file.kind, rowId: file.rowId, offset, length: file.bytes.length };
     offset += file.bytes.length;
     return entry;
   });
@@ -91,7 +91,7 @@ export function readPackedSnapshot(packed: Uint8Array): PackedSnapshot {
   });
   const tracks: TrackFile[] = document.tracks.map((entry) => {
     if (entry.offset + entry.length > blobs.length) throw new CorruptedBackupError(`track ${entry.rowId} truncated`);
-    return { recordingId: entry.rowId as Id, bytes: blobs.slice(entry.offset, entry.offset + entry.length) };
+    return { kind: entry.kind, rowId: entry.rowId as Id, bytes: blobs.slice(entry.offset, entry.offset + entry.length) };
   });
   return { schemaVersion: document.schemaVersion, catalogVersion: document.catalogVersion, createdAt: document.createdAt as EpochMs, settings: document.settings, tables: document.tables, photos, tracks };
 }

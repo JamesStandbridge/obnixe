@@ -50,6 +50,8 @@ function itemTitle(item: TrashItem, unit: MassUnit): string {
       return `Zone de confidentialité · ${item.row.label}`;
     case "segment":
       return `Segment · ${item.row.name}`;
+    case "route":
+      return `Itinéraire · ${item.row.name}`;
     default: {
       const unreachable: never = item;
       throw new Error(`Unhandled trash item ${JSON.stringify(unreachable)}`);
