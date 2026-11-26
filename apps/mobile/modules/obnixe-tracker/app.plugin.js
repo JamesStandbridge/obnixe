@@ -59,7 +59,7 @@ function widgetSources() {
 }
 
 /**
- * iOS: when-in-use location only (PRV-001) kept running in the background by the `location` mode, heart rate in the
+ * iOS: when-in-use location only (PRV-001) kept running in the background by the `location` mode, Bluetooth sources in the
  * background by `bluetooth-central`, and the Live Activity widget extension (REC-072), which shares an app group with
  * the app for the marks its buttons ask for.
  */

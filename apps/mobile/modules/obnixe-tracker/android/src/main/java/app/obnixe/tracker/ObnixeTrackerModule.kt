@@ -2,7 +2,8 @@ package app.obnixe.tracker
 
 import android.bluetooth.BluetoothAdapter
 import android.net.Uri
-import app.obnixe.tracker.heartrate.HeartRateDevice
+import app.obnixe.tracker.bluetooth.SensorDevice
+import app.obnixe.tracker.bluetooth.SensorService
 import app.obnixe.tracker.journal.JournalBatch
 import app.obnixe.tracker.journal.JournalHeader
 import expo.modules.interfaces.permissions.Permissions
@@ -25,7 +26,7 @@ class ObnixeTrackerModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("ObnixeTracker")
 
-    Events("onSamples", "onMark", "onIssue", "onHeartRateDevice", "onWarmupFix")
+    Events("onSamples", "onMark", "onIssue", "onSensorDevice", "onWarmupFix")
 
     OnCreate {
       TrackerHub.bind(context)
@@ -77,8 +78,8 @@ class ObnixeTrackerModule : Module() {
       TrackerHub.setNotification(notification.toContent())
     }
 
-    AsyncFunction("scanHeartRate") { timeoutMs: Double, promise: Promise ->
-      TrackerHub.scanHeartRate(timeoutMs.toLong().coerceIn(1_000, 60_000), promise)
+    AsyncFunction("scanSensors") { service: SensorService, timeoutMs: Double, promise: Promise ->
+      TrackerHub.scanSensors(service, timeoutMs.toLong().coerceIn(1_000, 60_000), promise)
     }
 
     Function("stopScan") {
@@ -103,8 +104,8 @@ class ObnixeTrackerModule : Module() {
     sendEvent("onIssue", mapOf("sessionId" to sessionId, "kind" to issue.wire))
   }
 
-  internal fun emitHeartRateDevice(device: HeartRateDevice) {
-    sendEvent("onHeartRateDevice", device.toBridge())
+  internal fun emitSensorDevice(device: SensorDevice) {
+    sendEvent("onSensorDevice", device.toBridge())
   }
 
   internal fun emitWarmupFix(fix: Fix) {
@@ -160,10 +161,15 @@ class NotificationRecord : Record {
   fun toContent() = TrackerNotificationContent(title, text, timerBaseAt?.toLong(), progress?.toProgress())
 }
 
+class BluetoothSensorRecord : Record {
+  @Field val service: SensorService = SensorService.HEART_RATE
+  @Field val id: String = ""
+}
+
 class SensorsRecord : Record {
   @Field val barometer: Boolean = false
   @Field val pedometer: Boolean = false
-  @Field val heartRateDevice: String? = null
+  @Field val bluetooth: List<BluetoothSensorRecord> = emptyList()
 }
 
 class ReplayRecord : Record {
@@ -184,13 +190,14 @@ class StartRequestRecord : Record {
 
   /** The validated configuration, or null when a field is out of its contract. */
   fun toConfig(): RecordingConfig? {
-    val heartRateDevice = sensors.heartRateDevice
+    val bluetooth = sensors.bluetooth.map { BluetoothSensor(it.service, it.id) }
     val replay = replay
     val valid = JournalHeader.isSessionId(sessionId) &&
       journalPath.isNotEmpty() &&
       (batchIntervalMs == 1_000.0 || batchIntervalMs == 5_000.0) &&
       (backgroundBatchIntervalMs == 1_000.0 || backgroundBatchIntervalMs == 5_000.0) &&
-      (heartRateDevice == null || BluetoothAdapter.checkBluetoothAddress(heartRateDevice)) &&
+      bluetooth.all { BluetoothAdapter.checkBluetoothAddress(it.address) } &&
+      bluetooth.distinctBy { it.service.role }.size == bluetooth.size &&
       (replay == null || replay.speed in 1.0..50.0)
     if (!valid) return null
     return RecordingConfig(
@@ -199,7 +206,7 @@ class StartRequestRecord : Record {
       power = power,
       barometer = sensors.barometer,
       pedometer = sensors.pedometer,
-      heartRateDevice = heartRateDevice,
+      bluetooth = bluetooth,
       batchIntervalMs = batchIntervalMs.toLong(),
       backgroundBatchIntervalMs = backgroundBatchIntervalMs.toLong(),
       notification = notification.toContent(),

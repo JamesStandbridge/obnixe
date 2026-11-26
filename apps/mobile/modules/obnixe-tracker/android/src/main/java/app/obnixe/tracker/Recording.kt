@@ -12,8 +12,14 @@ import android.os.Handler
 import android.os.PowerManager
 import androidx.core.content.ContextCompat
 import androidx.core.location.LocationManagerCompat
-import app.obnixe.tracker.heartrate.HeartRateLink
-import app.obnixe.tracker.heartrate.HeartRateMeasurement
+import app.obnixe.tracker.bluetooth.CrankCadence
+import app.obnixe.tracker.bluetooth.SensorLink
+import app.obnixe.tracker.bluetooth.SensorRole
+import app.obnixe.tracker.bluetooth.SensorService
+import app.obnixe.tracker.bluetooth.parseCscMeasurement
+import app.obnixe.tracker.bluetooth.parseCyclingPowerMeasurement
+import app.obnixe.tracker.bluetooth.parseHeartRateMeasurement
+import app.obnixe.tracker.bluetooth.parseRscCadence
 import app.obnixe.tracker.journal.JournalBatch
 import app.obnixe.tracker.journal.JournalFormat
 import app.obnixe.tracker.journal.JournalFormatException
@@ -34,10 +40,19 @@ enum class TrackerIssue(val wire: String) {
   STORAGE_LOW("storage_low"),
   STORAGE_FULL("storage_full"),
   HEART_RATE_LOST("heart_rate_lost"),
+  CADENCE_LOST("cadence_lost"),
+  POWER_LOST("power_lost"),
 }
 
-data class TrackerSources(val location: LocationSourceKind, val barometer: Boolean, val pedometer: Boolean, val heartRate: Boolean) {
-  fun toBridge(): Map<String, Any> = mapOf("location" to location.wire, "barometer" to barometer, "pedometer" to pedometer, "heartRate" to heartRate)
+data class TrackerSources(val location: LocationSourceKind, val barometer: Boolean, val pedometer: Boolean, val bluetooth: Set<SensorRole>) {
+  fun toBridge(): Map<String, Any> = mapOf(
+    "location" to location.wire,
+    "barometer" to barometer,
+    "pedometer" to pedometer,
+    "heartRate" to (SensorRole.HEART_RATE in bluetooth),
+    "cadence" to (SensorRole.CADENCE in bluetooth),
+    "power" to (SensorRole.POWER in bluetooth),
+  )
 }
 
 data class StoppedRecording(val sessionId: String, val endedAt: Long, val lastSequence: Long) {
@@ -92,7 +107,9 @@ class Recording private constructor(
   private var location: LocationSource? = null
   private var barometer: SensorStream? = null
   private var steps: SensorStream? = null
-  private var heartRate: HeartRateLink? = null
+  private var links: List<SensorLink> = emptyList()
+  private val sensorCrank = CrankCadence()
+  private val powerCrank = CrankCadence()
   private var stopped = false
   private var receiverRegistered = false
   private var storageLowReported = false
@@ -127,12 +144,13 @@ class Recording private constructor(
         SensorStream(sensors, sensor, handler) { event -> onStepCounter(clock.at(event.timestamp), event.values[0].toLong()) }
       }?.takeIf { it.start() }
     }
-    val heartRateDevice = config.heartRateDevice
-    if (heartRateDevice != null && (live || replay?.speed == 1.0) && TrackerPermissions.isGranted(context, TrackerPermission.BLUETOOTH)) {
-      heartRate = HeartRateLink(context, heartRateDevice, handler, heartRateListener).also { it.start() }
+    if ((live || replay?.speed == 1.0) && TrackerPermissions.isGranted(context, TrackerPermission.BLUETOOTH)) {
+      links = config.bluetooth.groupBy { it.address }.map { (address, sensors) ->
+        SensorLink(context, address, sensors.map { it.service }.toSet(), handler, sensorListener).also { it.start() }
+      }
     }
     scheduleTick()
-    return TrackerSources(location.kind, barometer != null, steps != null, heartRate != null)
+    return TrackerSources(location.kind, barometer != null, steps != null, links.flatMap { link -> link.services.map { it.role } }.toSet())
   }
 
   /** Writes a pause, resume or lap mark; false when the pause state makes it meaningless (lap or pause while paused). */
@@ -205,7 +223,7 @@ class Recording private constructor(
     location?.stop()
     barometer?.stop()
     steps?.stop()
-    heartRate?.stop()
+    links.forEach { it.stop() }
     if (receiverRegistered) context.unregisterReceiver(providerReceiver)
     receiverRegistered = false
   }
@@ -225,13 +243,22 @@ class Recording private constructor(
     onSample(StepSample(t, lastStepCount))
   }
 
-  private val heartRateListener = object : HeartRateLink.Listener {
-    override fun onMeasurement(elapsedRealtimeNanos: Long, measurement: HeartRateMeasurement) {
-      onSample(HeartRateSample(clock.at(elapsedRealtimeNanos), measurement.bpm, measurement.contact, measurement.rrInterval))
+  private val sensorListener = object : SensorLink.Listener {
+    override fun onValue(link: SensorLink, service: SensorService, elapsedRealtimeNanos: Long, value: ByteArray) {
+      val t = clock.at(elapsedRealtimeNanos)
+      val sample = when (service) {
+        SensorService.HEART_RATE -> parseHeartRateMeasurement(value)?.let { HeartRateSample(t, it.bpm, it.contact, it.rrInterval) }
+        SensorService.CYCLING_SPEED_CADENCE -> parseCscMeasurement(value)?.let { sensorCrank.push(elapsedRealtimeNanos, it) }?.let { CadenceSample(t, it) }
+        SensorService.RUNNING_SPEED_CADENCE -> parseRscCadence(value)?.let { CadenceSample(t, it) }
+        SensorService.CYCLING_POWER -> parseCyclingPowerMeasurement(value)?.let { power ->
+          PowerSample(t, power.watts, power.crank?.let { powerCrank.push(elapsedRealtimeNanos, it) })
+        }
+      }
+      sample?.let(::onSample)
     }
 
-    override fun onLost() {
-      listener.onIssue(this@Recording, TrackerIssue.HEART_RATE_LOST)
+    override fun onLost(link: SensorLink) {
+      link.services.map { it.role }.toSet().forEach { listener.onIssue(this@Recording, it.issue) }
     }
   }
 

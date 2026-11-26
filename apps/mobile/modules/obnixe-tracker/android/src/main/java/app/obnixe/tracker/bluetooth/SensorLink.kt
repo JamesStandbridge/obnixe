@@ -1,4 +1,4 @@
-package app.obnixe.tracker.heartrate
+package app.obnixe.tracker.bluetooth
 
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothDevice
@@ -15,18 +15,26 @@ import android.os.Handler
 import android.os.SystemClock
 
 /**
- * Keeps a GATT link to one Heart Rate source and streams its measurements (`SPT-007`). After a loss it retries direct
- * connections, which reconnect within seconds once the source is back, then falls back to the controller's
- * low-duty background connection after [directRetryWindowNs] so a source that stays away costs little battery.
- * Callers hold `BLUETOOTH_CONNECT` (Android 12+); every callback runs on [handler]'s thread.
+ * Keeps a GATT link to one Bluetooth source and streams the measurements of [services] (`SPT-007`, `SPT-008`), so a
+ * power meter that also serves cadence holds a single connection. The notifications are enabled one descriptor at a time,
+ * as GATT allows one pending operation. After a loss it retries direct connections, which reconnect within seconds once the
+ * source is back, then falls back to the controller's low-duty background connection after [directRetryWindowNs] so a
+ * source that stays away costs little battery. Callers hold `BLUETOOTH_CONNECT` (Android 12+); every callback runs on
+ * [handler]'s thread.
  */
 @SuppressLint("MissingPermission")
-class HeartRateLink(private val context: Context, private val address: String, private val handler: Handler, private val listener: Listener) {
+class SensorLink(
+  private val context: Context,
+  private val address: String,
+  val services: Set<SensorService>,
+  private val handler: Handler,
+  private val listener: Listener,
+) {
   interface Listener {
     /** [elapsedRealtimeNanos] is the instant the notification reached the phone. */
-    fun onMeasurement(elapsedRealtimeNanos: Long, measurement: HeartRateMeasurement)
+    fun onValue(link: SensorLink, service: SensorService, elapsedRealtimeNanos: Long, value: ByteArray)
 
-    fun onLost()
+    fun onLost(link: SensorLink)
   }
 
   private enum class State { CONNECTING, STREAMING, LOST }
@@ -35,6 +43,7 @@ class HeartRateLink(private val context: Context, private val address: String, p
   private var state = State.CONNECTING
   private var lostAtNs = 0L
   private var stopped = false
+  private var unsubscribed = ArrayDeque<BluetoothGattDescriptor>()
   private val reconnect = Runnable { connect() }
 
   fun start() {
@@ -72,16 +81,31 @@ class HeartRateLink(private val context: Context, private val address: String, p
     if (state != State.LOST) {
       state = State.LOST
       lostAtNs = SystemClock.elapsedRealtimeNanos()
-      listener.onLost()
+      listener.onLost(this)
     }
     if (!stopped) handler.postDelayed(reconnect, retryDelayMs)
   }
 
+  /** Subscribes to every measurement; a source missing one of them is dropped, so its loss gets reported. */
   private fun enableNotifications(gatt: BluetoothGatt) {
-    val characteristic = gatt.getService(HeartRateGatt.service)?.getCharacteristic(HeartRateGatt.measurement)
-    val descriptor = characteristic?.getDescriptor(HeartRateGatt.clientConfiguration)
-    if (descriptor == null || !gatt.setCharacteristicNotification(characteristic, true)) {
-      gatt.disconnect()
+    val descriptors = ArrayDeque<BluetoothGattDescriptor>()
+    for (service in services) {
+      val characteristic = gatt.getService(service.uuid)?.getCharacteristic(service.measurement)
+      val descriptor = characteristic?.getDescriptor(SensorGatt.clientConfiguration)
+      if (descriptor == null || !gatt.setCharacteristicNotification(characteristic, true)) {
+        gatt.disconnect()
+        return
+      }
+      descriptors.addLast(descriptor)
+    }
+    unsubscribed = descriptors
+    writeNextDescriptor(gatt)
+  }
+
+  private fun writeNextDescriptor(gatt: BluetoothGatt) {
+    val descriptor = unsubscribed.removeFirstOrNull()
+    if (descriptor == null) {
+      state = State.STREAMING
       return
     }
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -94,16 +118,16 @@ class HeartRateLink(private val context: Context, private val address: String, p
     }
   }
 
-  private fun onValue(value: ByteArray) {
+  private fun onValue(characteristic: BluetoothGattCharacteristic, value: ByteArray) {
     val receivedAt = SystemClock.elapsedRealtimeNanos()
-    val measurement = parseHeartRateMeasurement(value) ?: return
-    handler.post { if (!stopped) listener.onMeasurement(receivedAt, measurement) }
+    val service = services.firstOrNull { it.measurement == characteristic.uuid } ?: return
+    handler.post { if (!stopped) listener.onValue(this, service, receivedAt, value) }
   }
 
   private val callback = object : BluetoothGattCallback() {
     override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
       handler.post {
-        if (stopped || gatt !== this@HeartRateLink.gatt) return@post
+        if (stopped || gatt !== this@SensorLink.gatt) return@post
         if (status == BluetoothGatt.GATT_SUCCESS && newState == BluetoothProfile.STATE_CONNECTED) {
           gatt.discoverServices()
         } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
@@ -114,26 +138,26 @@ class HeartRateLink(private val context: Context, private val address: String, p
 
     override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
       handler.post {
-        if (stopped || gatt !== this@HeartRateLink.gatt) return@post
+        if (stopped || gatt !== this@SensorLink.gatt) return@post
         if (status == BluetoothGatt.GATT_SUCCESS) enableNotifications(gatt) else gatt.disconnect()
       }
     }
 
     override fun onDescriptorWrite(gatt: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
       handler.post {
-        if (stopped || gatt !== this@HeartRateLink.gatt) return@post
-        if (status == BluetoothGatt.GATT_SUCCESS) state = State.STREAMING else gatt.disconnect()
+        if (stopped || gatt !== this@SensorLink.gatt) return@post
+        if (status == BluetoothGatt.GATT_SUCCESS) writeNextDescriptor(gatt) else gatt.disconnect()
       }
     }
 
     override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, value: ByteArray) {
-      if (characteristic.uuid == HeartRateGatt.measurement) onValue(value)
+      onValue(characteristic, value)
     }
 
     @Deprecated("Called instead of the value overload before Android 13")
     override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
       @Suppress("DEPRECATION")
-      if (characteristic.uuid == HeartRateGatt.measurement) onValue(characteristic.value ?: return)
+      onValue(characteristic, characteristic.value ?: return)
     }
   }
 

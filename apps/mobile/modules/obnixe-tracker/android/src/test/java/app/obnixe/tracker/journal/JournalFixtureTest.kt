@@ -1,10 +1,12 @@
 package app.obnixe.tracker.journal
 
+import app.obnixe.tracker.CadenceSample
 import app.obnixe.tracker.Fix
 import app.obnixe.tracker.HeartRateContact
 import app.obnixe.tracker.HeartRateSample
 import app.obnixe.tracker.Mark
 import app.obnixe.tracker.MarkKind
+import app.obnixe.tracker.PowerSample
 import app.obnixe.tracker.PressureSample
 import app.obnixe.tracker.Sample
 import app.obnixe.tracker.StepSample
@@ -81,6 +83,7 @@ class JournalFixtureTest {
       ),
       Mark(10_500, MarkKind.LAP),
     ),
+    Step(listOf(PowerSample(10_600, 238, 91), CadenceSample(10_700, 172), PowerSample(10_900, 0, null)), null),
     Step(listOf(PressureSample(11_000, 89_401)), Mark(11_000, MarkKind.STOP)),
   )
 

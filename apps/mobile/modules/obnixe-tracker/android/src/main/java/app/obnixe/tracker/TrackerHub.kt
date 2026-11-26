@@ -5,8 +5,9 @@ import android.app.NotificationManager
 import android.content.Context
 import android.os.Handler
 import android.os.HandlerThread
-import app.obnixe.tracker.heartrate.BluetoothUnavailableException
-import app.obnixe.tracker.heartrate.HeartRateScanner
+import app.obnixe.tracker.bluetooth.BluetoothUnavailableException
+import app.obnixe.tracker.bluetooth.SensorScanner
+import app.obnixe.tracker.bluetooth.SensorService
 import app.obnixe.tracker.journal.JournalBatch
 import app.obnixe.tracker.location.GpxFormatException
 import app.obnixe.tracker.location.GpxReader
@@ -31,7 +32,7 @@ internal object TrackerHub : Recording.Listener {
   @Volatile private var restoringSessionId: String? = null
   @Volatile private var preparation: LocationSource? = null
   private var lastStopped: StoppedRecording? = null
-  private var scanner: HeartRateScanner? = null
+  private var scanner: SensorScanner? = null
   private lateinit var context: Context
 
   private val handler: Handler by lazy { Handler(HandlerThread("obnixe-tracker").apply { start() }.looper) }
@@ -126,11 +127,11 @@ internal object TrackerHub : Recording.Listener {
     promise.resolve(stopped.toBridge())
   }
 
-  fun scanHeartRate(timeoutMs: Long, promise: Promise) = confined {
+  fun scanSensors(service: SensorService, timeoutMs: Long, promise: Promise) = confined {
     if (!TrackerPermissions.isGranted(context, TrackerPermission.BLUETOOTH)) return@confined promise.reject(TrackerException.bluetoothPermission())
-    val scanner = scanner ?: HeartRateScanner(context, handler) { device -> module?.emitHeartRateDevice(device) }.also { scanner = it }
+    val scanner = scanner ?: SensorScanner(context, handler) { device -> module?.emitSensorDevice(device) }.also { scanner = it }
     try {
-      scanner.start(timeoutMs) { promise.resolve(null) }
+      scanner.start(service, timeoutMs) { promise.resolve(null) }
     } catch (error: BluetoothUnavailableException) {
       promise.reject(TrackerException.bluetoothUnavailable())
     }
@@ -147,7 +148,7 @@ internal object TrackerHub : Recording.Listener {
     return NotificationState(kept.config.sessionId, kept.config.notification, paused = false, frozenTimerMs = null)
   }
 
-  fun usesHeartRate(context: Context): Boolean = (recording?.config ?: RecordingStore.load(context)?.config)?.heartRateDevice != null
+  fun usesBluetooth(context: Context): Boolean = (recording?.config ?: RecordingStore.load(context)?.config)?.bluetooth?.isNotEmpty() == true
 
   /** The service runs in the foreground: resumes the kept recording if the system restarted the process. */
   fun attach(context: Context, screenInteractive: Boolean) = confined {

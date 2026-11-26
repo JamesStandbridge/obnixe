@@ -1,4 +1,4 @@
-package app.obnixe.tracker.heartrate
+package app.obnixe.tracker.bluetooth
 
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothManager
@@ -10,37 +10,38 @@ import android.content.Context
 import android.os.Handler
 import android.os.ParcelUuid
 
-data class HeartRateDevice(val id: String, val name: String, val rssi: Int) {
-  fun toBridge(): Map<String, Any> = mapOf("id" to id, "name" to name, "rssi" to rssi)
+data class SensorDevice(val service: SensorService, val id: String, val name: String, val rssi: Int) {
+  fun toBridge(): Map<String, Any> = mapOf("service" to service.value, "id" to id, "name" to name, "rssi" to rssi)
 }
 
 class BluetoothUnavailableException : IllegalStateException("Bluetooth is off or missing")
 
 /**
- * Scans for advertisers of the Heart Rate service, such as a Garmin watch broadcasting its heart rate. Each sighting is
- * reported, so the RSSI stays current. Callers hold `BLUETOOTH_SCAN` (Android 12+) or the fine location permission.
+ * Scans for advertisers of one sensor service, such as a Garmin watch broadcasting its heart rate or a power meter. Each
+ * sighting is reported, so the RSSI stays current. Callers hold `BLUETOOTH_SCAN` (Android 12+) or the fine location
+ * permission.
  */
 @SuppressLint("MissingPermission")
-class HeartRateScanner(private val context: Context, private val handler: Handler, private val onDevice: (HeartRateDevice) -> Unit) {
+class SensorScanner(private val context: Context, private val handler: Handler, private val onDevice: (SensorDevice) -> Unit) {
   private var callback: ScanCallback? = null
   private var onEnd: (() -> Unit)? = null
   private val timeout = Runnable { stop() }
 
-  fun start(timeoutMs: Long, onEnd: () -> Unit) {
+  fun start(service: SensorService, timeoutMs: Long, onEnd: () -> Unit) {
     stop()
     val adapter = context.getSystemService(BluetoothManager::class.java)?.adapter
     val scanner = adapter?.takeIf { it.isEnabled }?.bluetoothLeScanner ?: throw BluetoothUnavailableException()
     val callback = object : ScanCallback() {
       override fun onScanResult(callbackType: Int, result: ScanResult) {
         val name = result.scanRecord?.deviceName ?: ""
-        handler.post { onDevice(HeartRateDevice(result.device.address, name, result.rssi)) }
+        handler.post { onDevice(SensorDevice(service, result.device.address, name, result.rssi)) }
       }
 
       override fun onScanFailed(errorCode: Int) {
         handler.post { stop() }
       }
     }
-    val filter = ScanFilter.Builder().setServiceUuid(ParcelUuid(HeartRateGatt.service)).build()
+    val filter = ScanFilter.Builder().setServiceUuid(ParcelUuid(service.uuid)).build()
     val settings = ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build()
     scanner.startScan(listOf(filter), settings, callback)
     this.callback = callback

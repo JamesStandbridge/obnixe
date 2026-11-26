@@ -26,7 +26,9 @@ enum class RecordType(val code: Int, val size: Int) {
   PRESSURE(2, 9),
   STEPS(3, 9),
   HEART_RATE(4, 10),
-  MARK(5, 6);
+  MARK(5, 6),
+  POWER(6, 9),
+  CADENCE(7, 7);
 
   companion object {
     private val byCode = entries.associateBy { it.code }
