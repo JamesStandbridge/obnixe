@@ -67,6 +67,17 @@ export function heartRateZoneOf(bpm: number, zones: readonly HeartRateZoneBounds
   return null;
 }
 
+/** Heart rate holding at increasing times: the last reading at most `heartRateHoldMs` old, `null` during a dropout. */
+export function heartRateReader(heartRate: HeartRateColumns): (t: number) => number | null {
+  let index = -1;
+  return (t: number): number | null => {
+    while (index + 1 < heartRate.length && (heartRate.t[index + 1] ?? 0) <= t) index += 1;
+    if (index < 0) return null;
+    const bpm = heartRate.bpm[index] ?? 0;
+    return isHeartRateReading(bpm) && t - (heartRate.t[index] ?? 0) < heartRateHoldMs ? bpm : null;
+  };
+}
+
 /**
  * Visits every interval during which a reading holds, clipped to `window`, in time order: from each reading to the next one, at
  * most `heartRateHoldMs`. Samples that are not readings end the previous hold.

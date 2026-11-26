@@ -452,11 +452,21 @@ function emit(state: MergeState): MergePlan {
   return { mutations: [...preliminary, ...deletes, ...writes], counts: { inserted, updated, deleted }, settings: null, photoIds };
 }
 
+/** `DAT-031`: an incoming session whose recording has an `external_id` held locally by another session is the same import, and stays out with its rows. */
+function withoutKnownImports(local: SnapshotTables, incoming: SnapshotTables): SnapshotTables {
+  const holders = new Map(local.recording.flatMap((row) => (row.externalId === null ? [] : [[row.externalId, row.sessionId] as const])));
+  const known = new Set(
+    incoming.recording.filter((row) => row.externalId !== null && holders.has(row.externalId) && holders.get(row.externalId) !== row.sessionId).map((row) => row.sessionId),
+  );
+  return known.size === 0 ? incoming : { ...incoming, session: incoming.session.filter((row) => !known.has(row.id)) };
+}
+
 export function planMerge(db: ObnixeDatabase, incoming: Snapshot, now: EpochMs): MergePlan {
   const local = buildSnapshot(db, 0 as Snapshot["createdAt"]);
   const state = createState(local.tables);
   const remap: Remap = new Map();
-  for (const table of journaledTables) mergeTable(table, incoming.tables[table] as readonly RowImage[], state, remap, now);
+  const tables = withoutKnownImports(local.tables, incoming.tables);
+  for (const table of journaledTables) mergeTable(table, tables[table] as readonly RowImage[], state, remap, now);
   enforceReferences(state);
   const plan = emit(state);
   const settings = incoming.settings.updatedAt > local.settings.updatedAt ? incoming.settings : null;

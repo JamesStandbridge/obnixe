@@ -1,0 +1,69 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<gpx version="1.1" creator="https://www.komoot.de" xmlns="http://www.topografix.com/GPX/1/1">
+  <metadata><name>Planned tour</name></metadata>
+  <trk>
+    <name>Planned tour</name>
+    <trkseg>
+      <trkpt lat="45.802310" lon="6.231950">
+        <ele>447.000000</ele>
+      </trkpt>
+      <trkpt lat="45.802339" lon="6.231990">
+        <ele>448.322283</ele>
+      </trkpt>
+      <trkpt lat="45.802368" lon="6.232035">
+        <ele>449.638449</ele>
+      </trkpt>
+      <trkpt lat="45.802397" lon="6.232093">
+        <ele>450.942410</ele>
+      </trkpt>
+      <trkpt lat="45.802416" lon="6.232146">
+        <ele>452.228139</ele>
+      </trkpt>
+      <trkpt lat="45.802440" lon="6.232220">
+        <ele>453.489696</ele>
+      </trkpt>
+      <trkpt lat="45.802472" lon="6.232300">
+        <ele>454.721260</ele>
+      </trkpt>
+      <trkpt lat="45.802503" lon="6.232374">
+        <ele>455.917155</ele>
+      </trkpt>
+      <trkpt lat="45.802527" lon="6.232421">
+        <ele>457.071880</ele>
+      </trkpt>
+      <trkpt lat="45.802559" lon="6.232489">
+        <ele>458.180135</ele>
+      </trkpt>
+      <trkpt lat="45.802583" lon="6.232534">
+        <ele>459.236844</ele>
+      </trkpt>
+      <trkpt lat="45.802611" lon="6.232597">
+        <ele>460.237184</ele>
+      </trkpt>
+      <trkpt lat="45.802635" lon="6.232645">
+        <ele>461.176607</ele>
+      </trkpt>
+      <trkpt lat="45.802669" lon="6.232700">
+        <ele>462.050860</ele>
+      </trkpt>
+      <trkpt lat="45.802704" lon="6.232766">
+        <ele>462.856010</ele>
+      </trkpt>
+      <trkpt lat="45.802731" lon="6.232812">
+        <ele>463.588457</ele>
+      </trkpt>
+      <trkpt lat="45.802780" lon="6.232873">
+        <ele>464.244960</ele>
+      </trkpt>
+      <trkpt lat="45.802834" lon="6.232929">
+        <ele>464.822643</ele>
+      </trkpt>
+      <trkpt lat="45.802886" lon="6.232982">
+        <ele>465.319017</ele>
+      </trkpt>
+      <trkpt lat="45.802920" lon="6.233014">
+        <ele>465.731990</ele>
+      </trkpt>
+    </trkseg>
+  </trk>
+</gpx>

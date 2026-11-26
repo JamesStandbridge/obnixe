@@ -1,5 +1,5 @@
 import { deflateSync, inflateSync } from "fflate";
-import type { EpochMs } from "@obnixe/schema";
+import type { EpochMs, Id } from "@obnixe/schema";
 import { absentValue, toSampleColumns } from "../types.ts";
 import type { FixColumns, HeartRateColumns, PressureColumns, SampleColumns, StepColumns, TrackerMark } from "../types.ts";
 import { crc32 } from "./crc32.ts";
@@ -24,6 +24,11 @@ export interface Track {
   readonly startedAt: EpochMs;
   readonly samples: SampleColumns;
   readonly marks: readonly TrackerMark[];
+}
+
+/** `recording.track_file`: the track of a recording, relative to the document directory. */
+export function trackFilePath(recordingId: Id): string {
+  return `tracks/${recordingId}.otrk`;
 }
 
 export class TrackDecodeError extends Error {

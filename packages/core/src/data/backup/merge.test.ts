@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { asc, eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
@@ -10,6 +11,7 @@ import {
   painReport,
   program,
   programVersion,
+  recording,
   rotationSkip,
   session,
   settings,
@@ -24,7 +26,10 @@ import { currentProgram } from "../../rotation.ts";
 import { updateSettings } from "../../settings.ts";
 import { createTestContext } from "../../testing.ts";
 import type { TestContext } from "../../testing.ts";
+import { computeImport, planImport } from "../../tracking/io/import.ts";
+import { readActivityFile } from "../../tracking/io/zip.ts";
 import { revert } from "../../undo.ts";
+import { commit } from "../../writer.ts";
 import { fixtures } from "../testFixtures.ts";
 import type { Fixtures } from "../testFixtures.ts";
 import { purgeExpiredTrash } from "../trash.ts";
@@ -523,5 +528,35 @@ describe("agent access on import", () => {
     expect(access(local)).toEqual({ body: true, write: false, photos: false, bridgeHost: "10.0.0.2:8787", declined: declinedAt, asked: declinedAt, theme: "sunlight" });
     mergeSnapshot(local.db, local.env, snapshotOf(remote));
     expect(access(local)).toEqual({ body: true, write: false, photos: false, bridgeHost: "10.0.0.2:8787", declined: declinedAt, asked: declinedAt, theme: "sunlight" });
+  });
+});
+
+describe("imported recordings", () => {
+  const venuRun = new Uint8Array(readFileSync(new URL("../../../test/fixtures/import/venu3s-run.fit", import.meta.url)));
+
+  function importOn(context: TestContext): Id {
+    const computation = computeImport(readActivityFile(venuRun), { sport: "run", values: {} });
+    const plan = planImport(context.db, context.env, { computation, timeZone: "Europe/Paris", replaceSessionId: null });
+    commit(context.db, context.env, plan.request);
+    return plan.sessionId;
+  }
+
+  it("ignores a session whose recording comes from a file already imported here (DAT-031)", () => {
+    const mine = importOn(local);
+    importOn(remote);
+    there.write([{ kind: "insert", table: "session", row: there.session({ sport: "swim", values: { distance: 1500 } }) }]);
+    const result = mergeSnapshot(local.db, local.env, snapshotOf(remote));
+    expect(result.counts.inserted).toBe(1);
+    expect(local.db.select({ sessionId: recording.sessionId }).from(recording).all()).toEqual([{ sessionId: mine }]);
+    expect(local.db.select({ sport: session.sport }).from(session).orderBy(asc(session.sport)).all()).toEqual([{ sport: "run" }, { sport: "swim" }]);
+  });
+
+  it("still merges the same imported session coming back from another device", () => {
+    const mine = importOn(local);
+    copyLocalToRemote();
+    later();
+    there.write([{ kind: "update", table: "session", key: mine, patch: { note: "Fractionné" } }]);
+    mergeSnapshot(local.db, local.env, snapshotOf(remote));
+    expect(local.db.select({ note: session.note }).from(session).get()).toEqual({ note: "Fractionné" });
   });
 });

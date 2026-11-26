@@ -1,5 +1,5 @@
-import { asc, eq, isNull } from "drizzle-orm";
-import { lap, privacyZone, recording, session, settings, sports } from "@obnixe/schema";
+import { asc, eq } from "drizzle-orm";
+import { lap, recording, session, settings, sports } from "@obnixe/schema";
 import type { Recording, Session } from "@obnixe/schema";
 import type { ObnixeDatabase } from "../database.ts";
 import { processTrack } from "../tracking/batch.ts";
@@ -8,13 +8,13 @@ import { decodeTrack, TrackDecodeError } from "../tracking/codec/track.ts";
 import type { Track } from "../tracking/codec/track.ts";
 import { maskTrack } from "../tracking/privacy.ts";
 import type { PointRange } from "../tracking/privacy.ts";
+import { activePrivacyMask } from "../tracking/privacyZones.ts";
 import { resolveProfile } from "../tracking/profile.ts";
 import type { ResolvedProfile } from "../tracking/profile.ts";
 import { lttb } from "../tracking/simplify.ts";
 import { slowestPaceSecondsPerKm } from "../tracking/stages/derive.ts";
 import type { StretchSummary, TrackSeries } from "../tracking/stages/derive.ts";
-import type { HeartRateColumns } from "../tracking/types.ts";
-import { heartRateHoldMs, heartRateZones, isHeartRateReading, maxHeartRateOf, timeInZones } from "../tracking/zones.ts";
+import { heartRateReader, heartRateZones, maxHeartRateOf, timeInZones } from "../tracking/zones.ts";
 import type { ToolInput } from "./contract.ts";
 import type { AgentEnvironment, Json, ToolResult } from "./environment.ts";
 import { ToolInputError } from "./environment.ts";
@@ -153,17 +153,6 @@ export function sampleTrack(series: Pick<TrackSeries, "t" | "speed" | "altitude"
   return Uint32Array.from(candidates.filter((_, position) => chosen[position] === 1));
 }
 
-/** Heart rate holding at increasing times: the last reading at most `heartRateHoldMs` old, `null` during a dropout. */
-function heartRateReader(heartRate: HeartRateColumns): (t: number) => number | null {
-  let index = -1;
-  return (t: number): number | null => {
-    while (index + 1 < heartRate.length && (heartRate.t[index + 1] ?? 0) <= t) index += 1;
-    if (index < 0) return null;
-    const bpm = heartRate.bpm[index] ?? 0;
-    return isHeartRateReading(bpm) && t - (heartRate.t[index] ?? 0) < heartRateHoldMs ? bpm : null;
-  };
-}
-
 const coordinate = (degrees: number): number => Math.round(degrees * 1e6) / 1e6;
 
 function paceAt(speed: number): number | null {
@@ -175,9 +164,8 @@ function paceAt(speed: number): number | null {
 export function getActivityTrack(db: ObnixeDatabase, env: AgentEnvironment, input: ToolInput<"get_activity_track">): ToolResult {
   const { session: owner, profile, track, processed } = loadActivity(db, env, input.sessionId);
   const { series } = processed;
-  const zones = db.select().from(privacyZone).where(isNull(privacyZone.deletedAt)).all();
-  const hideEndsMeters = db.select({ hideTrackEndsMeters: settings.hideTrackEndsMeters }).from(settings).get()?.hideTrackEndsMeters ?? 0;
-  const masked = maskTrack(series, zones, { hideEndsMeters });
+  const mask = activePrivacyMask(db);
+  const masked = maskTrack(series, mask.zones, mask);
   const kept = sampleTrack(series, masked.visible, input.maxPoints ?? defaultTrackPoints);
   const pace = profile.primary === "pace";
   const heartRateAt = heartRateReader(track.samples.heartRate);
