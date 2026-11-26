@@ -34,6 +34,25 @@ export interface FilePoint {
   readonly pressurePa: number | null;
 }
 
+/** A track point written to a file, at an absolute instant, with the fix accuracies and pressure the import reads back (`IO-001`). */
+export interface ExportPoint {
+  readonly latitudeE7: number;
+  readonly longitudeE7: number;
+  /** Orthometric altitude. */
+  readonly altitudeMm: number | null;
+  readonly time: number;
+  readonly heartRate: number | null;
+  readonly cadence: number | null;
+  readonly speedMmS: number | null;
+  readonly courseCentiDeg: number | null;
+  readonly horizontalAccuracyDm: number | null;
+  readonly verticalAccuracyDm: number | null;
+  readonly speedAccuracyCmS: number | null;
+  readonly pressurePa: number | null;
+  /** Counted distance since the start (`GPS-037`). */
+  readonly distanceMm: number;
+}
+
 export interface FileTimerEvent {
   readonly time: number;
   readonly kind: "start" | "stop";

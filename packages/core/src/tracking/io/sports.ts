@@ -9,10 +9,11 @@ export interface SportGuess {
 const guess = (sport: SportKey, values: FieldValues = {}): SportGuess => ({ sport, values });
 
 /** FIT `sport` and `sub_sport` values of the profile. */
-export const fitSport = { running: 1, cycling: 2, swimming: 5, walking: 11, hiking: 17, eBiking: 21, snowshoeing: 35 } as const;
+export const fitSport = { generic: 0, running: 1, cycling: 2, swimming: 5, walking: 11, hiking: 17, eBiking: 21, snowshoeing: 35 } as const;
 export const fitSubSport = {
   generic: 0,
   treadmill: 1,
+  street: 2,
   trail: 3,
   spin: 5,
   indoorCycling: 6,
@@ -116,6 +117,80 @@ export function sportOfGpxType(type: string): SportGuess | null {
     .toLowerCase()
     .replace(/[\s-]+/g, "_");
   return gpxTypes[key] ?? null;
+}
+
+export interface FitSportPair {
+  readonly sport: number;
+  readonly subSport: number;
+}
+
+const fitPair = (sport: number, subSport: number): FitSportPair => ({ sport, subSport });
+
+function fitCycling(values: FieldValues): FitSportPair {
+  const kind = values.kind;
+  if (values.e_bike === true) return fitPair(fitSport.eBiking, kind === "mtb" ? fitSubSport.eBikeMountain : fitSubSport.generic);
+  switch (kind) {
+    case "gravel":
+      return fitPair(fitSport.cycling, fitSubSport.gravelCycling);
+    case "mtb":
+      return fitPair(fitSport.cycling, fitSubSport.mountain);
+    case "commute":
+      return fitPair(fitSport.cycling, fitSubSport.commuting);
+    case "indoor":
+      return fitPair(fitSport.cycling, fitSubSport.virtualActivity);
+    default:
+      return fitPair(fitSport.cycling, fitSubSport.road);
+  }
+}
+
+/** Annex D, FIT column, for the export (`IO-003`): a sport without a FIT counterpart is `generic`. */
+export function fitSportOf(sport: SportKey, values: FieldValues): FitSportPair {
+  switch (sport) {
+    case "run":
+      return fitPair(fitSport.running, fitSubSport.street);
+    case "trail":
+      return fitPair(fitSport.running, fitSubSport.trail);
+    case "walk":
+      return fitPair(fitSport.walking, fitSubSport.generic);
+    case "hike":
+      return fitPair(fitSport.hiking, fitSubSport.generic);
+    case "bike":
+      return fitCycling(values);
+    case "swim":
+      return fitPair(fitSport.swimming, values.water === "pool" ? fitSubSport.lapSwimming : fitSubSport.openWater);
+    case "strength":
+    case "climb":
+    case "yoga":
+      return fitPair(fitSport.generic, fitSubSport.generic);
+    default: {
+      const unhandled: never = sport;
+      throw new Error(`No FIT sport for ${String(unhandled)}`);
+    }
+  }
+}
+
+export type TcxSport = "Running" | "Biking" | "Other";
+
+/** TCX knows running and biking only; everything else is `Other`. */
+export function tcxSportOf(sport: SportKey): TcxSport {
+  switch (sport) {
+    case "run":
+    case "trail":
+      return "Running";
+    case "bike":
+      return "Biking";
+    case "walk":
+    case "hike":
+    case "swim":
+    case "strength":
+    case "climb":
+    case "yoga":
+      return "Other";
+    default: {
+      const unhandled: never = sport;
+      throw new Error(`No TCX sport for ${String(unhandled)}`);
+    }
+  }
 }
 
 /** TCX `Activity/@Sport`: `Running`, `Biking` or `Other`. */
