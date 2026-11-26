@@ -14,7 +14,7 @@ function report(error: unknown): void {
 }
 
 async function launchRecording(): Promise<void> {
-  await reconcileRecordingFiles({ write });
+  await reconcileRecordingFiles({ write }).catch(report);
   await recorder.recover();
 }
 
