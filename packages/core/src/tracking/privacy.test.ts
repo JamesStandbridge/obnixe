@@ -105,7 +105,7 @@ describe("maskTrack", () => {
       );
       const latitude = track.latitude.slice();
       const masked = maskTrack(track, zones, { hideEndsMeters: Math.round(random.between(0, 300)) });
-      expect(track.latitude).toEqual(latitude);
+      expect(track.latitude.every((value, index) => value === latitude[index])).toBe(true);
       let exposed = 0;
       for (const range of masked.visible) {
         for (let index = range.start; index < range.end; index += 1) {

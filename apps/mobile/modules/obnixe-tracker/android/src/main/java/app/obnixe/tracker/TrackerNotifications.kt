@@ -25,6 +25,7 @@ object TrackerNotifications {
   private const val schemeMetaData = "app.obnixe.tracker.SCHEME"
   private val workColor = 0xFFE5ED32.toInt()
   private val restColor = 0xFF828B94.toInt()
+  private const val pausedLabel = "En pause"
 
   fun build(context: Context, state: NotificationState): Notification {
     val manager = context.getSystemService(NotificationManager::class.java)
@@ -44,8 +45,9 @@ object TrackerNotifications {
       .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
     val timerBaseAt = content.timerBaseAt
     if (state.paused) {
+      val subText = state.frozenTimerMs?.let { "$pausedLabel · ${formatTimer(it)}" } ?: pausedLabel.takeIf { content.text != it }
       builder.setShowWhen(false)
-        .setSubText(state.frozenTimerMs?.let { "En pause · ${formatTimer(it)}" } ?: "En pause")
+        .setSubText(subText)
         .setShortCriticalText("Pause")
         .addAction(action(context, TrackerService.actionResume, R.drawable.obnixe_tracker_resume, "Reprendre"))
     } else {

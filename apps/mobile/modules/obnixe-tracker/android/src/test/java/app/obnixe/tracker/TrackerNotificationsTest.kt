@@ -35,8 +35,8 @@ class TrackerNotificationsTest {
   private fun build(progress: TrackerNotificationProgress?, paused: Boolean): Notification =
     build(TrackerNotificationContent("Course · 1,20 km", "Étape 3/18 · Travail · reste 240 m", 1_000L, progress), paused)
 
-  private fun build(content: TrackerNotificationContent, paused: Boolean): Notification =
-    TrackerNotifications.build(context, NotificationState("session", content, paused, 61_000L))
+  private fun build(content: TrackerNotificationContent, paused: Boolean, frozenTimerMs: Long? = 61_000L): Notification =
+    TrackerNotifications.build(context, NotificationState("session", content, paused, frozenTimerMs))
 
   /** The Android 16 QPR1 rule of `Notification.hasPromotableCharacteristics`, read from the built notification. */
   private fun assertPromotable(notification: Notification) {
@@ -67,6 +67,16 @@ class TrackerNotificationsTest {
     val paused = build(TrackerNotificationContent("Course · chronomètre", "En pause", null, null), paused = true)
     assertPromotable(paused)
     assertEquals("Pause", paused.shortCriticalText)
+  }
+
+  @Test
+  fun `REC-071 the paused notification says En pause once`() {
+    val subText = { text: String, frozenTimerMs: Long? ->
+      build(TrackerNotificationContent("Course · chronomètre", text, null, null), paused = true, frozenTimerMs = frozenTimerMs).extras.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString()
+    }
+    assertNull(subText("En pause", null))
+    assertEquals("En pause", subText("Allure 5:23 /km", null))
+    assertEquals("En pause · 1:01", subText("En pause", 61_000L))
   }
 
   @Test
