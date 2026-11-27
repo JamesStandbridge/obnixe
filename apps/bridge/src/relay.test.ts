@@ -242,6 +242,15 @@ async function startBridgeProcess(env: Readonly<Record<string, string>>): Promis
   return client;
 }
 
+/** `Client.close` can return once it has sent SIGKILL, while the bridge still holds its ports. */
+async function stopBridgeProcess(client: Client): Promise<void> {
+  const exited = new Promise<void>((resolve) => {
+    client.onclose = resolve;
+  });
+  await client.close();
+  await exited;
+}
+
 function runCli(args: readonly string[], env: Readonly<Record<string, string>>): Promise<CliResult> {
   const child = spawn(process.execPath, [...bridgeArgs, ...args], { env: { ...process.env, ...env }, stdio: ["ignore", "pipe", "inherit"] });
   let stdout = "";
@@ -457,7 +466,7 @@ describe("bridge behind the relay", () => {
     expect(pair.stdout).toContain("Connected to iPhone");
     await until(() => direct.statuses.includes("open"), "paired session");
     const pairing = storedPairing(direct);
-    await pairingBridge.close();
+    await stopBridgeProcess(pairingBridge);
     await until(() => direct.state.closed, "direct socket closed");
 
     const relayedBridge = await startBridgeProcess({ ...env, OBNIXE_PHONE_PORT: "off" });
@@ -471,7 +480,7 @@ describe("bridge behind the relay", () => {
     const sports = await relayedBridge.callTool({ name: "list_sports", arguments: {} });
     expect(sports.isError).toBe(false);
     expect(JSON.parse(textOf(sports)).catalogVersion).toBe(3);
-    await relayedBridge.close();
+    await stopBridgeProcess(relayedBridge);
     await until(() => relayed.state.closed, "relayed phone closed with the bridge");
     expect(relayed.relayNotices).toEqual(["peer", "peer_left"]);
   }, 60_000);

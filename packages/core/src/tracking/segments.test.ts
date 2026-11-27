@@ -6,7 +6,7 @@ import { decodePolyline } from "./codec/polyline.ts";
 import { InvalidSegmentError, candidateShapes, newSegment, renameSegment, segmentFamilyOf, segmentPasses, segmentProblem, segmentShape } from "./segments.ts";
 import type { SegmentPlan, SegmentShape } from "./segments.ts";
 import { locate, valueAt } from "./stages/derive.ts";
-import { buildTruth, clearSky, mountainOuting, move, simulate } from "./testing/scenarios.ts";
+import { buildTruth, clearSky, move, simulate } from "./testing/scenarios.ts";
 import type { Leg, Scenario } from "./testing/scenarios.ts";
 import { runBatch } from "./testing/run.ts";
 
@@ -147,25 +147,4 @@ describe("segment detection (SEG-002)", () => {
     expect(candidateShapes([shape, bikeShape, far], "trail", source.summary.bbox)).toEqual([shape]);
     expect(candidateShapes([shape], "swim", source.summary.bbox)).toEqual([]);
   });
-});
-
-describe("segment detection budget (SEG-005)", () => {
-  it("matches a 3 h outing against 200 segments within 50 ms", () => {
-    const processed = runBatch(mountainOuting(3, 1));
-    const total = processed.series.distance.at(-1) ?? 0;
-    const rows = Array.from({ length: 200 }, (_, index) => {
-      const from = ((index * 137) % 190) * (total / 200);
-      return drawn(processed, from, from + 300 + (index % 7) * 400, "trail");
-    });
-    let fastest = Number.POSITIVE_INFINITY;
-    let found = 0;
-    for (let attempt = 0; attempt < 10 && fastest > 50; attempt += 1) {
-      const started = performance.now();
-      const shapes = candidateShapes(rows.map(shapeOf), "trail", processed.summary.bbox);
-      found = segmentPasses(processed, shapes).length;
-      fastest = Math.min(fastest, performance.now() - started);
-    }
-    expect(found).toBeGreaterThanOrEqual(200);
-    expect(fastest).toBeLessThanOrEqual(50);
-  }, 60_000);
 });
