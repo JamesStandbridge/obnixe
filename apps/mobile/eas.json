@@ -23,6 +23,12 @@
         "APP_VARIANT": "development"
       }
     },
+    "standalone": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      }
+    },
     "production": {
       "autoIncrement": true
     }
