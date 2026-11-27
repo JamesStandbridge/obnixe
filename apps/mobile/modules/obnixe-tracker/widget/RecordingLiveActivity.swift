@@ -52,7 +52,8 @@ struct RecordingLiveActivity: Widget {
   }
 
   private func liveScreenURL(_ sessionId: String) -> URL? {
-    URL(string: "obnixe://record/\(sessionId)")
+    guard let scheme = Bundle.main.object(forInfoDictionaryKey: "ObnixeTrackerScheme") as? String else { return nil }
+    return URL(string: "\(scheme)://record/\(sessionId)")
   }
 }
 

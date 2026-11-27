@@ -18,8 +18,10 @@ if (!chrome) throw new Error(`Set CHROME_PATH: no default Chrome location for ${
 /** @type {ReadonlyArray<{ source: string; output: string; size: number; transparent: boolean }>} */
 const targets = [
   { source: "icon.svg", output: "icon.png", size: 1024, transparent: false },
+  { source: "icon-dev.svg", output: "icon-dev.png", size: 1024, transparent: false },
   { source: "android-icon-foreground.svg", output: "android-icon-foreground.png", size: 1024, transparent: true },
   { source: "android-icon-background.svg", output: "android-icon-background.png", size: 1024, transparent: false },
+  { source: "android-icon-background-dev.svg", output: "android-icon-background-dev.png", size: 1024, transparent: false },
   { source: "android-icon-monochrome.svg", output: "android-icon-monochrome.png", size: 1024, transparent: true },
   { source: "splash-icon.svg", output: "splash-icon.png", size: 1024, transparent: true },
   { source: "favicon.svg", output: "favicon.png", size: 48, transparent: false },
